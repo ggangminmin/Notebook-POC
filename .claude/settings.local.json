@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create:*)",
+      "Bash(mkdir:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(git init:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: NotebookLM 스타일 엄격한 RAG 시스템 구현\n\n- 파일 기반 대화 시스템 \\(선택된 파일 내용만 참조\\)\n- 할루시네이션 방지 \\(문서 외 내용 답변 금지\\)\n- 다국어 지원 \\(한국어/English, 자동 언어 감지\\)\n- 파일 선택 시스템 \\(클릭 선택, 실시간 컨텍스트 전환\\)\n- 파일 파싱 \\(PDF, Word, Excel, TXT, JSON → 구조화된 JSON\\)\n- JSON 데이터 프리뷰 \\(다크모드, 확장/축소\\)\n- 출처 및 키워드 매칭 표시\n\n기술 스택:\n- React 18 + Vite\n- Tailwind CSS\n- Context API \\(다국어 지원\\)\n- 엄격한 RAG 로직 \\(키워드 검증\\)\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ]
+  }
+}

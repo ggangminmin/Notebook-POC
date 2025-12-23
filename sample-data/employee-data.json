@@ -1,0 +1,60 @@
+{
+  "companyName": "테크코리아",
+  "year": 2024,
+  "employees": [
+    {
+      "id": 1,
+      "name": "홍길동",
+      "department": "개발팀",
+      "position": "시니어 개발자",
+      "salary": 65000000,
+      "joinDate": "2020-03-15",
+      "skills": ["React", "Node.js", "Python", "AWS"]
+    },
+    {
+      "id": 2,
+      "name": "김철수",
+      "department": "마케팅팀",
+      "position": "마케팅 매니저",
+      "salary": 55000000,
+      "joinDate": "2019-07-01",
+      "skills": ["Digital Marketing", "SEO", "Analytics"]
+    },
+    {
+      "id": 3,
+      "name": "이영희",
+      "department": "개발팀",
+      "position": "팀장",
+      "salary": 85000000,
+      "joinDate": "2018-01-10",
+      "skills": ["Java", "Spring", "Kubernetes", "Team Management"]
+    },
+    {
+      "id": 4,
+      "name": "박민수",
+      "department": "인사팀",
+      "position": "인사 담당자",
+      "salary": 48000000,
+      "joinDate": "2021-05-20",
+      "skills": ["Recruitment", "HR Management", "Labor Law"]
+    },
+    {
+      "id": 5,
+      "name": "정수진",
+      "department": "개발팀",
+      "position": "주니어 개발자",
+      "salary": 42000000,
+      "joinDate": "2023-02-01",
+      "skills": ["JavaScript", "TypeScript", "React"]
+    }
+  ],
+  "summary": {
+    "totalEmployees": 5,
+    "averageSalary": 59000000,
+    "departments": {
+      "개발팀": 3,
+      "마케팅팀": 1,
+      "인사팀": 1
+    }
+  }
+}
