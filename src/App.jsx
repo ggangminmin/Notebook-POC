@@ -1,57 +1,35 @@
 import { useState } from 'react'
 import { Globe } from 'lucide-react'
-import FileUpload from './components/FileUpload'
-import DataPreview from './components/DataPreview'
+import SourcePanel from './components/SourcePanel'
 import ChatInterface from './components/ChatInterface'
+import DataPreview from './components/DataPreview'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
-import { parseFileContent } from './utils/fileParser'
 
 function AppContent() {
-  const [files, setFiles] = useState([])
-  const [selectedFileId, setSelectedFileId] = useState(null)
+  const [sources, setSources] = useState([])
+  const [selectedSourceIds, setSelectedSourceIds] = useState([])
   const { language, toggleLanguage, t } = useLanguage()
 
-  const selectedFile = files.find(f => f.id === selectedFileId)
+  // 선택된 소스들 가져오기
+  const selectedSources = sources.filter(s => selectedSourceIds.includes(s.id))
 
-  const handleFileUpload = async (newFiles) => {
-    const parsedFiles = await Promise.all(
-      newFiles.map(async (file) => {
-        try {
-          const parsedData = await parseFileContent(file)
-          return {
-            id: `file_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            name: file.name,
-            size: file.size,
-            fileType: file.type,
-            uploadedAt: new Date().toISOString(),
-            parsedData: parsedData
-          }
-        } catch (error) {
-          console.error('파일 파싱 오류:', error)
-          return null
-        }
-      })
-    )
+  const handleAddSources = (newSources) => {
+    setSources(prev => [...prev, ...newSources])
 
-    const validFiles = parsedFiles.filter(f => f !== null)
-    setFiles(prev => [...prev, ...validFiles])
-
-    // 첫 번째 파일 자동 선택
-    if (files.length === 0 && validFiles.length > 0) {
-      setSelectedFileId(validFiles[0].id)
+    // 첫 번째 소스 자동 선택
+    if (sources.length === 0 && newSources.length > 0) {
+      setSelectedSourceIds([newSources[0].id])
     }
   }
 
-  const handleSelectFile = (fileId) => {
-    setSelectedFileId(fileId)
-  }
-
-  const handleDeleteFile = (fileId) => {
-    setFiles(prev => prev.filter(f => f.id !== fileId))
-    if (selectedFileId === fileId) {
-      const remainingFiles = files.filter(f => f.id !== fileId)
-      setSelectedFileId(remainingFiles.length > 0 ? remainingFiles[0].id : null)
-    }
+  const handleToggleSource = (sourceId) => {
+    setSelectedSourceIds(prev => {
+      if (prev.includes(sourceId)) {
+        return prev.filter(id => id !== sourceId)
+      } else {
+        return [...prev, sourceId]
+      }
+    })
   }
 
   return (
@@ -76,28 +54,27 @@ function AppContent() {
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - 40% */}
-        <div className="w-2/5 flex flex-col border-r border-gray-200">
-          {/* File Upload Section - Top Half */}
-          <div className="h-1/2 border-b border-gray-200 bg-white overflow-hidden">
-            <FileUpload
-              onFileUpload={handleFileUpload}
-              files={files}
-              selectedFileId={selectedFileId}
-              onSelectFile={handleSelectFile}
-              onDeleteFile={handleDeleteFile}
+        {/* Left Panel - 50% */}
+        <div className="w-1/2 flex flex-col border-r border-gray-200">
+          {/* Source Panel - Top (Compact) */}
+          <div className="h-80 overflow-hidden border-b border-gray-200">
+            <SourcePanel
+              sources={sources}
+              onAddSources={handleAddSources}
+              selectedSourceIds={selectedSourceIds}
+              onToggleSource={handleToggleSource}
             />
           </div>
 
-          {/* Data Preview Section - Bottom Half */}
-          <div className="h-1/2 bg-gray-900 overflow-hidden">
-            <DataPreview selectedFile={selectedFile} />
+          {/* JSON Preview - Bottom (Expanded) */}
+          <div className="flex-1 overflow-hidden">
+            <DataPreview selectedFile={selectedSources[0]} />
           </div>
         </div>
 
-        {/* Right Panel - 60% */}
-        <div className="w-3/5 bg-white overflow-hidden">
-          <ChatInterface selectedFile={selectedFile} />
+        {/* Right Panel - Chat Interface 50% */}
+        <div className="w-1/2 bg-white overflow-hidden">
+          <ChatInterface selectedSources={selectedSources} />
         </div>
       </div>
     </div>

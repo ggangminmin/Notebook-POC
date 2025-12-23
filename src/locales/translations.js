@@ -38,6 +38,22 @@ const translations = {
       switch: '언어 전환',
       korean: '한국어',
       english: 'English'
+    },
+    sources: {
+      addSource: '소스 추가',
+      searchPlaceholder: '웹에서 새 소스를 검색하세요',
+      fastResearch: 'Fast Research',
+      deepResearch: 'Deep Research',
+      allSources: '모든 소스',
+      selectAll: '모두 선택',
+      deselectAll: '선택 해제',
+      noSources: '추가된 소스가 없습니다',
+      addSourceHint: '위의 "+ 소스 추가" 버튼을 눌러 시작하세요',
+      uploadFile: '파일 업로드',
+      uploadFileDesc: 'PDF, Word, Excel, TXT, JSON',
+      webSearch: '웹 검색',
+      webSearchDesc: '웹에서 정보 검색 (준비 중)',
+      selectedSources: '선택된 소스'
     }
   },
   en: {
@@ -79,6 +95,22 @@ const translations = {
       switch: 'Switch Language',
       korean: '한국어',
       english: 'English'
+    },
+    sources: {
+      addSource: 'Add Source',
+      searchPlaceholder: 'Search for new sources on the web',
+      fastResearch: 'Fast Research',
+      deepResearch: 'Deep Research',
+      allSources: 'All Sources',
+      selectAll: 'Select All',
+      deselectAll: 'Deselect All',
+      noSources: 'No sources added',
+      addSourceHint: 'Click the "+ Add Source" button above to get started',
+      uploadFile: 'Upload Files',
+      uploadFileDesc: 'PDF, Word, Excel, TXT, JSON',
+      webSearch: 'Web Search',
+      webSearchDesc: 'Search information on the web (Coming soon)',
+      selectedSources: 'Selected Sources'
     }
   }
 }

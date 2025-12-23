@@ -3,7 +3,7 @@ import { Send, Bot, User, Loader2, FileText, AlertCircle } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage } from '../services/aiService'
 
-const ChatInterface = ({ selectedFile }) => {
+const ChatInterface = ({ selectedSources = [] }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -18,15 +18,16 @@ const ChatInterface = ({ selectedFile }) => {
     scrollToBottom()
   }, [messages])
 
-  // 파일 선택이 변경되면 초기 메시지 추가
+  // 소스 선택이 변경되면 초기 메시지 추가
   useEffect(() => {
-    if (selectedFile) {
+    if (selectedSources.length > 0) {
+      const sourceNames = selectedSources.map(s => s.name).join(', ')
       const greetingMessage = {
         id: Date.now(),
         type: 'assistant',
         content: language === 'ko'
-          ? `"${selectedFile.name}" 파일이 선택되었습니다. 이 문서의 내용에 대해 질문해주세요.`
-          : `"${selectedFile.name}" has been selected. Please ask questions about this document.`,
+          ? `${selectedSources.length}개의 소스가 선택되었습니다 (${sourceNames}). 선택된 문서의 내용에 대해 질문해주세요.`
+          : `${selectedSources.length} source(s) selected (${sourceNames}). Please ask questions about the selected documents.`,
         timestamp: new Date().toISOString(),
         isSystemMessage: true
       }
@@ -39,7 +40,7 @@ const ChatInterface = ({ selectedFile }) => {
         timestamp: new Date().toISOString()
       }])
     }
-  }, [selectedFile?.id])
+  }, [selectedSources.length, selectedSources.map(s => s.id).join(',')])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -61,10 +62,10 @@ const ChatInterface = ({ selectedFile }) => {
       // 언어 감지
       const detectedLang = detectLanguage(userQuery)
 
-      // 엄격한 RAG 응답 생성
-      const documentContext = selectedFile ? {
-        fileName: selectedFile.name,
-        parsedData: selectedFile.parsedData
+      // 엄격한 RAG 응답 생성 - 첫 번째 선택된 소스 사용
+      const documentContext = selectedSources.length > 0 ? {
+        fileName: selectedSources[0].name,
+        parsedData: selectedSources[0].parsedData
       } : null
 
       const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang)
@@ -111,12 +112,21 @@ const ChatInterface = ({ selectedFile }) => {
         <p className="text-sm text-gray-500 mt-1">{t('chat.subtitle')}</p>
 
         {/* Context Indicator */}
-        {selectedFile ? (
-          <div className="mt-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg flex items-center">
-            <FileText className="w-4 h-4 text-blue-600 mr-2" />
-            <span className="text-sm text-blue-800">
-              {t('chat.currentContext').replace('[{fileName}]', selectedFile.name)}
-            </span>
+        {selectedSources.length > 0 ? (
+          <div className="mt-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center mb-1">
+              <FileText className="w-4 h-4 text-blue-600 mr-2" />
+              <span className="text-sm font-medium text-blue-800">
+                {language === 'ko' ? `${selectedSources.length}개의 소스 선택됨` : `${selectedSources.length} source(s) selected`}
+              </span>
+            </div>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {selectedSources.map(source => (
+                <span key={source.id} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
+                  {source.name}
+                </span>
+              ))}
+            </div>
           </div>
         ) : (
           <div className="mt-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center">
@@ -240,7 +250,7 @@ const ChatInterface = ({ selectedFile }) => {
 
       {/* Input Area */}
       <div className="px-6 py-4 border-t border-gray-200 bg-white">
-        {!selectedFile && (
+        {selectedSources.length === 0 && (
           <div className="mb-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-xs text-amber-800">{t('chat.noDocumentContext')}</p>
           </div>
@@ -253,7 +263,7 @@ const ChatInterface = ({ selectedFile }) => {
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder={t('chat.placeholder')}
-              disabled={!selectedFile}
+              disabled={selectedSources.length === 0}
               className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
               rows="1"
               style={{ minHeight: '48px', maxHeight: '120px' }}
@@ -261,7 +271,7 @@ const ChatInterface = ({ selectedFile }) => {
           </div>
           <button
             type="submit"
-            disabled={!input.trim() || isTyping || !selectedFile}
+            disabled={!input.trim() || isTyping || selectedSources.length === 0}
             className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
             <Send className="w-5 h-5" />
