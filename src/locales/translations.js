@@ -44,6 +44,9 @@ const translations = {
       searchPlaceholder: '웹에서 새 소스를 검색하세요',
       fastResearch: 'Fast Research',
       deepResearch: 'Deep Research',
+      deepResearchTitle: 'Deep Research 사용해보기',
+      deepResearchDesc: 'Deep Research를 사용해 심층 보고서를 확인하고 새로운 소스를 이용해 보세요.',
+      web: '웹',
       allSources: '모든 소스',
       selectAll: '모두 선택',
       deselectAll: '선택 해제',
@@ -53,7 +56,15 @@ const translations = {
       uploadFileDesc: 'PDF, Word, Excel, TXT, JSON',
       webSearch: '웹 검색',
       webSearchDesc: '웹에서 정보 검색 (준비 중)',
-      selectedSources: '선택된 소스'
+      selectedSources: '선택된 소스',
+      webUrl: '웹 URL',
+      webUrlLabel: '웹 페이지 URL 입력',
+      addUrl: 'URL 추가',
+      urlRequired: 'URL을 입력해주세요.',
+      urlError: 'URL을 가져올 수 없습니다.',
+      loading: '로딩 중...',
+      urlHint: '웹 페이지의 메타데이터를 자동으로 추출합니다',
+      supportedFormats: '지원 형식'
     }
   },
   en: {
@@ -101,6 +112,9 @@ const translations = {
       searchPlaceholder: 'Search for new sources on the web',
       fastResearch: 'Fast Research',
       deepResearch: 'Deep Research',
+      deepResearchTitle: 'Try Deep Research',
+      deepResearchDesc: 'Use Deep Research to view in-depth reports and explore new sources.',
+      web: 'Web',
       allSources: 'All Sources',
       selectAll: 'Select All',
       deselectAll: 'Deselect All',
@@ -110,7 +124,15 @@ const translations = {
       uploadFileDesc: 'PDF, Word, Excel, TXT, JSON',
       webSearch: 'Web Search',
       webSearchDesc: 'Search information on the web (Coming soon)',
-      selectedSources: 'Selected Sources'
+      selectedSources: 'Selected Sources',
+      webUrl: 'Web URL',
+      webUrlLabel: 'Enter Web Page URL',
+      addUrl: 'Add URL',
+      urlRequired: 'Please enter a URL.',
+      urlError: 'Failed to fetch URL.',
+      loading: 'Loading...',
+      urlHint: 'Automatically extracts metadata from the web page',
+      supportedFormats: 'Supported Formats'
     }
   }
 }

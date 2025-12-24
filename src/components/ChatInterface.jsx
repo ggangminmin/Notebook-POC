@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
-import { generateStrictRAGResponse, detectLanguage } from '../services/aiService'
+import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 
 const ChatInterface = ({ selectedSources = [] }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [isAnalyzing, setIsAnalyzing] = useState(false)
+  const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
 
@@ -18,29 +20,98 @@ const ChatInterface = ({ selectedSources = [] }) => {
     scrollToBottom()
   }, [messages])
 
-  // 소스 선택이 변경되면 초기 메시지 추가
+  // 소스 선택이 변경되면 자동 요약 및 추천 질문 생성
   useEffect(() => {
-    if (selectedSources.length > 0) {
-      const sourceNames = selectedSources.map(s => s.name).join(', ')
-      const greetingMessage = {
-        id: Date.now(),
-        type: 'assistant',
-        content: language === 'ko'
-          ? `${selectedSources.length}개의 소스가 선택되었습니다 (${sourceNames}). 선택된 문서의 내용에 대해 질문해주세요.`
-          : `${selectedSources.length} source(s) selected (${sourceNames}). Please ask questions about the selected documents.`,
-        timestamp: new Date().toISOString(),
-        isSystemMessage: true
+    const analyzeDocument = async () => {
+      if (selectedSources.length > 0) {
+        setIsAnalyzing(true)
+        setMessages([])
+        setSuggestedQuestions([])
+
+        const sourceNames = selectedSources.map(s => s.name).join(', ')
+
+        // 1. 분석 중 메시지
+        const analyzingMessage = {
+          id: Date.now(),
+          type: 'assistant',
+          content: language === 'ko'
+            ? `📄 ${selectedSources.length}개의 문서를 분석하고 있습니다...\n${sourceNames}`
+            : `📄 Analyzing ${selectedSources.length} document(s)...\n${sourceNames}`,
+          timestamp: new Date().toISOString(),
+          isAnalyzing: true
+        }
+        setMessages([analyzingMessage])
+
+        try {
+          // 문서 컨텍스트 검증
+          console.log('[ChatInterface] 선택된 소스 데이터 검증:')
+          console.log('- 파일명:', selectedSources[0].name)
+          console.log('- parsedData 존재:', !!selectedSources[0].parsedData)
+          console.log('- extractedText 길이:', selectedSources[0].parsedData?.extractedText?.length || 0)
+          console.log('- extractedText 첫 200자:', selectedSources[0].parsedData?.extractedText?.substring(0, 200))
+
+          // 2. 자동 요약 생성
+          const summary = await generateDocumentSummary(
+            { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
+            language
+          )
+
+          console.log('[ChatInterface] 요약 생성 완료:', summary?.substring(0, 100))
+
+          // 3. 추천 질문 생성
+          const questions = await generateSuggestedQuestions(
+            { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
+            language
+          )
+
+          console.log('[ChatInterface] 추천 질문 생성 완료:', questions)
+
+          setSuggestedQuestions(questions)
+
+          // 4. 완료 메시지 (요약 포함)
+          const summaryMessage = {
+            id: Date.now() + 1,
+            type: 'assistant',
+            content: summary || (language === 'ko'
+              ? `✅ 문서 분석 완료!\n\n${selectedSources.length}개의 문서가 준비되었습니다 (${sourceNames}).\n\n궁금하신 내용을 물어보세요!`
+              : `✅ Document analysis complete!\n\n${selectedSources.length} document(s) ready (${sourceNames}).\n\nFeel free to ask questions!`),
+            timestamp: new Date().toISOString(),
+            isSummary: true,
+            hasSuggestedQuestions: questions.length > 0
+          }
+          setMessages([summaryMessage])
+
+        } catch (error) {
+          console.error('문서 분석 오류:', error)
+          const errorMessage = {
+            id: Date.now() + 1,
+            type: 'assistant',
+            content: language === 'ko'
+              ? `문서 분석 중 오류가 발생했습니다. 하지만 문서 기반 질문은 가능합니다.`
+              : `An error occurred during analysis. However, you can still ask questions about the document.`,
+            timestamp: new Date().toISOString()
+          }
+          setMessages([errorMessage])
+        } finally {
+          setIsAnalyzing(false)
+        }
+      } else {
+        // 파일이 없으면 환영 메시지 표시
+        setMessages([{
+          id: Date.now(),
+          type: 'assistant',
+          content: language === 'ko'
+            ? `안녕하세요! 저는 NotebookLM 스타일의 문서 분석 AI입니다.\n\n문서를 업로드하시면 그 내용을 바탕으로 대화를 시작할 수 있습니다. 왼쪽의 "+ 소스 추가" 버튼을 눌러 파일을 업로드하거나 웹 URL을 추가해주세요.\n\n물론 간단한 인사나 질문도 환영합니다!`
+            : `Hello! I'm a NotebookLM-style document analysis AI.\n\nOnce you upload a document, I can start a conversation based on its content. Please click the "+ Add Source" button on the left to upload a file or add a web URL.\n\nOf course, simple greetings or questions are welcome too!`,
+          timestamp: new Date().toISOString(),
+          isWelcome: true
+        }])
+        setSuggestedQuestions([])
       }
-      setMessages([greetingMessage])
-    } else {
-      setMessages([{
-        id: Date.now(),
-        type: 'assistant',
-        content: t('chat.greeting'),
-        timestamp: new Date().toISOString()
-      }])
     }
-  }, [selectedSources.length, selectedSources.map(s => s.id).join(',')])
+
+    analyzeDocument()
+  }, [selectedSources.length, selectedSources.map(s => s.id).join(','), language])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -102,6 +173,16 @@ const ChatInterface = ({ selectedSources = [] }) => {
       e.preventDefault()
       handleSubmit(e)
     }
+  }
+
+  // 추천 질문 클릭 핸들러
+  const handleSuggestedQuestionClick = (question) => {
+    setInput(question)
+    // 자동으로 질문 제출
+    setTimeout(() => {
+      const fakeEvent = { preventDefault: () => {} }
+      handleSubmit(fakeEvent)
+    }, 100)
   }
 
   return (
@@ -217,6 +298,29 @@ const ChatInterface = ({ selectedSources = [] }) => {
                       </div>
                     </div>
                   )}
+
+                  {/* 추천 질문 버튼 (요약 메시지에만 표시) */}
+                  {message.isSummary && message.hasSuggestedQuestions && suggestedQuestions.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex items-center mb-2">
+                        <Sparkles className="w-4 h-4 text-purple-600 mr-1.5" />
+                        <span className="text-xs font-medium text-gray-700">
+                          {language === 'ko' ? '추천 질문' : 'Suggested Questions'}
+                        </span>
+                      </div>
+                      <div className="flex flex-col gap-2">
+                        {suggestedQuestions.map((question, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => handleSuggestedQuestionClick(question)}
+                            className="text-left px-3 py-2 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border border-purple-200 rounded-lg text-sm text-gray-700 transition-all hover:shadow-sm"
+                          >
+                            {question}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <p className="text-xs text-gray-400 mt-1 px-2">
                   {new Date(message.timestamp).toLocaleTimeString()}
@@ -250,28 +354,23 @@ const ChatInterface = ({ selectedSources = [] }) => {
 
       {/* Input Area */}
       <div className="px-6 py-4 border-t border-gray-200 bg-white">
-        {selectedSources.length === 0 && (
-          <div className="mb-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-            <p className="text-xs text-amber-800">{t('chat.noDocumentContext')}</p>
-          </div>
-        )}
-
         <form onSubmit={handleSubmit} className="flex items-end space-x-3">
           <div className="flex-1">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
-              placeholder={t('chat.placeholder')}
-              disabled={selectedSources.length === 0}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-100 disabled:cursor-not-allowed"
+              placeholder={selectedSources.length === 0
+                ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
+                : t('chat.placeholder')}
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows="1"
               style={{ minHeight: '48px', maxHeight: '120px' }}
             />
           </div>
           <button
             type="submit"
-            disabled={!input.trim() || isTyping || selectedSources.length === 0}
+            disabled={!input.trim() || isTyping}
             className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
           >
             <Send className="w-5 h-5" />
@@ -279,7 +378,9 @@ const ChatInterface = ({ selectedSources = [] }) => {
           </button>
         </form>
         <p className="text-xs text-gray-400 mt-2">
-          {t('chat.enterToSend')}
+          {selectedSources.length === 0
+            ? (language === 'ko' ? '문서 없이도 대화할 수 있습니다. Enter로 전송하세요.' : 'You can chat without documents. Press Enter to send.')
+            : t('chat.enterToSend')}
         </p>
       </div>
     </div>

@@ -32,6 +32,11 @@ function AppContent() {
     })
   }
 
+  const handleDeleteSource = (sourceId) => {
+    setSources(prev => prev.filter(s => s.id !== sourceId))
+    setSelectedSourceIds(prev => prev.filter(id => id !== sourceId))
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top Header */}
@@ -56,18 +61,19 @@ function AppContent() {
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel - 50% */}
         <div className="w-1/2 flex flex-col border-r border-gray-200">
-          {/* Source Panel - Top (Compact) */}
-          <div className="h-80 overflow-hidden border-b border-gray-200">
+          {/* Source Panel - Top (40% - Compact) */}
+          <div className="h-[40%] overflow-hidden border-b border-gray-200">
             <SourcePanel
               sources={sources}
               onAddSources={handleAddSources}
               selectedSourceIds={selectedSourceIds}
               onToggleSource={handleToggleSource}
+              onDeleteSource={handleDeleteSource}
             />
           </div>
 
-          {/* JSON Preview - Bottom (Expanded) */}
-          <div className="flex-1 overflow-hidden">
+          {/* JSON Preview - Bottom (60% - Expanded) */}
+          <div className="h-[60%] overflow-hidden">
             <DataPreview selectedFile={selectedSources[0]} />
           </div>
         </div>
