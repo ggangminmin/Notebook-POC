@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink } from 'lucide-react'
+import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { parseFileContent, fetchWebMetadata } from '../utils/fileParser'
 import { performFastResearch, performDeepResearch } from '../services/webSearchService'
@@ -15,8 +15,22 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const [researchType, setResearchType] = useState('fast')
   const [isSearching, setIsSearching] = useState(false)
   const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
+  const [expandedSourceIds, setExpandedSourceIds] = useState(new Set()) // 펼쳐진 소스 ID 추적
   const fileInputRef = useRef(null)
   const { t, language } = useLanguage()
+
+  // 소스 펼치기/접기 토글
+  const toggleExpand = (sourceId) => {
+    setExpandedSourceIds(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(sourceId)) {
+        newSet.delete(sourceId)
+      } else {
+        newSet.add(sourceId)
+      }
+      return newSet
+    })
+  }
 
   const handleFileSelect = async (e) => {
     console.log('파일 선택 이벤트 발생:', e.target.files)
@@ -171,16 +185,29 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
     } catch (error) {
       console.error('[SourcePanel] 웹 검색 오류:', error)
+
+      // 사용자 친화적인 에러 메시지
+      let errorMessage = error.message
+      if (error.message.includes('CORS')) {
+        errorMessage = language === 'ko'
+          ? '일부 사이트에 접근할 수 없습니다. 다른 검색어를 시도해보세요.'
+          : 'Cannot access some sites. Please try a different query.'
+      } else if (error.message.includes('URL')) {
+        errorMessage = language === 'ko'
+          ? '검색 URL 생성에 실패했습니다. API 키를 확인해주세요.'
+          : 'Failed to generate search URLs. Please check API keys.'
+      }
+
       setSearchProgress({
         percent: 0,
         message: language === 'ko'
-          ? `오류: ${error.message}`
-          : `Error: ${error.message}`
+          ? `❌ 오류: ${errorMessage}`
+          : `❌ Error: ${errorMessage}`
       })
       setTimeout(() => {
         setIsSearching(false)
         setSearchProgress({ percent: 0, message: '' })
-      }, 3000)
+      }, 5000) // 5초로 연장
     }
   }
 
@@ -334,81 +361,110 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
-              {sources.map((source) => (
-                <div
-                  key={source.id}
-                  className={`px-3 py-2 hover:bg-gray-50 transition-colors group ${
-                    selectedSourceIds.includes(source.id) ? 'bg-blue-50' : 'bg-white'
-                  }`}
-                >
-                  <div className="flex items-start space-x-2">
-                    <input
-                      type="checkbox"
-                      checked={selectedSourceIds.includes(source.id)}
-                      onChange={() => onToggleSource(source.id)}
-                      className="mt-0.5 w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                    />
+              {sources.map((source) => {
+                const isExpanded = expandedSourceIds.has(source.id)
+                const hasSummary = source.parsedData?.summary || source.summary
 
-                    <div
-                      className="flex-shrink-0 cursor-pointer"
-                      onClick={() => onToggleSource(source.id)}
-                    >
-                      {source.type === 'report' ? (
-                        <div className="w-7 h-7 bg-purple-100 rounded flex items-center justify-center">
-                          <BookOpen className="w-3.5 h-3.5 text-purple-600" />
-                        </div>
-                      ) : source.type === 'web' ? (
-                        <div className="w-7 h-7 bg-blue-100 rounded flex items-center justify-center">
-                          <Globe className="w-3.5 h-3.5 text-blue-600" />
-                        </div>
-                      ) : (
-                        <div className="w-7 h-7 bg-red-100 rounded flex items-center justify-center">
-                          <FileText className="w-3.5 h-3.5 text-red-600" />
-                        </div>
-                      )}
-                    </div>
+                return (
+                  <div
+                    key={source.id}
+                    className={`px-3 py-2 hover:bg-gray-50 transition-colors group ${
+                      selectedSourceIds.includes(source.id) ? 'bg-blue-50' : 'bg-white'
+                    }`}
+                  >
+                    {/* Main Row */}
+                    <div className="flex items-start space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedSourceIds.includes(source.id)}
+                        onChange={() => onToggleSource(source.id)}
+                        className="mt-0.5 w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      />
 
-                    <div
-                      className="flex-1 min-w-0 cursor-pointer"
-                      onClick={() => onToggleSource(source.id)}
-                    >
-                      <p className="text-xs font-medium text-gray-900 truncate leading-tight" title={source.name}>
-                        {source.name}
-                      </p>
-                      <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={source.url || ''}>
-                        {source.type === 'web' ? source.url : new Date(source.uploadedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-
-                    {/* External Link Button for Web Sources - Compact */}
-                    {(source.type === 'web' || source.type === 'report') && source.url && (
-                      <Tooltip text={language === 'ko' ? '원본 웹사이트 방문하기' : 'Visit original website'} position="top">
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                      {/* Expand/Collapse Button */}
+                      {hasSummary && (
+                        <button
+                          onClick={() => toggleExpand(source.id)}
+                          className="flex-shrink-0 mt-0.5 p-0.5 rounded hover:bg-gray-200 transition-colors"
                         >
-                          <ExternalLink className="w-3 h-3" />
-                        </a>
-                      </Tooltip>
-                    )}
+                          {isExpanded ? (
+                            <ChevronDown className="w-3 h-3 text-gray-600" />
+                          ) : (
+                            <ChevronRight className="w-3 h-3 text-gray-600" />
+                          )}
+                        </button>
+                      )}
 
-                    <Tooltip text={language === 'ko' ? '삭제' : 'Delete'} position="top">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          onDeleteSource(source.id)
-                        }}
-                        className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      <div
+                        className="flex-shrink-0 cursor-pointer"
+                        onClick={() => onToggleSource(source.id)}
                       >
-                        <X className="w-3 h-3" />
-                      </button>
-                    </Tooltip>
+                        {source.type === 'report' ? (
+                          <div className="w-7 h-7 bg-purple-100 rounded flex items-center justify-center">
+                            <BookOpen className="w-3.5 h-3.5 text-purple-600" />
+                          </div>
+                        ) : source.type === 'web' ? (
+                          <div className="w-7 h-7 bg-blue-100 rounded flex items-center justify-center">
+                            <Globe className="w-3.5 h-3.5 text-blue-600" />
+                          </div>
+                        ) : (
+                          <div className="w-7 h-7 bg-red-100 rounded flex items-center justify-center">
+                            <FileText className="w-3.5 h-3.5 text-red-600" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => onToggleSource(source.id)}
+                      >
+                        <p className="text-xs font-medium text-gray-900 truncate leading-tight" title={source.name}>
+                          {source.name}
+                        </p>
+                        <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={source.url || ''}>
+                          {source.type === 'web' ? source.url : new Date(source.uploadedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+
+                      {/* External Link Button for Web Sources - Compact */}
+                      {(source.type === 'web' || source.type === 'report') && source.url && (
+                        <Tooltip text={language === 'ko' ? '원본 웹사이트 방문하기' : 'Visit original website'} position="top">
+                          <a
+                            href={source.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </Tooltip>
+                      )}
+
+                      <Tooltip text={language === 'ko' ? '삭제' : 'Delete'} position="top">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDeleteSource(source.id)
+                          }}
+                          className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      </Tooltip>
+                    </div>
+
+                    {/* Expanded Summary Section */}
+                    {isExpanded && hasSummary && (
+                      <div className="mt-2 ml-10 p-2 bg-gray-50 rounded border border-gray-200">
+                        <p className="text-[10px] text-gray-700 leading-relaxed">
+                          {source.parsedData?.summary || source.summary}
+                        </p>
+                      </div>
+                    )}
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </div>

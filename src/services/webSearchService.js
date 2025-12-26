@@ -2,8 +2,111 @@
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const TAVILY_API_KEY = import.meta.env.VITE_TAVILY_API_KEY // 선택사항
 
-// 웹 페이지 텍스트 추출 (CORS 우회용 프록시 사용)
-const fetchWebPageContent = async (url) => {
+// 텍스트 청킹: 긴 텍스트를 의미 있는 단위로 분할 (약 500자)
+const chunkText = (text, chunkSize = 500) => {
+  const chunks = []
+  const sentences = text.match(/[^.!?]+[.!?]+/g) || [text]
+
+  let currentChunk = ''
+
+  for (const sentence of sentences) {
+    if ((currentChunk + sentence).length <= chunkSize) {
+      currentChunk += sentence
+    } else {
+      if (currentChunk) chunks.push(currentChunk.trim())
+      currentChunk = sentence
+    }
+  }
+
+  if (currentChunk) chunks.push(currentChunk.trim())
+
+  return chunks
+}
+
+// 간단한 코사인 유사도 계산 (키워드 기반)
+const calculateSimilarity = (query, text) => {
+  const queryWords = query.toLowerCase().split(/\s+/)
+  const textLower = text.toLowerCase()
+
+  let matchCount = 0
+  for (const word of queryWords) {
+    if (word.length > 2 && textLower.includes(word)) {
+      matchCount++
+    }
+  }
+
+  return matchCount / queryWords.length
+}
+
+// 가장 관련성 높은 청크 선택 (상위 3-5개)
+const selectRelevantChunks = (chunks, query, topK = 5) => {
+  const scoredChunks = chunks.map(chunk => ({
+    text: chunk,
+    score: calculateSimilarity(query, chunk)
+  }))
+
+  return scoredChunks
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .filter(chunk => chunk.score > 0) // 최소한의 관련성 필터
+}
+
+// GPT-4o를 사용한 웹 페이지 요약 (질문에 최적화된 3줄 요약)
+const summarizeWebPage = async (text, query, language = 'ko') => {
+  try {
+    const prompt = language === 'ko'
+      ? `다음 웹 페이지 내용을 사용자의 질문에 최적화된 형태로 3줄 요약해주세요.
+
+**사용자 질문**: "${query}"
+
+**웹 페이지 내용**:
+${text.substring(0, 3000)}
+
+**요구사항:**
+- 질문과 관련된 핵심 정보만 포함
+- 3줄 이내로 간결하게
+- 불필요한 광고, 메뉴, 푸터 내용 제외
+- 중요한 수치, 날짜, 이름은 반드시 포함`
+      : `Summarize the following web page content in 3 lines, optimized for the user's question.
+
+**User Question**: "${query}"
+
+**Web Page Content**:
+${text.substring(0, 3000)}
+
+**Requirements:**
+- Include only key information related to the question
+- Keep it concise (3 lines max)
+- Exclude ads, menus, footer content
+- Include important numbers, dates, names`
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${OPENAI_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: 'You are an expert at extracting relevant information from web pages.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.3,
+        max_tokens: 300
+      })
+    })
+
+    const data = await response.json()
+    return data.choices[0].message.content.trim()
+  } catch (error) {
+    console.error('[WebSearch] 요약 오류:', error)
+    return text.substring(0, 500) // 실패 시 앞 500자 반환
+  }
+}
+
+// 웹 페이지 텍스트 추출 + 청킹 + 필터링 (개선된 버전)
+const fetchWebPageContent = async (url, query = '', useSmartExtraction = true) => {
   try {
     console.log(`[WebSearch] 웹 페이지 크롤링 시작: ${url}`)
 
@@ -21,24 +124,50 @@ const fetchWebPageContent = async (url) => {
     const parser = new DOMParser()
     const doc = parser.parseFromString(data.contents, 'text/html')
 
-    // 스크립트, 스타일 태그 제거
-    const scripts = doc.querySelectorAll('script, style, nav, footer, header')
-    scripts.forEach(el => el.remove())
+    // 불필요한 요소 제거 (강화된 클리닝)
+    const unwantedSelectors = [
+      'script', 'style', 'nav', 'footer', 'header',
+      'aside', 'iframe', '.ad', '.advertisement', '.cookie-banner',
+      '.social-share', '.related-articles', '#comments'
+    ]
+    unwantedSelectors.forEach(selector => {
+      doc.querySelectorAll(selector).forEach(el => el.remove())
+    })
 
     // 본문 텍스트 추출
     const bodyText = doc.body?.innerText || doc.body?.textContent || ''
 
     // 불필요한 공백 제거
-    const cleanedText = bodyText
+    let cleanedText = bodyText
       .replace(/\n{3,}/g, '\n\n')
       .replace(/\s{2,}/g, ' ')
+      .replace(/[\u200B-\u200D\uFEFF]/g, '') // 보이지 않는 문자 제거
       .trim()
 
     console.log(`[WebSearch] 추출된 텍스트 길이: ${cleanedText.length}자`)
 
+    let finalText = cleanedText
+
+    // 스마트 추출 모드: 청킹 + 필터링
+    if (useSmartExtraction && query && cleanedText.length > 1500) {
+      console.log(`[WebSearch] 스마트 추출 모드 활성화 - 관련 청크 선택`)
+
+      // 1. 텍스트를 청크로 분할
+      const chunks = chunkText(cleanedText, 500)
+
+      // 2. 쿼리와 가장 관련성 높은 청크 선택 (상위 5개)
+      const relevantChunks = selectRelevantChunks(chunks, query, 5)
+
+      // 3. 선택된 청크 합치기
+      finalText = relevantChunks.map(chunk => chunk.text).join('\n\n')
+
+      console.log(`[WebSearch] 선택된 청크: ${relevantChunks.length}개, 최종 길이: ${finalText.length}자`)
+    }
+
     return {
       url,
-      text: cleanedText.substring(0, 10000), // 최대 10,000자
+      text: finalText.substring(0, 3000), // 최대 3,000자 (축소)
+      fullText: cleanedText, // 원본 텍스트 보관
       title: doc.title || url,
       success: true
     }
@@ -54,7 +183,7 @@ const fetchWebPageContent = async (url) => {
   }
 }
 
-// Tavily API를 사용한 웹 검색 (선택사항)
+// Tavily API를 사용한 웹 검색 (Context 모드: 관련성 높은 핵심 컨텍스트만 추출)
 const searchWithTavily = async (query, maxResults = 5) => {
   if (!TAVILY_API_KEY) {
     console.warn('[WebSearch] Tavily API 키가 없습니다. 대체 검색 사용')
@@ -62,6 +191,8 @@ const searchWithTavily = async (query, maxResults = 5) => {
   }
 
   try {
+    console.log('[WebSearch] Tavily API 호출 - Context 모드')
+
     const response = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: {
@@ -71,12 +202,27 @@ const searchWithTavily = async (query, maxResults = 5) => {
         api_key: TAVILY_API_KEY,
         query,
         max_results: maxResults,
-        include_raw_content: true
+        search_depth: 'advanced', // 심층 검색
+        include_answer: false, // 답변 포함 X (컨텍스트만)
+        include_raw_content: false, // 전체 본문 X
+        include_domains: [], // 모든 도메인
+        exclude_domains: [] // 제외할 도메인 없음
       })
     })
 
     const data = await response.json()
-    return data.results || []
+
+    // Tavily는 자동으로 관련성 높은 snippet과 context만 반환
+    const results = (data.results || []).map(result => ({
+      url: result.url,
+      title: result.title,
+      content: result.content, // Tavily가 추출한 핵심 컨텍스트 (snippet)
+      score: result.score || 0 // 관련성 점수
+    }))
+
+    console.log(`[WebSearch] Tavily 결과: ${results.length}개`)
+    return results.sort((a, b) => b.score - a.score) // 관련성 순 정렬
+
   } catch (error) {
     console.error('[WebSearch] Tavily API 오류:', error)
     return null
@@ -227,15 +373,51 @@ Respond only with a JSON array:
   }
 }
 
-// Fast Research: 빠른 웹 검색 및 요약 (10개 소스)
+// Fast Research: 빠른 웹 검색 및 요약 (Tavily 우선, 대체 크롤링)
 export const performFastResearch = async (query, language = 'ko') => {
   try {
     console.log(`[WebSearch] Fast Research 시작: ${query}`)
+    console.log(`[WebSearch] OpenAI API Key 존재: ${!!OPENAI_API_KEY}`)
+    console.log(`[WebSearch] Tavily API Key 존재: ${!!TAVILY_API_KEY}`)
 
     // 1. 검색 쿼리 최적화 (실시간 정보 검색)
     const optimizedQuery = await optimizeSearchQuery(query, language)
+    console.log(`[WebSearch] 최적화된 쿼리: ${optimizedQuery}`)
 
-    // 2. GPT로 추천 URL 생성 (10개)
+    // 2. Tavily API 우선 시도
+    const tavilyResults = await searchWithTavily(optimizedQuery, 5)
+
+    if (tavilyResults && tavilyResults.length > 0) {
+      console.log(`[WebSearch] Tavily에서 ${tavilyResults.length}개 결과 가져옴`)
+
+      // Tavily 결과를 소스 형식으로 변환 + GPT 요약
+      const sources = await Promise.all(
+        tavilyResults.map(async (result) => {
+          // GPT-4o로 3줄 요약 생성
+          const summary = await summarizeWebPage(result.content, query, language)
+
+          return {
+            url: result.url,
+            title: result.title,
+            text: result.content, // Tavily의 관련 컨텍스트
+            summary, // GPT 요약
+            success: true
+          }
+        })
+      )
+
+      return {
+        query,
+        sources,
+        totalSources: sources.length,
+        mode: 'fast',
+        source: 'tavily'
+      }
+    }
+
+    // 3. Tavily 실패 시 대체 방법: GPT URL 생성 + 크롤링
+    console.log('[WebSearch] Tavily 사용 불가, 대체 크롤링 시작')
+
     const urls = await generateSearchUrls(optimizedQuery, language)
 
     if (urls.length === 0) {
@@ -244,25 +426,31 @@ export const performFastResearch = async (query, language = 'ko') => {
 
     console.log('[WebSearch] 추천 URL:', urls)
 
-    // 3. 각 URL에서 콘텐츠 크롤링 (병렬 처리) - 최대 10개
-    const crawlPromises = urls.slice(0, 10).map(url => fetchWebPageContent(url))
+    // 4. 각 URL에서 콘텐츠 크롤링 (스마트 추출 모드)
+    const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url, query, true))
     const results = await Promise.all(crawlPromises)
 
-    // 4. 성공한 결과만 필터링 (최소 100자 이상)
+    // 5. 성공한 결과만 필터링 + GPT 요약
     const successfulResults = results.filter(r => r.success && r.text.length > 100)
 
-    console.log(`[WebSearch] 크롤링 성공: ${successfulResults.length}/${results.length}`)
+    const sources = await Promise.all(
+      successfulResults.map(async (result) => {
+        const summary = await summarizeWebPage(result.text, query, language)
+        return {
+          ...result,
+          summary
+        }
+      })
+    )
 
-    // 최소 5개 이상의 결과가 없으면 경고
-    if (successfulResults.length < 5) {
-      console.warn('[WebSearch] 크롤링 성공 결과가 5개 미만입니다.')
-    }
+    console.log(`[WebSearch] 크롤링 성공: ${sources.length}/${results.length}`)
 
     return {
       query,
-      sources: successfulResults,
-      totalSources: successfulResults.length,
-      mode: 'fast'
+      sources,
+      totalSources: sources.length,
+      mode: 'fast',
+      source: 'crawl'
     }
   } catch (error) {
     console.error('[WebSearch] Fast Research 오류:', error)
@@ -270,61 +458,99 @@ export const performFastResearch = async (query, language = 'ko') => {
   }
 }
 
-// Deep Research: 심층 웹 리서치 및 종합 리포트 생성
+// Deep Research: 심층 웹 리서치 및 종합 리포트 생성 (Tavily + GPT-4o 요약)
 export const performDeepResearch = async (query, language = 'ko', onProgress) => {
   try {
     console.log(`[WebSearch] Deep Research 시작: ${query}`)
 
-    // 진행률 업데이트
-    onProgress?.(10, language === 'ko' ? '검색 URL 생성 중...' : 'Generating search URLs...')
+    onProgress?.(10, language === 'ko' ? '검색 최적화 중...' : 'Optimizing search...')
 
-    // 1. GPT로 추천 URL 생성 (더 많은 소스)
-    const urls = await generateSearchUrls(query, language)
+    // 1. 검색 쿼리 최적화
+    const optimizedQuery = await optimizeSearchQuery(query, language)
 
-    if (urls.length === 0) {
-      throw new Error('검색 URL을 생성할 수 없습니다.')
+    onProgress?.(20, language === 'ko' ? '신뢰할 수 있는 소스 검색 중...' : 'Searching reliable sources...')
+
+    // 2. Tavily API 우선 시도 (더 많은 결과)
+    const tavilyResults = await searchWithTavily(optimizedQuery, 5)
+
+    let sources = []
+
+    if (tavilyResults && tavilyResults.length > 0) {
+      console.log(`[WebSearch] Tavily에서 ${tavilyResults.length}개 결과 수집`)
+
+      onProgress?.(40, language === 'ko' ? '핵심 정보 요약 중...' : 'Summarizing key information...')
+
+      // Tavily 결과 요약
+      sources = await Promise.all(
+        tavilyResults.map(async (result) => {
+          const summary = await summarizeWebPage(result.content, query, language)
+          return {
+            url: result.url,
+            title: result.title,
+            text: result.content,
+            summary,
+            success: true
+          }
+        })
+      )
+    } else {
+      // 대체: URL 생성 + 크롤링
+      onProgress?.(30, language === 'ko' ? 'URL 생성 중...' : 'Generating URLs...')
+
+      const urls = await generateSearchUrls(optimizedQuery, language)
+
+      onProgress?.(40, language === 'ko' ? `${urls.length}개 페이지 크롤링 중...` : `Crawling ${urls.length} pages...`)
+
+      const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url, query, true))
+      const results = await Promise.all(crawlPromises)
+
+      const successfulResults = results.filter(r => r.success && r.text.length > 100)
+
+      sources = await Promise.all(
+        successfulResults.map(async (result) => {
+          const summary = await summarizeWebPage(result.text, query, language)
+          return {
+            ...result,
+            summary
+          }
+        })
+      )
     }
 
-    onProgress?.(30, language === 'ko' ? `${urls.length}개의 웹 페이지 크롤링 중...` : `Crawling ${urls.length} web pages...`)
+    onProgress?.(60, language === 'ko' ? '종합 리포트 작성 중...' : 'Writing comprehensive report...')
 
-    // 2. 모든 URL 크롤링 (최대 5개)
-    const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url))
-    const results = await Promise.all(crawlPromises)
-
-    const successfulResults = results.filter(r => r.success && r.text.length > 100)
-
-    onProgress?.(60, language === 'ko' ? '수집한 정보 분석 중...' : 'Analyzing collected information...')
-
-    // 3. GPT로 종합 리포트 생성
-    const combinedText = successfulResults
-      .map(r => `[출처: ${r.title}]\n${r.text}`)
+    // 3. GPT-4o로 종합 리포트 생성 (요약된 내용 기반)
+    const combinedText = sources
+      .map(s => `[출처: ${s.title}]\n**요약:** ${s.summary}\n**상세:** ${s.text.substring(0, 500)}`)
       .join('\n\n---\n\n')
 
     const reportPrompt = language === 'ko'
-      ? `다음은 웹에서 수집한 "${query}"에 대한 정보입니다. 이를 바탕으로 포괄적인 리서치 리포트를 작성해주세요.
+      ? `다음은 "${query}"에 대해 웹에서 수집하고 요약한 정보입니다. 이를 바탕으로 심층 리서치 리포트를 작성해주세요.
 
 **수집된 정보:**
-${combinedText.substring(0, 8000)}
+${combinedText.substring(0, 10000)}
 
 **리포트 요구사항:**
-1. 1,000자 이상의 상세한 브리핑
-2. 주요 발견사항을 5-7개의 섹션으로 구조화
-3. 각 정보의 출처를 명시
-4. 객관적이고 균형잡힌 시각
-5. 핵심 인사이트와 결론 포함
+1. **1,000자 이상** 상세한 분석
+2. 주요 발견사항을 **5-7개 섹션**으로 구조화
+3. 각 주장에 **출처 명시** (예: [출처: 사이트명])
+4. 객관적이고 균형잡힌 시각 유지
+5. **핵심 인사이트**와 **결론** 포함
+6. **관련 구절은 굵게** 표시
 
 마크다운 형식으로 작성해주세요.`
-      : `The following is information about "${query}" collected from the web. Please write a comprehensive research report based on this.
+      : `The following is information about "${query}" collected and summarized from the web. Please write a comprehensive research report.
 
 **Collected Information:**
-${combinedText.substring(0, 8000)}
+${combinedText.substring(0, 10000)}
 
 **Report Requirements:**
-1. Detailed briefing of 1,000+ words
-2. Structure key findings into 5-7 sections
-3. Cite sources for each piece of information
-4. Objective and balanced perspective
-5. Include key insights and conclusions
+1. **1,000+ words** detailed analysis
+2. Structure into **5-7 sections**
+3. **Cite sources** for each claim (e.g., [Source: Site Name])
+4. Maintain objective and balanced perspective
+5. Include **key insights** and **conclusions**
+6. **Bold** relevant passages
 
 Write in markdown format.`
 
@@ -335,11 +561,11 @@ Write in markdown format.`
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o', // Deep Research는 강력한 모델 사용
+        model: 'gpt-4o',
         messages: [
           {
             role: 'system',
-            content: 'You are a professional research analyst. Create comprehensive, well-structured reports.'
+            content: 'You are a professional research analyst. Create comprehensive, well-structured reports with proper source attribution.'
           },
           { role: 'user', content: reportPrompt }
         ],
@@ -355,9 +581,9 @@ Write in markdown format.`
 
     return {
       query,
-      sources: successfulResults,
+      sources,
       report,
-      totalSources: successfulResults.length,
+      totalSources: sources.length,
       mode: 'deep'
     }
   } catch (error) {
