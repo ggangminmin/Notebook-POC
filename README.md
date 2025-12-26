@@ -241,6 +241,33 @@ notebooklm-dashboard/
 
 ## 최근 업데이트
 
+### 🎨 2025-12-26: 스튜디오 패널 NotebookLM 스타일 업그레이드
+
+- [x] **자연어 문서 분석 모드 (기본값)**: GPT-4o 기반 자동 분석
+  - **문서 요약**: 한 문장으로 정의 (굵게 표시)
+  - **핵심 키워드**: 3-5개 파란색 태그로 표시
+  - **구조 분석**: 문서 구조 2-3줄 설명
+  - 연한 그레이 배경 (#F9FAFB) + 카드 스타일
+- [x] **데이터 보기 토글 버튼**: Database 아이콘으로 JSON/자연어 모드 전환
+  - 툴팁: "관리자용 원본 데이터 보기"
+  - JSON 모드에서만 복사 버튼 활성화
+- [x] **로딩 상태**: Spinner + "문서 분석 중..." 메시지
+- [x] **generateNaturalSummary()**: GPT-4o로 extractedText 분석 (최대 3,000자)
+
+### ⚠️ 2025-12-26: Tavily API 크레딧 소진 감지 및 경고 시스템
+
+- [x] **에러 응답 타입 구분**: `searchWithTavily()` 함수 개선
+  - `credits_exhausted`: 크레딧/리미트/쿼터 관련 에러
+  - `api_error`: 기타 API 에러
+  - `network_error`: 네트워크 오류
+  - `no_api_key`: API 키 없음
+- [x] **구조화된 응답**: `{ success, reason, error, results }` 형식
+- [x] **사용자 친화적 경고 메시지**:
+  - 한국어: "⚠️ Tavily API 크레딧이 소진되었습니다. 대체 검색 방식을 사용합니다."
+  - 영어: "⚠️ Tavily API credits exhausted. Using alternative search method."
+- [x] **노란색 경고 UI**: 배경(bg-yellow-50) + 테두리(border-yellow-300) + ⚠️ 아이콘
+- [x] **프로그레스 바 숨김**: 경고 메시지만 표시 (3초 후 자동 종료)
+
 ### 🌐 2025-12-26: 웹 검색 스마트 추출 + 컴팩트 UI 개선
 
 - [x] **Tavily API Context 모드 통합**: 전체 페이지 대신 질문 관련 핵심 컨텍스트만 추출

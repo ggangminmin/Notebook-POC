@@ -187,7 +187,7 @@ const fetchWebPageContent = async (url, query = '', useSmartExtraction = true) =
 const searchWithTavily = async (query, maxResults = 5) => {
   if (!TAVILY_API_KEY) {
     console.warn('[WebSearch] Tavily API 키가 없습니다. 대체 검색 사용')
-    return null
+    return { success: false, reason: 'no_api_key', results: null }
   }
 
   try {
@@ -212,6 +212,19 @@ const searchWithTavily = async (query, maxResults = 5) => {
 
     const data = await response.json()
 
+    // Tavily API 에러 응답 확인
+    if (data.error) {
+      console.error('[WebSearch] Tavily API 에러:', data.error)
+
+      // 크레딧 소진 감지
+      if (data.error.includes('credit') || data.error.includes('limit') || data.error.includes('quota')) {
+        return { success: false, reason: 'credits_exhausted', error: data.error, results: null }
+      }
+
+      // 기타 에러
+      return { success: false, reason: 'api_error', error: data.error, results: null }
+    }
+
     // Tavily는 자동으로 관련성 높은 snippet과 context만 반환
     const results = (data.results || []).map(result => ({
       url: result.url,
@@ -221,11 +234,14 @@ const searchWithTavily = async (query, maxResults = 5) => {
     }))
 
     console.log(`[WebSearch] Tavily 결과: ${results.length}개`)
-    return results.sort((a, b) => b.score - a.score) // 관련성 순 정렬
+    return {
+      success: true,
+      results: results.sort((a, b) => b.score - a.score) // 관련성 순 정렬
+    }
 
   } catch (error) {
     console.error('[WebSearch] Tavily API 오류:', error)
-    return null
+    return { success: false, reason: 'network_error', error: error.message, results: null }
   }
 }
 
@@ -385,14 +401,31 @@ export const performFastResearch = async (query, language = 'ko') => {
     console.log(`[WebSearch] 최적화된 쿼리: ${optimizedQuery}`)
 
     // 2. Tavily API 우선 시도
-    const tavilyResults = await searchWithTavily(optimizedQuery, 5)
+    const tavilyResponse = await searchWithTavily(optimizedQuery, 5)
 
-    if (tavilyResults && tavilyResults.length > 0) {
-      console.log(`[WebSearch] Tavily에서 ${tavilyResults.length}개 결과 가져옴`)
+    // Tavily 크레딧 소진 체크
+    if (tavilyResponse.reason === 'credits_exhausted') {
+      const warningMessage = language === 'ko'
+        ? '⚠️ Tavily API 크레딧이 소진되었습니다. 대체 검색 방식을 사용합니다.'
+        : '⚠️ Tavily API credits exhausted. Using alternative search method.'
+      console.warn('[WebSearch]', warningMessage)
+
+      return {
+        query,
+        sources: [],
+        totalSources: 0,
+        mode: 'fast',
+        source: 'tavily_failed',
+        warning: warningMessage
+      }
+    }
+
+    if (tavilyResponse.success && tavilyResponse.results && tavilyResponse.results.length > 0) {
+      console.log(`[WebSearch] Tavily에서 ${tavilyResponse.results.length}개 결과 가져옴`)
 
       // Tavily 결과를 소스 형식으로 변환 + GPT 요약
       const sources = await Promise.all(
-        tavilyResults.map(async (result) => {
+        tavilyResponse.results.map(async (result) => {
           // GPT-4o로 3줄 요약 생성
           const summary = await summarizeWebPage(result.content, query, language)
 
@@ -416,7 +449,8 @@ export const performFastResearch = async (query, language = 'ko') => {
     }
 
     // 3. Tavily 실패 시 대체 방법: GPT URL 생성 + 크롤링
-    console.log('[WebSearch] Tavily 사용 불가, 대체 크롤링 시작')
+    const fallbackReason = tavilyResponse.reason || 'unknown'
+    console.log(`[WebSearch] Tavily 사용 불가 (이유: ${fallbackReason}), 대체 크롤링 시작`)
 
     const urls = await generateSearchUrls(optimizedQuery, language)
 
@@ -471,18 +505,28 @@ export const performDeepResearch = async (query, language = 'ko', onProgress) =>
     onProgress?.(20, language === 'ko' ? '신뢰할 수 있는 소스 검색 중...' : 'Searching reliable sources...')
 
     // 2. Tavily API 우선 시도 (더 많은 결과)
-    const tavilyResults = await searchWithTavily(optimizedQuery, 5)
+    const tavilyResponse = await searchWithTavily(optimizedQuery, 5)
 
     let sources = []
+    let warning = null
 
-    if (tavilyResults && tavilyResults.length > 0) {
-      console.log(`[WebSearch] Tavily에서 ${tavilyResults.length}개 결과 수집`)
+    // Tavily 크레딧 소진 체크
+    if (tavilyResponse.reason === 'credits_exhausted') {
+      warning = language === 'ko'
+        ? '⚠️ Tavily API 크레딧이 소진되었습니다. 대체 검색 방식을 사용합니다.'
+        : '⚠️ Tavily API credits exhausted. Using alternative search method.'
+      console.warn('[WebSearch]', warning)
+      onProgress?.(30, warning)
+    }
+
+    if (tavilyResponse.success && tavilyResponse.results && tavilyResponse.results.length > 0) {
+      console.log(`[WebSearch] Tavily에서 ${tavilyResponse.results.length}개 결과 수집`)
 
       onProgress?.(40, language === 'ko' ? '핵심 정보 요약 중...' : 'Summarizing key information...')
 
       // Tavily 결과 요약
       sources = await Promise.all(
-        tavilyResults.map(async (result) => {
+        tavilyResponse.results.map(async (result) => {
           const summary = await summarizeWebPage(result.content, query, language)
           return {
             url: result.url,
@@ -495,6 +539,8 @@ export const performDeepResearch = async (query, language = 'ko', onProgress) =>
       )
     } else {
       // 대체: URL 생성 + 크롤링
+      const fallbackReason = tavilyResponse.reason || 'unknown'
+      console.log(`[WebSearch] Tavily 사용 불가 (이유: ${fallbackReason})`)
       onProgress?.(30, language === 'ko' ? 'URL 생성 중...' : 'Generating URLs...')
 
       const urls = await generateSearchUrls(optimizedQuery, language)
@@ -584,7 +630,8 @@ Write in markdown format.`
       sources,
       report,
       totalSources: sources.length,
-      mode: 'deep'
+      mode: 'deep',
+      warning // Tavily 크레딧 소진 경고 포함
     }
   } catch (error) {
     console.error('[WebSearch] Deep Research 오류:', error)

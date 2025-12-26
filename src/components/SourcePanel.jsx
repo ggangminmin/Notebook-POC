@@ -122,12 +122,27 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
         // Fast Research
         setSearchProgress({ percent: 20, message: language === 'ko' ? 'GPT가 추천 URL 생성 중...' : 'GPT generating recommended URLs...' })
         result = await performFastResearch(searchQuery, language)
+
+        // Tavily 크레딧 소진 경고 표시
+        if (result.warning) {
+          setSearchProgress({ percent: 100, message: result.warning })
+          setTimeout(() => setIsSearching(false), 3000)
+          return
+        }
+
         setSearchProgress({ percent: 80, message: language === 'ko' ? `인터넷에서 관련 자료 ${result.totalSources}개를 찾았습니다!` : `Found ${result.totalSources} related sources!` })
       } else {
         // Deep Research
         result = await performDeepResearch(searchQuery, language, (percent, message) => {
           setSearchProgress({ percent, message })
         })
+
+        // Tavily 크레딧 소진 경고 표시
+        if (result.warning) {
+          setSearchProgress({ percent: 100, message: result.warning })
+          setTimeout(() => setIsSearching(false), 3000)
+          return
+        }
       }
 
       // 웹 소스를 파일 소스와 동일한 형식으로 변환
@@ -298,17 +313,29 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
           {/* Search Progress - Compact */}
           {isSearching && (
-            <div className="mt-2 px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-md">
+            <div className={`mt-2 px-2 py-1.5 rounded-md ${
+              searchProgress.message.includes('⚠️')
+                ? 'bg-yellow-50 border border-yellow-300'
+                : 'bg-blue-50 border border-blue-200'
+            }`}>
               <div className="flex items-center space-x-1.5 mb-1">
-                <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
-                <span className="text-[10px] font-medium text-blue-800">{searchProgress.message}</span>
+                {searchProgress.message.includes('⚠️') ? (
+                  <span className="text-yellow-600 text-xs">⚠️</span>
+                ) : (
+                  <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
+                )}
+                <span className={`text-[10px] font-medium ${
+                  searchProgress.message.includes('⚠️') ? 'text-yellow-800' : 'text-blue-800'
+                }`}>{searchProgress.message}</span>
               </div>
-              <div className="w-full bg-blue-200 rounded-full h-1">
-                <div
-                  className="bg-blue-600 h-1 rounded-full transition-all duration-500"
-                  style={{ width: `${searchProgress.percent}%` }}
-                />
-              </div>
+              {!searchProgress.message.includes('⚠️') && (
+                <div className="w-full bg-blue-200 rounded-full h-1">
+                  <div
+                    className="bg-blue-600 h-1 rounded-full transition-all duration-500"
+                    style={{ width: `${searchProgress.percent}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
