@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 
-const ChatInterface = ({ selectedSources = [] }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -59,16 +59,21 @@ const ChatInterface = ({ selectedSources = [] }) => {
           console.log('[ChatInterface] 요약 생성 완료:', summary?.substring(0, 100))
 
           // 3. 추천 질문 생성
+          console.log('[ChatInterface] 추천 질문 생성 시작...')
           const questions = await generateSuggestedQuestions(
             { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
             language
           )
 
           console.log('[ChatInterface] 추천 질문 생성 완료:', questions)
+          console.log('[ChatInterface] 추천 질문 개수:', questions?.length || 0)
 
-          setSuggestedQuestions(questions)
+          setSuggestedQuestions(questions || [])
 
           // 4. 완료 메시지 (요약 포함)
+          const hasQuestions = questions && questions.length > 0
+          console.log('[ChatInterface] hasSuggestedQuestions:', hasQuestions)
+
           const summaryMessage = {
             id: Date.now() + 1,
             type: 'assistant',
@@ -77,9 +82,11 @@ const ChatInterface = ({ selectedSources = [] }) => {
               : `✅ Document analysis complete!\n\n${selectedSources.length} document(s) ready (${sourceNames}).\n\nFeel free to ask questions!`),
             timestamp: new Date().toISOString(),
             isSummary: true,
-            hasSuggestedQuestions: questions.length > 0
+            hasSuggestedQuestions: hasQuestions
           }
           setMessages([summaryMessage])
+
+          console.log('[ChatInterface] summaryMessage 설정 완료:', summaryMessage)
 
         } catch (error) {
           console.error('문서 분석 오류:', error)
@@ -133,13 +140,16 @@ const ChatInterface = ({ selectedSources = [] }) => {
       // 언어 감지
       const detectedLang = detectLanguage(userQuery)
 
-      // 엄격한 RAG 응답 생성 - 첫 번째 선택된 소스 사용
-      const documentContext = selectedSources.length > 0 ? {
-        fileName: selectedSources[0].name,
-        parsedData: selectedSources[0].parsedData
-      } : null
+      // 엄격한 RAG 응답 생성 - 모든 선택된 소스 사용 (다중 소스 지원)
+      const documentContext = selectedSources.length > 0
+        ? selectedSources.map(source => ({
+            name: source.name,
+            fileName: source.name,
+            parsedData: source.parsedData
+          }))
+        : null
 
-      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang)
+      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel === 'thinking')
 
       const aiMessage = {
         id: Date.now() + 1,
@@ -189,8 +199,43 @@ const ChatInterface = ({ selectedSources = [] }) => {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="px-6 py-4 border-b border-gray-200 bg-white">
-        <h2 className="text-xl font-semibold text-gray-800">{t('chat.title')}</h2>
-        <p className="text-sm text-gray-500 mt-1">{t('chat.subtitle')}</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-gray-800">{t('chat.title')}</h2>
+            <p className="text-sm text-gray-500 mt-1">{t('chat.subtitle')}</p>
+          </div>
+
+          {/* Model Selector */}
+          <div className="flex items-center space-x-2">
+            <span className="text-xs text-gray-500 font-medium">
+              {language === 'ko' ? 'AI 모델' : 'AI Model'}:
+            </span>
+            <div className="flex bg-gray-100 rounded-lg p-1">
+              <button
+                onClick={() => onModelChange('instant')}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  selectedModel === 'instant'
+                    ? 'bg-white text-blue-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>{language === 'ko' ? '빠른 응답' : 'Instant'}</span>
+              </button>
+              <button
+                onClick={() => onModelChange('thinking')}
+                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  selectedModel === 'thinking'
+                    ? 'bg-white text-purple-600 shadow-sm'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                <Brain className="w-3.5 h-3.5" />
+                <span>{language === 'ko' ? '심층 분석' : 'Thinking'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* Context Indicator */}
         {selectedSources.length > 0 ? (

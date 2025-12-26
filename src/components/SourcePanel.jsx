@@ -1,7 +1,9 @@
 import { useState, useRef } from 'react'
-import { Plus, FileText, Upload, X, Globe, Search, Sparkles, ChevronDown } from 'lucide-react'
+import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { parseFileContent, fetchWebMetadata } from '../utils/fileParser'
+import { performFastResearch, performDeepResearch } from '../services/webSearchService'
+import Tooltip from './Tooltip'
 
 const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource }) => {
   const [showAddModal, setShowAddModal] = useState(false)
@@ -11,8 +13,10 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const [urlError, setUrlError] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [researchType, setResearchType] = useState('fast')
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
   const fileInputRef = useRef(null)
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
 
   const handleFileSelect = async (e) => {
     console.log('파일 선택 이벤트 발생:', e.target.files)
@@ -90,6 +94,103 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
     }
   }
 
+  // 웹 검색 핸들러
+  const handleWebSearch = async () => {
+    if (!searchQuery.trim()) return
+
+    setIsSearching(true)
+    setSearchProgress({ percent: 0, message: language === 'ko' ? '웹 검색 시작...' : 'Starting web search...' })
+
+    try {
+      let result
+
+      if (researchType === 'fast') {
+        // Fast Research
+        setSearchProgress({ percent: 20, message: language === 'ko' ? 'GPT가 추천 URL 생성 중...' : 'GPT generating recommended URLs...' })
+        result = await performFastResearch(searchQuery, language)
+        setSearchProgress({ percent: 80, message: language === 'ko' ? `인터넷에서 관련 자료 ${result.totalSources}개를 찾았습니다!` : `Found ${result.totalSources} related sources!` })
+      } else {
+        // Deep Research
+        result = await performDeepResearch(searchQuery, language, (percent, message) => {
+          setSearchProgress({ percent, message })
+        })
+      }
+
+      // 웹 소스를 파일 소스와 동일한 형식으로 변환
+      const webSources = result.sources.map((source, index) => ({
+        id: `web_${Date.now()}_${index}`,
+        name: source.title,
+        type: 'web',
+        url: source.url,
+        uploadedAt: new Date().toISOString(),
+        parsedData: {
+          extractedText: source.text,
+          metadata: {
+            title: source.title,
+            url: source.url,
+            searchQuery: searchQuery,
+            researchType: researchType,
+            report: result.report // Deep Research인 경우에만 존재
+          }
+        }
+      }))
+
+      // Deep Research 리포트가 있으면 별도 소스로 추가
+      if (result.report) {
+        const reportSource = {
+          id: `report_${Date.now()}`,
+          name: `📊 ${language === 'ko' ? '리서치 리포트' : 'Research Report'}: ${searchQuery}`,
+          type: 'report',
+          url: result.sources[0]?.url, // 첫 번째 소스 URL 연결
+          uploadedAt: new Date().toISOString(),
+          parsedData: {
+            extractedText: result.report,
+            metadata: {
+              title: `Deep Research Report: ${searchQuery}`,
+              searchQuery: searchQuery,
+              sourcesCount: result.totalSources,
+              isReport: true,
+              sources: result.sources.map(s => ({ title: s.title, url: s.url }))
+            }
+          }
+        }
+        webSources.unshift(reportSource)
+      }
+
+      console.log('[SourcePanel] 웹 소스 추가:', webSources)
+
+      onAddSources(webSources)
+      setSearchQuery('')
+      setSearchProgress({ percent: 100, message: language === 'ko' ? '완료!' : 'Complete!' })
+
+      // 1초 후 진행률 초기화
+      setTimeout(() => {
+        setIsSearching(false)
+        setSearchProgress({ percent: 0, message: '' })
+      }, 1000)
+
+    } catch (error) {
+      console.error('[SourcePanel] 웹 검색 오류:', error)
+      setSearchProgress({
+        percent: 0,
+        message: language === 'ko'
+          ? `오류: ${error.message}`
+          : `Error: ${error.message}`
+      })
+      setTimeout(() => {
+        setIsSearching(false)
+        setSearchProgress({ percent: 0, message: '' })
+      }, 3000)
+    }
+  }
+
+  // Enter 키로 검색
+  const handleSearchKeyPress = (e) => {
+    if (e.key === 'Enter' && !isSearching) {
+      handleWebSearch()
+    }
+  }
+
   const allSelected = sources.length > 0 && selectedSourceIds.length === sources.length
 
   const toggleAll = () => {
@@ -148,30 +249,64 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
             <Search className="absolute left-3 w-4 h-4 text-gray-400" />
             <input
               type="text"
-              placeholder={t('sources.searchPlaceholder')}
+              placeholder={language === 'ko' ? '웹에서 검색하거나 URL 입력...' : 'Search web or enter URL...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+              onKeyPress={handleSearchKeyPress}
+              disabled={isSearching}
+              className="w-full pl-10 pr-20 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-50"
             />
+            <button
+              onClick={handleWebSearch}
+              disabled={!searchQuery.trim() || isSearching}
+              className="absolute right-2 px-3 py-1 text-xs font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+            >
+              {isSearching ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                language === 'ko' ? '검색' : 'Search'
+              )}
+            </button>
           </div>
+
+          {/* Search Progress */}
+          {isSearching && (
+            <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-center space-x-2 mb-1.5">
+                <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
+                <span className="text-xs font-medium text-blue-800">{searchProgress.message}</span>
+              </div>
+              <div className="w-full bg-blue-200 rounded-full h-1.5">
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${searchProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
 
           {/* Research Type Selector */}
           <div className="mt-2 flex items-center space-x-2">
-            <button className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors">
+            <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-100 rounded-md">
               <Globe className="w-3.5 h-3.5 text-gray-600" />
-              <span className="text-xs text-gray-700">{t('sources.web')}</span>
-              <ChevronDown className="w-3 h-3 text-gray-500" />
-            </button>
+              <span className="text-xs text-gray-700">{language === 'ko' ? '웹' : 'Web'}</span>
+            </div>
 
             <button
               onClick={() => setResearchType(researchType === 'fast' ? 'deep' : 'fast')}
-              className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+              disabled={isSearching}
+              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-colors ${
+                researchType === 'deep'
+                  ? 'bg-purple-100 text-purple-700 border border-purple-300'
+                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+              } disabled:opacity-50`}
             >
-              <Sparkles className="w-3.5 h-3.5 text-gray-600" />
-              <span className="text-xs text-gray-700">
-                {researchType === 'fast' ? t('sources.fastResearch') : t('sources.deepResearch')}
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="text-xs font-medium">
+                {researchType === 'fast'
+                  ? (language === 'ko' ? '빠른 검색' : 'Fast')
+                  : (language === 'ko' ? '심층 분석' : 'Deep')}
               </span>
-              <ChevronDown className="w-3 h-3 text-gray-500" />
             </button>
           </div>
         </div>
@@ -223,7 +358,11 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                       className="flex-shrink-0 cursor-pointer"
                       onClick={() => onToggleSource(source.id)}
                     >
-                      {source.type === 'web' ? (
+                      {source.type === 'report' ? (
+                        <div className="w-8 h-8 bg-purple-100 rounded flex items-center justify-center">
+                          <BookOpen className="w-4 h-4 text-purple-600" />
+                        </div>
+                      ) : source.type === 'web' ? (
                         <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
                           <Globe className="w-4 h-4 text-blue-600" />
                         </div>
@@ -246,16 +385,32 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                       </p>
                     </div>
 
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        onDeleteSource(source.id)
-                      }}
-                      className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                      title="삭제"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                    {/* External Link Button for Web Sources */}
+                    {(source.type === 'web' || source.type === 'report') && source.url && (
+                      <Tooltip text={language === 'ko' ? '원본 웹사이트 방문하기' : 'Visit original website'} position="top">
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </a>
+                      </Tooltip>
+                    )}
+
+                    <Tooltip text={language === 'ko' ? '삭제' : 'Delete'} position="top">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          onDeleteSource(source.id)
+                        }}
+                        className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               ))}

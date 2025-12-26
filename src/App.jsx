@@ -8,6 +8,7 @@ import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 function AppContent() {
   const [sources, setSources] = useState([])
   const [selectedSourceIds, setSelectedSourceIds] = useState([])
+  const [selectedModel, setSelectedModel] = useState('thinking') // 'instant' or 'thinking'
   const { language, toggleLanguage, t } = useLanguage()
 
   // 선택된 소스들 가져오기
@@ -80,7 +81,11 @@ function AppContent() {
 
         {/* Right Panel - Chat Interface 50% */}
         <div className="w-1/2 bg-white overflow-hidden">
-          <ChatInterface selectedSources={selectedSources} />
+          <ChatInterface
+            selectedSources={selectedSources}
+            selectedModel={selectedModel}
+            onModelChange={setSelectedModel}
+          />
         </div>
       </div>
     </div>

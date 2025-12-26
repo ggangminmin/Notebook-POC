@@ -2,6 +2,12 @@ import { extractTextFromParsedData } from '../utils/fileParser'
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
+// GPT 모델 설정
+const GPT_MODELS = {
+  INSTANT: 'gpt-4o-mini',  // 빠른 응답 (실제 모델)
+  THINKING: 'gpt-4o'       // 심층 추론 (실제 모델)
+}
+
 // 언어 감지 (간단한 휴리스틱)
 export const detectLanguage = (text) => {
   // 한글이 포함되어 있으면 한국어
@@ -23,8 +29,10 @@ const isSmallTalk = (query) => {
 }
 
 // OpenAI API 호출
-const callOpenAI = async (messages, temperature = 0.3) => {
+const callOpenAI = async (messages, temperature = 0.3, useThinking = false) => {
   try {
+    const model = useThinking ? GPT_MODELS.THINKING : GPT_MODELS.INSTANT
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -32,7 +40,7 @@ const callOpenAI = async (messages, temperature = 0.3) => {
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: model,
         messages: messages,
         temperature: temperature,
         max_tokens: 2000
@@ -52,7 +60,7 @@ const callOpenAI = async (messages, temperature = 0.3) => {
   }
 }
 
-// 문서 자동 요약 생성
+// 문서 자동 요약 생성 (Instant 모델 사용 - 빠른 요약)
 export const generateDocumentSummary = async (documentContext, language = 'ko') => {
   try {
     if (!documentContext || !documentContext.parsedData) {
@@ -98,7 +106,7 @@ ${documentText.substring(0, 3000)}
       { role: 'user', content: language === 'ko' ? '이 문서를 요약해주세요.' : 'Please summarize this document.' }
     ]
 
-    const summary = await callOpenAI(messages, 0.3)
+    const summary = await callOpenAI(messages, 0.3, false) // Instant 모델
     return summary
 
   } catch (error) {
@@ -107,7 +115,7 @@ ${documentText.substring(0, 3000)}
   }
 }
 
-// 추천 질문 생성
+// 추천 질문 생성 (Instant 모델 사용 - 빠른 생성)
 export const generateSuggestedQuestions = async (documentContext, language = 'ko') => {
   try {
     if (!documentContext || !documentContext.parsedData) {
@@ -155,7 +163,7 @@ ${documentText.substring(0, 3000)}
       { role: 'user', content: language === 'ko' ? '질문 3개를 생성해주세요.' : 'Generate 3 questions.' }
     ]
 
-    const response = await callOpenAI(messages, 0.5)
+    const response = await callOpenAI(messages, 0.5, false) // Instant 모델
 
     // JSON 파싱 시도
     try {
@@ -180,7 +188,9 @@ ${documentText.substring(0, 3000)}
 }
 
 // 하이브리드 RAG 응답 생성 (일상 대화 + 엄격한 문서 기반)
-export const generateStrictRAGResponse = async (query, documentContext, language = 'ko') => {
+// useThinking: true면 Thinking 모델 사용 (심층 추론), false면 Instant 모델 사용 (빠른 응답)
+// documentContext: 단일 객체 또는 배열 모두 지원
+export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', useThinking = true) => {
   try {
     // 1. 일상 대화 모드 - 문서 없이도 응답 가능
     if (isSmallTalk(query)) {
@@ -193,7 +203,7 @@ export const generateStrictRAGResponse = async (query, documentContext, language
         { role: 'user', content: query }
       ]
 
-      const answer = await callOpenAI(messages, 0.8) // 더 창의적인 온도
+      const answer = await callOpenAI(messages, 0.8, false) // Instant 모델 - 일상 대화
 
       return {
         answer: answer,
@@ -204,7 +214,9 @@ export const generateStrictRAGResponse = async (query, documentContext, language
     }
 
     // 2. 문서 기반 질문인데 문서가 없는 경우
-    if (!documentContext || !documentContext.parsedData) {
+    const documentContextArray = Array.isArray(documentContext) ? documentContext : (documentContext ? [documentContext] : [])
+
+    if (documentContextArray.length === 0) {
       const noDocMessage = language === 'ko'
         ? '문서에 대해 질문하시려면 먼저 좌측에서 문서를 선택해주세요. 파일을 업로드하거나 웹 URL을 추가할 수 있습니다.'
         : 'To ask questions about a document, please first select a document from the left. You can upload a file or add a web URL.'
@@ -216,9 +228,36 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       }
     }
 
-    // 3. 엄격한 문서 기반 답변 모드
-    const documentText = extractTextFromParsedData(documentContext.parsedData)
-    const fileName = documentContext.name || '문서'
+    // 3. 엄격한 문서 기반 답변 모드 - 다중 소스 지원
+    const allTexts = documentContextArray.map(doc => {
+      const text = extractTextFromParsedData(doc.parsedData)
+      const name = doc.name || doc.fileName || '문서'
+      return { name, text }
+    }).filter(item => item.text && item.text.trim().length >= 10)
+
+    if (allTexts.length === 0) {
+      const invalidDocMessage = language === 'ko'
+        ? `죄송합니다. 문서 내용을 읽을 수 없습니다.\n\n파일이 비어있거나 지원하지 않는 형식일 수 있습니다. PDF의 경우 텍스트가 포함되어 있는지 확인해주세요.`
+        : `Sorry, I cannot read the document content.\n\nThe file may be empty or in an unsupported format. For PDFs, please ensure they contain text.`
+
+      return {
+        answer: invalidDocMessage,
+        source: null,
+        foundInDocument: false,
+        error: 'Invalid or empty document text'
+      }
+    }
+
+    // 모든 문서 텍스트 종합
+    const combinedDocumentText = allTexts.map(item =>
+      `[출처: ${item.name}]\n${item.text}`
+    ).join('\n\n---\n\n')
+
+    const sourceNames = allTexts.map(item => item.name).join(', ')
+    const documentText = combinedDocumentText
+    const fileName = allTexts.length > 1
+      ? `${allTexts.length}개의 문서 (${sourceNames})`
+      : allTexts[0].name
 
     // extractedText 유효성 검증
     if (!documentText || documentText.trim().length < 10) {
@@ -236,57 +275,82 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 
     console.log(`[RAG] 문서 텍스트 길이: ${documentText.length}자, 파일명: ${fileName}`)
 
-    // NotebookLM 스타일 엄격한 시스템 프롬프트 (출처 표시 강화)
+    // 현재 날짜 (실시간 검색 강조용)
+    const today = new Date().toLocaleDateString(language === 'ko' ? 'ko-KR' : 'en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+
+    // NotebookLM 스타일 엄격한 시스템 프롬프트 (실시간 데이터 강제 + 출처 표시 강화)
     const systemPrompt = language === 'ko'
       ? `당신은 NotebookLM 스타일의 엄격한 문서 분석 AI입니다. 다음 규칙을 절대적으로 따라야 합니다:
 
+**⚠️ 중요: 실시간 데이터 사용 강제**
+- 오늘 날짜: ${today}
+- 당신의 과거 학습 데이터나 내부 지식을 절대 사용하지 마세요
+- 반드시 아래 제공된 문서 내용만 사용하세요
+- 이 문서는 실시간 웹 검색으로 수집된 최신 정보입니다
+- 문서에 명시되지 않은 어떤 정보도 추측하거나 보충하지 마세요
+
 **핵심 규칙:**
-1. 제공된 문서에 명시적으로 작성된 내용만 사용하여 답변하세요.
-2. 문서에 없는 정보는 절대 추측하거나 외부 지식을 사용하지 마세요.
-3. 답변할 수 없으면 정직하게 "제공된 문서에서 해당 내용을 찾을 수 없습니다"라고 말하세요.
-4. 답변 시 문서의 어느 부분에서 정보를 가져왔는지 반드시 명확히 밝히세요.
+1. ❌ 과거 학습 데이터 사용 금지 - 제공된 문서에 명시적으로 작성된 내용만 사용하세요
+2. ❌ 외부 지식 사용 금지 - 문서에 없는 정보는 절대 추측하거나 보충하지 마세요
+3. ✅ 정직한 답변 - 답변할 수 없으면 "제공된 문서에서 해당 내용을 찾을 수 없습니다"라고 말하세요
+4. ✅ 출처 명시 필수 - 답변 시 문서의 어느 부분에서 정보를 가져왔는지 반드시 명확히 밝히세요
 
-**문서 정보:**
+**제공된 실시간 웹 검색 결과:**
 파일명: ${fileName}
+수집 시간: ${today}
 
-**문서 내용:**
+**문서 내용 (최신 웹 데이터):**
 ${documentText}
 
 **답변 형식 (필수):**
-- 답변 시작 시 "제공된 문서에 따르면," 또는 "문서의 [섹션명]에서," 등으로 시작하세요
+- 답변 시작 시 "제공된 웹 검색 결과에 따르면," 또는 "최신 자료의 [섹션명]에서," 등으로 시작하세요
 - 문서에서 직접 인용할 때는 반드시 큰따옴표("...")를 사용하세요
 - 여러 정보를 종합할 때도 각각의 출처를 명시하세요
-- 예시: "문서의 '주요 경력사항' 섹션에 따르면, 샘 알트만은 "2019년 CEO로 취임"했습니다."
-- 불확실하거나 문서에 명시되지 않은 내용은 절대 답변하지 마세요
-- 답변 마지막에 "\n\n📄 출처: ${fileName}"을 추가하세요`
+- 예시: "실시간 검색 결과에 따르면, 삼성전자 주가는 \"${today} 기준 75,000원\"입니다."
+- ⚠️ 불확실하거나 문서에 명시되지 않은 내용은 절대 답변하지 마세요
+- ⚠️ 당신의 학습 데이터가 아닌, 제공된 문서의 실시간 데이터만 사용하세요
+- 답변 마지막에 "\n\n📄 출처: ${fileName} (${today} 수집)"을 추가하세요`
       : `You are a NotebookLM-style strict document analysis AI. You must absolutely follow these rules:
 
+**⚠️ CRITICAL: Real-Time Data Usage Enforcement**
+- Today's date: ${today}
+- You MUST NOT use your past training data or internal knowledge
+- You MUST ONLY use the provided document content below
+- This document contains the latest information collected from real-time web searches
+- Do NOT guess or supplement any information not explicitly stated in the document
+
 **Core Rules:**
-1. Only use information explicitly written in the provided document.
-2. Never guess or use external knowledge for information not in the document.
-3. If you cannot answer, honestly say "I could not find this information in the provided document."
-4. When answering, you must clearly state which part of the document the information came from.
+1. ❌ NO Historical Knowledge - Only use information explicitly written in the provided document
+2. ❌ NO External Knowledge - Never guess or supplement information not in the document
+3. ✅ Honest Answers - If you cannot answer, say "I could not find this information in the provided document"
+4. ✅ Mandatory Citations - You must clearly state which part of the document the information came from
 
-**Document Information:**
+**Provided Real-Time Web Search Results:**
 File name: ${fileName}
+Collection time: ${today}
 
-**Document Content:**
+**Document Content (Latest Web Data):**
 ${documentText}
 
 **Response Format (Required):**
-- Start your answer with "According to the provided document," or "In the [section name] section,"
+- Start your answer with "According to the latest web search results," or "In the [section name] of the latest data,"
 - Always use quotation marks ("...") when directly quoting from the document
 - When synthesizing multiple pieces of information, cite the source for each
-- Example: "According to the 'Career History' section, Sam Altman "became CEO in 2019"."
-- Never answer anything uncertain or not stated in the document
-- Add "\n\n📄 Source: ${fileName}" at the end of your response`
+- Example: "According to real-time search results, Samsung stock price is \"75,000 KRW as of ${today}\"."
+- ⚠️ Never answer anything uncertain or not stated in the document
+- ⚠️ Use ONLY the real-time data from the provided document, NOT your training data
+- Add "\n\n📄 Source: ${fileName} (Collected on ${today})" at the end of your response`
 
     const messages = [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: query }
     ]
 
-    const answer = await callOpenAI(messages, 0.3) // 낮은 온도로 엄격하게
+    const answer = await callOpenAI(messages, 0.3, useThinking) // Thinking 모델로 심층 분석
 
     // 답변에서 "찾을 수 없습니다" 패턴 감지
     const notFoundPatterns = [
