@@ -1,8 +1,16 @@
-# NotebookLM 스타일 문서 기반 분석 도구
+# NotebookLM 스타일 문서 기반 분석 도구 + 웹 검색
 
-엄격한 RAG(Retrieval-Augmented Generation) 시스템을 적용한 NotebookLM 스타일의 문서 분석 및 대화형 대시보드입니다.
+엄격한 RAG(Retrieval-Augmented Generation) 시스템과 **실시간 웹 검색 기능**을 적용한 NotebookLM 스타일의 문서 분석 및 대화형 대시보드입니다.
 
 ## 🎯 핵심 기능
+
+### 🌐 **NEW! 웹 검색 및 Deep Research 기능**
+- **Fast Research (빠른 검색)**: 검색어 입력 → GPT가 추천 URL 생성 → 자동 크롤링 → 소스 추가
+- **Deep Research (심층 분석)**: 여러 웹 페이지 종합 → GPT-4o로 1,000자 이상 리서치 리포트 자동 생성
+- **실시간 진행률 표시**: "인터넷에서 최신 정보를 찾는 중..." 프로그레스 바
+- **자동 소스 추가**: 웹에서 수집한 정보가 🌐 지구본 아이콘과 함께 소스 리스트에 자동 추가
+- **리포트 타입**: Deep Research 결과는 📊 리포트 아이콘으로 구분 표시
+- **모델 선택**: Instant (빠른 응답) / Thinking (심층 분석) 토글 선택 가능
 
 ### 1. 엄격한 파일 기반 대화 시스템
 - **선택된 파일에만 기반한 답변**: 업로드한 문서의 내용에서만 답변을 생성
@@ -81,7 +89,10 @@
 - **Lucide React** - 아이콘 라이브러리
 - **Context API** - 다국어 상태 관리
 - **PDF.js (pdfjs-dist)** - PDF 텍스트 추출
-- **OpenAI API (GPT-4o-mini)** - 문서 요약 및 RAG 응답 생성
+- **OpenAI API**:
+  - **GPT-4o-mini** - 빠른 응답, 문서 요약, 추천 질문 생성, 웹 검색
+  - **GPT-4o** - 심층 RAG 분석, Deep Research 리포트 생성
+- **Web Crawling** - AllOrigins API (CORS 우회 프록시)로 웹 페이지 실시간 크롤링
 
 ## 설치 및 실행
 
@@ -111,15 +122,16 @@ npm run preview
 notebooklm-dashboard/
 ├── src/
 │   ├── components/
-│   │   ├── SourcePanel.jsx      # NotebookLM 스타일 소스 관리
+│   │   ├── SourcePanel.jsx      # NotebookLM 스타일 소스 관리 + 웹 검색 UI
 │   │   ├── DataPreview.jsx      # JSON 뷰어 (복사 기능 포함)
-│   │   └── ChatInterface.jsx    # 채팅 인터페이스
+│   │   └── ChatInterface.jsx    # 채팅 인터페이스 + 모델 선택
 │   ├── contexts/
 │   │   └── LanguageContext.jsx  # 다국어 지원 Context
 │   ├── locales/
 │   │   └── translations.js      # 한국어/영어 번역
 │   ├── services/
-│   │   └── aiService.js         # 엄격한 RAG 로직
+│   │   ├── aiService.js         # 엄격한 RAG 로직 + 모델 관리
+│   │   └── webSearchService.js  # 🌐 웹 검색 및 크롤링 엔진
 │   ├── utils/
 │   │   └── fileParser.js        # 파일 파싱 유틸리티
 │   ├── App.jsx                  # 메인 앱 컴포넌트
@@ -207,23 +219,55 @@ notebooklm-dashboard/
 - 복사 버튼 피드백 상태
 - 다국어 설정
 
-## 최근 업데이트 (2025-01-24)
+## 최근 업데이트 (2025-12-26)
 
 ### ✅ 완료된 기능
+
+#### 🌐 실시간 웹 검색 시스템 (NEW!)
+- [x] **검색 쿼리 최적화**: 사용자 질문을 실시간 검색어로 자동 변환
+  - GPT-4o-mini가 날짜 + "실시간", "최신" 키워드 추가
+  - 예: "삼성전자 주가 어때?" → "2025년 12월 26일 삼성전자 실시간 주가"
+- [x] **10개 소스 크롤링**: GPT가 신뢰할 수 있는 URL 10개 추천 → 병렬 크롤링
+- [x] **CORS 우회**: AllOrigins API 프록시로 클라이언트 측 웹 크롤링
+- [x] **Fast/Deep Research**: 빠른 검색 (10개) / 심층 리포트 (5개 + GPT-4o 종합 분석)
+
+#### 🔒 GPT-4o 과거 지식 차단 시스템 (NEW!)
+- [x] **실시간 데이터 강제 사용**: 시스템 프롬프트에 "⚠️ 과거 학습 데이터 사용 금지" 명시
+- [x] **날짜 컨텍스트**: 모든 답변에 현재 날짜 표시 및 수집 시간 명시
+- [x] **출처 엄격화**: "📄 출처: ${fileName} (${today} 수집)" 형식 강제
+- [x] **검증 로직**: "제공된 웹 검색 결과에 따르면" 등 실시간 데이터 인용 강제
+
+#### ⚡ 듀얼 AI 모델 시스템
+- [x] **모델 선택 UI**: Instant (⚡ GPT-4o-mini) / Thinking (🧠 GPT-4o) 토글
+- [x] **작업별 최적화**:
+  - Instant: 문서 요약, 추천 질문 생성, 일상 대화 (빠른 응답)
+  - Thinking: 엄격한 RAG 분석, Deep Research 리포트 (심층 추론)
+- [x] **사용자 선택 가능**: 채팅 헤더에서 실시간 모델 전환
+
+#### 📚 다중 소스 RAG 지원
+- [x] **여러 문서 동시 선택**: 체크박스로 다중 소스 선택
+- [x] **통합 분석**: 선택된 모든 문서를 "[출처: name]" 구분자로 결합
+- [x] **출처 추적**: 각 답변에 어느 문서에서 가져왔는지 명시
+
+#### 🎨 UI/UX 개선
+- [x] **Tooltip 컴포넌트**: 4방향 위치 지원 (top/bottom/left/right)
+- [x] **원본 링크 버튼**: 웹 소스의 원본 사이트 바로가기 (ExternalLink 아이콘)
+- [x] **검색 진행률**: "GPT가 추천 URL 생성 중...", "10개 웹페이지 크롤링 중..." 실시간 피드백
+- [x] **소스 타입 아이콘**: 📄 파일, 🌐 웹, 📊 리포트 구분
+
+#### 기존 기능
 - [x] **PDF 실제 파싱**: PDF.js 통합으로 실제 텍스트 추출
 - [x] **자동 문서 요약**: 파일 선택 시 AI가 자동으로 3-5줄 요약 생성
 - [x] **추천 질문 생성**: 문서 내용 기반 클릭 가능한 질문 3개 자동 생성
 - [x] **일상 대화 모드**: 문서 없이도 간단한 인사/대화 가능
-- [x] **상세 디버깅 로그**: PDF 추출 전 과정 console.log 추적
+- [x] **JSON 뷰어**: 복사 기능, 타입별 색상 구분, 확장/축소
 - [x] **소스 삭제 기능**: 업로드된 파일 삭제 가능
-- [x] **Deep Research UI**: NotebookLM 스타일 배너 및 검색 바
 
-### 🔧 현재 디버깅 중
-- [ ] **PDF 텍스트 추출 검증**: extractedText 깨짐 현상 진단
-  - 상세 로그로 추출 과정 추적 중
-  - 인코딩 및 문자 코드 검증
-- [ ] **추천 질문 품질 개선**: 파일명이 아닌 실제 내용 기반 생성
-- [ ] **실시간 컨텍스트 동기화**: JSON ↔ ChatBot 데이터 동기화 확인
+### 🔧 알려진 제한사항
+- [ ] **크롤링 성공률**: 일부 사이트는 크롤링 방지 정책으로 접근 제한
+  - 해결 방안: Tavily/Serper API 통합 고려 중
+- [ ] **PDF OCR 미지원**: 이미지 기반 PDF는 텍스트 추출 불가
+  - 텍스트가 포함된 PDF만 지원
 
 ## 향후 개선 사항
 
