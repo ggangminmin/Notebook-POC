@@ -58,34 +58,31 @@ function AppContent() {
         </button>
       </div>
 
-      {/* Main Content */}
+      {/* Main Content - 3 Column Layout (25% | 50% | 25%) */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - 50% */}
-        <div className="w-1/2 flex flex-col border-r border-gray-200">
-          {/* Source Panel - Top (40% - Compact) */}
-          <div className="h-[40%] overflow-hidden border-b border-gray-200">
-            <SourcePanel
-              sources={sources}
-              onAddSources={handleAddSources}
-              selectedSourceIds={selectedSourceIds}
-              onToggleSource={handleToggleSource}
-              onDeleteSource={handleDeleteSource}
-            />
-          </div>
-
-          {/* JSON Preview - Bottom (60% - Expanded) */}
-          <div className="h-[60%] overflow-hidden">
-            <DataPreview selectedFile={selectedSources[0]} />
-          </div>
+        {/* Left Panel - Sources (25%) */}
+        <div className="w-1/4 border-r border-gray-200 bg-white overflow-hidden">
+          <SourcePanel
+            sources={sources}
+            onAddSources={handleAddSources}
+            selectedSourceIds={selectedSourceIds}
+            onToggleSource={handleToggleSource}
+            onDeleteSource={handleDeleteSource}
+          />
         </div>
 
-        {/* Right Panel - Chat Interface 50% */}
+        {/* Center Panel - Chat Interface (50%) */}
         <div className="w-1/2 bg-white overflow-hidden">
           <ChatInterface
             selectedSources={selectedSources}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
           />
+        </div>
+
+        {/* Right Panel - Studio/JSON Preview (25%) */}
+        <div className="w-1/4 border-l border-gray-200 bg-gray-50 overflow-hidden">
+          <DataPreview selectedFile={selectedSources[0]} />
         </div>
       </div>
     </div>

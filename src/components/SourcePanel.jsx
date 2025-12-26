@@ -213,96 +213,91 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* NotebookLM Style Header */}
-      <div className="p-4 space-y-3">
-        {/* Add Source Button - Capsule Style */}
+      {/* Compact Header */}
+      <div className="p-3 space-y-2.5">
+        {/* Add Source Button - Compact Capsule */}
         <button
           onClick={() => setShowAddModal(true)}
-          className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition-colors flex items-center justify-center space-x-2 text-sm font-medium text-gray-700 shadow-sm"
+          className="w-full px-3 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition-colors flex items-center justify-center space-x-1.5 text-xs font-medium text-gray-700 shadow-sm"
         >
-          <Plus className="w-4 h-4" />
+          <Plus className="w-3.5 h-3.5" />
           <span>{t('sources.addSource')}</span>
         </button>
 
-        {/* Deep Research Banner */}
-        <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-purple-100 via-blue-50 to-green-50 p-4 border border-purple-200/50">
-          <div className="flex items-start space-x-3">
+        {/* Deep Research Banner - Compact */}
+        <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-purple-100 via-blue-50 to-green-50 p-2.5 border border-purple-200/50">
+          <div className="flex items-start space-x-2">
             <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-white/80 rounded-lg flex items-center justify-center">
-                <Sparkles className="w-5 h-5 text-purple-600" />
+              <div className="w-6 h-6 bg-white/80 rounded-md flex items-center justify-center">
+                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
               </div>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-medium text-gray-800 mb-1">
-                {t('sources.deepResearchTitle')}
+              <p className="text-[10px] font-medium text-gray-800 mb-0.5">
+                {language === 'ko' ? 'Deep Research' : 'Deep Research'}
               </p>
-              <p className="text-[11px] text-gray-600 leading-relaxed">
-                {t('sources.deepResearchDesc')}
+              <p className="text-[9px] text-gray-600 leading-tight">
+                {language === 'ko' ? '웹 검색으로 심층 리포트 생성' : 'Generate deep reports'}
               </p>
             </div>
           </div>
         </div>
 
-        {/* Web Search Bar */}
+        {/* Web Search Bar - Compact */}
         <div className="relative">
           <div className="relative flex items-center">
-            <Search className="absolute left-3 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-2.5 w-3.5 h-3.5 text-gray-400" />
             <input
               type="text"
-              placeholder={language === 'ko' ? '웹에서 검색하거나 URL 입력...' : 'Search web or enter URL...'}
+              placeholder={language === 'ko' ? '웹 검색...' : 'Search...'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={handleSearchKeyPress}
               disabled={isSearching}
-              className="w-full pl-10 pr-20 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-50"
+              className="w-full pl-8 pr-16 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-50"
             />
             <button
               onClick={handleWebSearch}
               disabled={!searchQuery.trim() || isSearching}
-              className="absolute right-2 px-3 py-1 text-xs font-medium bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
+              className="absolute right-1.5 px-2.5 py-0.5 text-[10px] font-medium bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
               {isSearching ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
-                language === 'ko' ? '검색' : 'Search'
+                language === 'ko' ? '검색' : 'Go'
               )}
             </button>
           </div>
 
-          {/* Search Progress */}
+          {/* Search Progress - Compact */}
           {isSearching && (
-            <div className="mt-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-center space-x-2 mb-1.5">
-                <Loader2 className="w-3.5 h-3.5 text-blue-600 animate-spin" />
-                <span className="text-xs font-medium text-blue-800">{searchProgress.message}</span>
+            <div className="mt-2 px-2 py-1.5 bg-blue-50 border border-blue-200 rounded-md">
+              <div className="flex items-center space-x-1.5 mb-1">
+                <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
+                <span className="text-[10px] font-medium text-blue-800">{searchProgress.message}</span>
               </div>
-              <div className="w-full bg-blue-200 rounded-full h-1.5">
+              <div className="w-full bg-blue-200 rounded-full h-1">
                 <div
-                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                  className="bg-blue-600 h-1 rounded-full transition-all duration-500"
                   style={{ width: `${searchProgress.percent}%` }}
                 />
               </div>
             </div>
           )}
 
-          {/* Research Type Selector */}
-          <div className="mt-2 flex items-center space-x-2">
-            <div className="flex items-center space-x-1.5 px-3 py-1.5 bg-gray-100 rounded-md">
-              <Globe className="w-3.5 h-3.5 text-gray-600" />
-              <span className="text-xs text-gray-700">{language === 'ko' ? '웹' : 'Web'}</span>
-            </div>
-
+          {/* Research Type Selector - Compact */}
+          <div className="mt-2 flex items-center space-x-1.5">
             <button
               onClick={() => setResearchType(researchType === 'fast' ? 'deep' : 'fast')}
               disabled={isSearching}
-              className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
                 researchType === 'deep'
                   ? 'bg-purple-100 text-purple-700 border border-purple-300'
                   : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
               } disabled:opacity-50`}
             >
-              <Sparkles className="w-3.5 h-3.5" />
-              <span className="text-xs font-medium">
+              <Sparkles className="w-3 h-3" />
+              <span>
                 {researchType === 'fast'
                   ? (language === 'ko' ? '빠른 검색' : 'Fast')
                   : (language === 'ko' ? '심층 분석' : 'Deep')}
@@ -312,46 +307,46 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
         </div>
       </div>
 
-      {/* Sources List Section */}
+      {/* Sources List Section - Compact */}
       <div className="flex-1 flex flex-col overflow-hidden border-t border-gray-200">
-        {/* List Header */}
-        <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
+        {/* List Header - Compact */}
+        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
+          <div className="flex items-center space-x-1.5">
             <input
               type="checkbox"
               checked={allSelected}
               onChange={toggleAll}
-              className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
-            <span className="text-xs font-medium text-gray-700">
+            <span className="text-[10px] font-medium text-gray-700">
               {t('sources.allSources')} ({sources.length})
             </span>
           </div>
         </div>
 
-        {/* List Content */}
+        {/* List Content - Compact */}
         <div className="flex-1 overflow-y-auto">
           {sources.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-4 py-8">
-              <FileText className="w-12 h-12 text-gray-300 mb-3" />
-              <p className="text-sm text-gray-600 mb-1">{t('sources.noSources')}</p>
-              <p className="text-xs text-gray-400">{t('sources.addSourceHint')}</p>
+            <div className="flex flex-col items-center justify-center h-full text-center px-3 py-6">
+              <FileText className="w-10 h-10 text-gray-300 mb-2" />
+              <p className="text-xs text-gray-600 mb-0.5">{t('sources.noSources')}</p>
+              <p className="text-[10px] text-gray-400">{t('sources.addSourceHint')}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-100">
               {sources.map((source) => (
                 <div
                   key={source.id}
-                  className={`px-4 py-3 hover:bg-gray-50 transition-colors group ${
+                  className={`px-3 py-2 hover:bg-gray-50 transition-colors group ${
                     selectedSourceIds.includes(source.id) ? 'bg-blue-50' : 'bg-white'
                   }`}
                 >
-                  <div className="flex items-start space-x-3">
+                  <div className="flex items-start space-x-2">
                     <input
                       type="checkbox"
                       checked={selectedSourceIds.includes(source.id)}
                       onChange={() => onToggleSource(source.id)}
-                      className="mt-0.5 w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                      className="mt-0.5 w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                     />
 
                     <div
@@ -359,16 +354,16 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                       onClick={() => onToggleSource(source.id)}
                     >
                       {source.type === 'report' ? (
-                        <div className="w-8 h-8 bg-purple-100 rounded flex items-center justify-center">
-                          <BookOpen className="w-4 h-4 text-purple-600" />
+                        <div className="w-7 h-7 bg-purple-100 rounded flex items-center justify-center">
+                          <BookOpen className="w-3.5 h-3.5 text-purple-600" />
                         </div>
                       ) : source.type === 'web' ? (
-                        <div className="w-8 h-8 bg-blue-100 rounded flex items-center justify-center">
-                          <Globe className="w-4 h-4 text-blue-600" />
+                        <div className="w-7 h-7 bg-blue-100 rounded flex items-center justify-center">
+                          <Globe className="w-3.5 h-3.5 text-blue-600" />
                         </div>
                       ) : (
-                        <div className="w-8 h-8 bg-red-100 rounded flex items-center justify-center">
-                          <FileText className="w-4 h-4 text-red-600" />
+                        <div className="w-7 h-7 bg-red-100 rounded flex items-center justify-center">
+                          <FileText className="w-3.5 h-3.5 text-red-600" />
                         </div>
                       )}
                     </div>
@@ -377,15 +372,15 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                       className="flex-1 min-w-0 cursor-pointer"
                       onClick={() => onToggleSource(source.id)}
                     >
-                      <p className="text-sm font-medium text-gray-900 truncate" title={source.name}>
+                      <p className="text-xs font-medium text-gray-900 truncate leading-tight" title={source.name}>
                         {source.name}
                       </p>
-                      <p className="text-xs text-gray-500 mt-0.5 truncate" title={source.url || ''}>
+                      <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={source.url || ''}>
                         {source.type === 'web' ? source.url : new Date(source.uploadedAt).toLocaleDateString()}
                       </p>
                     </div>
 
-                    {/* External Link Button for Web Sources */}
+                    {/* External Link Button for Web Sources - Compact */}
                     {(source.type === 'web' || source.type === 'report') && source.url && (
                       <Tooltip text={language === 'ko' ? '원본 웹사이트 방문하기' : 'Visit original website'} position="top">
                         <a
@@ -393,9 +388,9 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
+                          className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors opacity-0 group-hover:opacity-100"
                         >
-                          <ExternalLink className="w-4 h-4" />
+                          <ExternalLink className="w-3 h-3" />
                         </a>
                       </Tooltip>
                     )}
@@ -406,9 +401,9 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                           e.stopPropagation()
                           onDeleteSource(source.id)
                         }}
-                        className="flex-shrink-0 p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                        className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
                       >
-                        <X className="w-4 h-4" />
+                        <X className="w-3 h-3" />
                       </button>
                     </Tooltip>
                   </div>

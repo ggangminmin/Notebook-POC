@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 
@@ -158,7 +160,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         timestamp: new Date().toISOString(),
         source: response.source,
         foundInDocument: response.foundInDocument,
-        matchedKeywords: response.matchedKeywords
+        matchedKeywords: response.matchedKeywords,
+        isReasoningBased: response.isReasoningBased // 추론 기반 답변 플래그
       }
 
       setMessages(prev => [...prev, aiMessage])
@@ -196,68 +199,67 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   }
 
   return (
-    <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold text-gray-800">{t('chat.title')}</h2>
-            <p className="text-sm text-gray-500 mt-1">{t('chat.subtitle')}</p>
-          </div>
+    <div className="h-full flex flex-col bg-white">
+      {/* Compact Header */}
+      <div className="px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-sm font-semibold text-gray-800">{t('chat.title')}</h2>
 
-          {/* Model Selector */}
-          <div className="flex items-center space-x-2">
-            <span className="text-xs text-gray-500 font-medium">
-              {language === 'ko' ? 'AI 모델' : 'AI Model'}:
-            </span>
-            <div className="flex bg-gray-100 rounded-lg p-1">
-              <button
-                onClick={() => onModelChange('instant')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  selectedModel === 'instant'
-                    ? 'bg-white text-blue-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                <Zap className="w-3.5 h-3.5" />
-                <span>{language === 'ko' ? '빠른 응답' : 'Instant'}</span>
-              </button>
-              <button
-                onClick={() => onModelChange('thinking')}
-                className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                  selectedModel === 'thinking'
-                    ? 'bg-white text-purple-600 shadow-sm'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}
-              >
-                <Brain className="w-3.5 h-3.5" />
-                <span>{language === 'ko' ? '심층 분석' : 'Thinking'}</span>
-              </button>
-            </div>
+          {/* Model Selector - Compact */}
+          <div className="flex bg-gray-100 rounded-md p-0.5">
+            <button
+              onClick={() => onModelChange('instant')}
+              className={`flex items-center space-x-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                selectedModel === 'instant'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <Zap className="w-3 h-3" />
+              <span>{language === 'ko' ? '빠름' : 'Fast'}</span>
+            </button>
+            <button
+              onClick={() => onModelChange('thinking')}
+              className={`flex items-center space-x-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+                selectedModel === 'thinking'
+                  ? 'bg-white text-purple-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <Brain className="w-3 h-3" />
+              <span>{language === 'ko' ? '심층' : 'Deep'}</span>
+            </button>
           </div>
         </div>
 
-        {/* Context Indicator */}
+        {/* Context Indicator - Compact */}
         {selectedSources.length > 0 ? (
-          <div className="mt-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="flex items-center mb-1">
-              <FileText className="w-4 h-4 text-blue-600 mr-2" />
-              <span className="text-sm font-medium text-blue-800">
-                {language === 'ko' ? `${selectedSources.length}개의 소스 선택됨` : `${selectedSources.length} source(s) selected`}
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-1 mt-1">
-              {selectedSources.map(source => (
-                <span key={source.id} className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded">
-                  {source.name}
+          <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <FileText className="w-3 h-3 text-blue-600 mr-1.5" />
+                <span className="text-[10px] font-medium text-blue-800">
+                  {language === 'ko' ? `${selectedSources.length}개 선택됨` : `${selectedSources.length} selected`}
                 </span>
-              ))}
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {selectedSources.slice(0, 2).map(source => (
+                  <span key={source.id} className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                    {source.name.length > 15 ? source.name.substring(0, 15) + '...' : source.name}
+                  </span>
+                ))}
+                {selectedSources.length > 2 && (
+                  <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                    +{selectedSources.length - 2}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         ) : (
-          <div className="mt-3 px-4 py-2 bg-amber-50 border border-amber-200 rounded-lg flex items-center">
-            <AlertCircle className="w-4 h-4 text-amber-600 mr-2" />
-            <span className="text-sm text-amber-800">{t('chat.noContext')}</span>
+          <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-md flex items-center">
+            <AlertCircle className="w-3 h-3 text-amber-600 mr-1.5" />
+            <span className="text-[10px] text-amber-800">{t('chat.noContext')}</span>
           </div>
         )}
       </div>
@@ -308,16 +310,42 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                       : 'bg-white text-gray-800 border border-gray-200 shadow-sm'
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                  <div className="text-sm prose prose-sm max-w-none markdown-content">
+                    <ReactMarkdown
+                      remarkPlugins={[remarkGfm]}
+                      components={{
+                        // 커스텀 컴포넌트 스타일링
+                        strong: ({node, ...props}) => <strong className="font-bold" style={{fontWeight: 700}} {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-3 mb-2" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc list-inside my-2 space-y-1" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-1" {...props} />,
+                        li: ({node, ...props}) => <li className="ml-2" {...props} />,
+                        p: ({node, ...props}) => <p className="my-1.5" {...props} />,
+                      }}
+                    >
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
 
                   {/* 문서 참조 정보 */}
                   {message.source && message.foundInDocument && (
                     <div className="mt-3 pt-3 border-t border-gray-200">
-                      <div className="flex items-center text-xs text-gray-500">
-                        <FileText className="w-3 h-3 mr-1" />
-                        <span>
-                          {language === 'ko' ? '출처' : 'Source'}: {message.source}
-                        </span>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center text-xs text-gray-500">
+                          <FileText className="w-3 h-3 mr-1" />
+                          <span>
+                            {language === 'ko' ? '출처' : 'Source'}: {message.source}
+                          </span>
+                        </div>
+                        {/* 추론 기반 답변 태그 */}
+                        {message.isReasoningBased && (
+                          <div className="flex items-center space-x-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
+                            <Lightbulb className="w-3 h-3" />
+                            <span className="text-[9px] font-medium">
+                              {language === 'ko' ? '맥락 기반 추론' : 'Reasoning'}
+                            </span>
+                          </div>
+                        )}
                       </div>
                       {message.matchedKeywords && message.matchedKeywords.length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
@@ -397,9 +425,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area */}
-      <div className="px-6 py-4 border-t border-gray-200 bg-white">
-        <form onSubmit={handleSubmit} className="flex items-end space-x-3">
+      {/* Input Area - Wide and Centered */}
+      <div className="px-4 py-3 border-t border-gray-200 bg-white">
+        <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1">
             <textarea
               value={input}
@@ -408,24 +436,24 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               placeholder={selectedSources.length === 0
                 ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
                 : t('chat.placeholder')}
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows="1"
-              style={{ minHeight: '48px', maxHeight: '120px' }}
+              style={{ minHeight: '42px', maxHeight: '120px' }}
             />
           </div>
           <button
             type="submit"
             disabled={!input.trim() || isTyping}
-            className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-2"
+            className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-1.5"
           >
-            <Send className="w-5 h-5" />
-            <span className="font-medium">{t('chat.send')}</span>
+            <Send className="w-4 h-4" />
+            <span className="text-sm font-medium">{t('chat.send')}</span>
           </button>
         </form>
-        <p className="text-xs text-gray-400 mt-2">
+        <p className="text-[10px] text-gray-400 mt-1.5 text-center">
           {selectedSources.length === 0
-            ? (language === 'ko' ? '문서 없이도 대화할 수 있습니다. Enter로 전송하세요.' : 'You can chat without documents. Press Enter to send.')
-            : t('chat.enterToSend')}
+            ? (language === 'ko' ? '문서 없이도 대화 가능 · Enter로 전송' : 'Chat without docs · Press Enter to send')
+            : (language === 'ko' ? 'Enter로 전송 · Shift+Enter로 줄바꿈' : 'Enter to send · Shift+Enter for new line')}
         </p>
       </div>
     </div>
