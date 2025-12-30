@@ -143,11 +143,16 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
 
         console.log('[DataPreview PDF] PDF 로드 완료 - 페이지 수:', loadedPdf.numPages)
 
+        // 컨테이너 너비 계산 (우측 패널 45% 기준)
+        // 우측 패널은 전체 화면의 45%, 여기서 padding(py-4)과 maxWidth(95%)를 고려
+        const containerWidth = window.innerWidth * 0.45 * 0.95 // 45%의 95%
+        console.log('[DataPreview PDF] 계산된 컨테이너 너비:', containerWidth)
+
         // 모든 페이지를 렌더링
         const renderedPages = []
         for (let pageNum = 1; pageNum <= loadedPdf.numPages; pageNum++) {
           const page = await loadedPdf.getPage(pageNum)
-          const imageData = await renderPageToImage(page)
+          const imageData = await renderPageToImage(page, containerWidth)
           renderedPages.push({
             pageNumber: pageNum,
             imageData: imageData
@@ -172,10 +177,20 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
       }
     }
 
-    // PDF 페이지를 이미지로 렌더링하는 헬퍼 함수
-    const renderPageToImage = async (page) => {
+    // PDF 페이지를 이미지로 렌더링하는 헬퍼 함수 (동적 스케일 계산)
+    const renderPageToImage = async (page, targetWidth) => {
       try {
-        const scale = 1.2 // 패널 너비에 맞는 스케일
+        // 기본 viewport를 구해서 원본 너비 확인
+        const baseViewport = page.getViewport({ scale: 1.0, rotation: 0 })
+
+        // 목표 너비에 맞는 스케일 계산 (100% 너비로 꽉 차게)
+        const scale = targetWidth / baseViewport.width
+        console.log('[DataPreview PDF] 동적 스케일 계산:', {
+          원본너비: baseViewport.width,
+          목표너비: targetWidth,
+          계산된스케일: scale
+        })
+
         const viewport = page.getViewport({ scale, rotation: 0 })
         const canvas = document.createElement('canvas')
         const context = canvas.getContext('2d')
@@ -536,10 +551,10 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
             </div>
           </div>
         ) : viewMode === 'pdf' ? (
-          /* PDF 뷰어 모드 - 전체 스크롤형 */
-          <div className="h-full flex flex-col bg-white">
+          /* PDF 뷰어 모드 - 전체 스크롤형 (NotebookLM 스타일) */
+          <div className="h-full flex flex-col">
             {pdfState.isLoading ? (
-              <div className="flex items-center justify-center h-full">
+              <div className="flex items-center justify-center h-full bg-gradient-to-b from-gray-50 to-gray-100">
                 <div className="text-center">
                   <Loader2 className="w-8 h-8 mx-auto mb-3 text-blue-600 animate-spin" />
                   <p className="text-sm font-medium text-gray-700">
@@ -553,27 +568,28 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
             ) : pdfState.renderedPages.length > 0 ? (
               <div
                 ref={scrollContainerRef}
-                className="flex-1 overflow-y-auto bg-gray-100"
+                className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50"
                 style={{ scrollBehavior: 'smooth' }}
               >
-                <div className="py-4 space-y-4">
+                <div className="py-6 px-4 space-y-6">
                   {pdfState.renderedPages.map((pageData) => (
                     <div
                       key={`page-${pageData.pageNumber}`}
                       ref={(el) => pageRefs.current[`page-${pageData.pageNumber}`] = el}
-                      className="bg-white mx-auto shadow-lg rounded-lg overflow-hidden"
-                      style={{ maxWidth: '95%' }}
+                      className="bg-white mx-auto shadow-xl rounded-xl overflow-hidden border border-gray-200 transition-all hover:shadow-2xl"
+                      style={{ maxWidth: '100%' }}
                     >
-                      {/* 페이지 번호 표시 */}
-                      <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
-                        <span className="text-xs font-semibold text-gray-600">
-                          {language === 'ko' ? '페이지' : 'Page'} {pageData.pageNumber}
+                      {/* 페이지 번호 표시 - NotebookLM 스타일 */}
+                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-4 py-2.5 border-b border-gray-200 flex items-center justify-between">
+                        <span className="text-xs font-bold text-gray-700 flex items-center space-x-2">
+                          <FileText className="w-3.5 h-3.5 text-blue-600" />
+                          <span>{language === 'ko' ? '페이지' : 'Page'} {pageData.pageNumber}</span>
                         </span>
-                        <span className="text-xs text-gray-400">
+                        <span className="text-xs text-gray-500 bg-white px-2 py-0.5 rounded-full font-semibold">
                           {pageData.pageNumber} / {pdfState.numPages}
                         </span>
                       </div>
-                      {/* 페이지 이미지 */}
+                      {/* 페이지 이미지 - 100% 너비 */}
                       {pageData.imageData ? (
                         <img
                           src={pageData.imageData}
@@ -582,7 +598,8 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
                           style={{
                             imageRendering: 'high-quality',
                             transform: 'scale(1) rotate(0deg)',
-                            transformOrigin: 'center'
+                            transformOrigin: 'center',
+                            display: 'block'
                           }}
                         />
                       ) : (
