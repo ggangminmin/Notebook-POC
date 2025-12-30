@@ -3,13 +3,14 @@ import { Globe } from 'lucide-react'
 import SourcePanel from './components/SourcePanel'
 import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
+import PDFViewer from './components/PDFViewer'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 
 function AppContent() {
   const [sources, setSources] = useState([])
   const [selectedSourceIds, setSelectedSourceIds] = useState([])
   const [selectedModel, setSelectedModel] = useState('thinking') // 'instant' or 'thinking'
-  const [targetPdfPage, setTargetPdfPage] = useState(null)
+  const [pdfViewerState, setPdfViewerState] = useState({ isOpen: false, file: null, page: 1 })
   const { language, toggleLanguage, t } = useLanguage()
 
   // 선택된 소스들 가져오기
@@ -40,9 +41,18 @@ function AppContent() {
   }
 
   const handlePageNavigate = (pageNumber) => {
-    setTargetPdfPage(pageNumber)
-    // TODO: 향후 PDF 뷰어 구현 시 사용
-    console.log('[페이지 이동 요청]', pageNumber)
+    // PDF 파일 찾기
+    const pdfSource = selectedSources.find(s => s.file?.type?.includes('pdf'))
+    if (pdfSource && pdfSource.file) {
+      setPdfViewerState({ isOpen: true, file: pdfSource.file, page: pageNumber })
+      console.log('[페이지 이동] PDF 뷰어 열기 - 페이지:', pageNumber)
+    } else {
+      console.warn('[페이지 이동] PDF 파일을 찾을 수 없습니다')
+    }
+  }
+
+  const handleClosePDFViewer = () => {
+    setPdfViewerState({ isOpen: false, file: null, page: 1 })
   }
 
   return (
@@ -93,6 +103,15 @@ function AppContent() {
           <DataPreview selectedFile={selectedSources[0]} />
         </div>
       </div>
+
+      {/* PDF 뷰어 모달 */}
+      {pdfViewerState.isOpen && (
+        <PDFViewer
+          file={pdfViewerState.file}
+          initialPage={pdfViewerState.page}
+          onClose={handleClosePDFViewer}
+        />
+      )}
     </div>
   )
 }

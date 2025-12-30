@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, X } from 'lucide-react'
 import * as pdfjsLib from 'pdfjs-dist'
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut } from 'lucide-react'
 
 // PDF.js worker 설정
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -8,27 +8,32 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString()
 
-const PDFViewer = ({ file, targetPage = null }) => {
+/**
+ * NotebookLM 스타일 PDF 뷰어
+ */
+const PDFViewer = ({ file, initialPage = 1, onClose }) => {
   const [pdf, setPdf] = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(0)
-  const [scale, setScale] = useState(1.2)
-  const [highlightPage, setHighlightPage] = useState(null)
+  const [currentPage, setCurrentPage] = useState(initialPage)
+  const [numPages, setNumPages] = useState(0)
+  const [scale, setScale] = useState(1.0)
+  const [isLoading, setIsLoading] = useState(true)
   const canvasRef = useRef(null)
-  const containerRef = useRef(null)
 
-  // PDF 로드
+  // PDF 파일 로드
   useEffect(() => {
-    const loadPDF = async () => {
-      if (!file) return
+    if (!file) return
 
+    const loadPDF = async () => {
       try {
+        setIsLoading(true)
         const arrayBuffer = await file.arrayBuffer()
         const loadedPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
         setPdf(loadedPdf)
-        setTotalPages(loadedPdf.numPages)
+        setNumPages(loadedPdf.numPages)
+        setIsLoading(false)
       } catch (error) {
-        console.error('[PDF Viewer] PDF 로드 오류:', error)
+        console.error('[PDFViewer] PDF 로드 오류:', error)
+        setIsLoading(false)
       }
     }
 
@@ -37,118 +42,87 @@ const PDFViewer = ({ file, targetPage = null }) => {
 
   // 페이지 렌더링
   useEffect(() => {
-    const renderPage = async () => {
-      if (!pdf || !canvasRef.current) return
+    if (!pdf || !canvasRef.current) return
 
+    const renderPage = async () => {
       try {
         const page = await pdf.getPage(currentPage)
         const viewport = page.getViewport({ scale })
-
         const canvas = canvasRef.current
         const context = canvas.getContext('2d')
-        canvas.height = viewport.height
-        canvas.width = viewport.width
 
-        const renderContext = {
+        canvas.width = viewport.width
+        canvas.height = viewport.height
+
+        await page.render({
           canvasContext: context,
           viewport: viewport
-        }
-
-        await page.render(renderContext).promise
-
-        // 하이라이트 효과
-        if (highlightPage === currentPage) {
-          context.fillStyle = 'rgba(255, 255, 0, 0.2)'
-          context.fillRect(0, 0, canvas.width, canvas.height)
-
-          // 3초 후 하이라이트 제거
-          setTimeout(() => setHighlightPage(null), 3000)
-        }
+        }).promise
       } catch (error) {
-        console.error('[PDF Viewer] 페이지 렌더링 오류:', error)
+        console.error('[PDFViewer] 페이지 렌더링 오류:', error)
       }
     }
 
     renderPage()
-  }, [pdf, currentPage, scale, highlightPage])
+  }, [pdf, currentPage, scale])
 
-  // 외부에서 페이지 이동 요청 시
+  // 초기 페이지로 이동
   useEffect(() => {
-    if (targetPage && targetPage !== currentPage) {
+    if (initialPage && initialPage !== currentPage && numPages > 0) {
+      const targetPage = Math.max(1, Math.min(initialPage, numPages))
       setCurrentPage(targetPage)
-      setHighlightPage(targetPage)
-
-      // 스크롤하여 뷰어로 이동
-      if (containerRef.current) {
-        containerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      }
     }
-  }, [targetPage])
-
-  const goToPage = (pageNum) => {
-    if (pageNum >= 1 && pageNum <= totalPages) {
-      setCurrentPage(pageNum)
-    }
-  }
-
-  const zoomIn = () => setScale(prev => Math.min(prev + 0.2, 3))
-  const zoomOut = () => setScale(prev => Math.max(prev - 0.2, 0.5))
-
-  if (!file) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-        PDF를 선택하면 미리보기가 표시됩니다
-      </div>
-    )
-  }
+  }, [initialPage, numPages])
 
   return (
-    <div ref={containerRef} className="flex flex-col h-full bg-gray-100">
-      {/* 컨트롤 바 */}
-      <div className="flex items-center justify-between px-3 py-2 bg-white border-b border-gray-200">
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={() => goToPage(currentPage - 1)}
-            disabled={currentPage <= 1}
-            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </button>
-          <span className="text-xs text-gray-700">
-            {currentPage} / {totalPages}
-          </span>
-          <button
-            onClick={() => goToPage(currentPage + 1)}
-            disabled={currentPage >= totalPages}
-            className="p-1 rounded hover:bg-gray-100 disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+    <div className="fixed inset-0 z-50 bg-black bg-opacity-75 flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col">
+        {/* 헤더 */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50 rounded-t-xl">
+          <div className="flex-1">
+            <h3 className="text-sm font-bold text-gray-900 truncate">{file?.name}</h3>
+            {!isLoading && (
+              <p className="text-xs text-gray-500">
+                페이지 {currentPage} / {numPages}
+              </p>
+            )}
+          </div>
+
+          {/* 컨트롤 */}
+          <div className="flex items-center space-x-2">
+            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage <= 1} className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-30">
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-medium min-w-[60px] text-center">{currentPage} / {numPages}</span>
+            <button onClick={() => setCurrentPage(p => Math.min(numPages, p + 1))} disabled={currentPage >= numPages} className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-30">
+              <ChevronRight className="w-4 h-4" />
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-1" />
+            <button onClick={() => setScale(s => Math.max(0.5, s - 0.2))} disabled={scale <= 0.5} className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-30">
+              <ZoomOut className="w-4 h-4" />
+            </button>
+            <span className="text-xs font-medium min-w-[45px] text-center">{Math.round(scale * 100)}%</span>
+            <button onClick={() => setScale(s => Math.min(3.0, s + 0.2))} disabled={scale >= 3.0} className="p-2 rounded-lg hover:bg-gray-200 disabled:opacity-30">
+              <ZoomIn className="w-4 h-4" />
+            </button>
+            <div className="w-px h-6 bg-gray-300 mx-1" />
+            <button onClick={onClose} className="p-2 rounded-lg hover:bg-red-100">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={zoomOut}
-            className="p-1 rounded hover:bg-gray-100"
-          >
-            <ZoomOut className="w-4 h-4" />
-          </button>
-          <span className="text-xs text-gray-700">{Math.round(scale * 100)}%</span>
-          <button
-            onClick={zoomIn}
-            className="p-1 rounded hover:bg-gray-100"
-          >
-            <ZoomIn className="w-4 h-4" />
-          </button>
+        {/* 캔버스 */}
+        <div className="flex-1 overflow-auto bg-gray-100 p-4 flex items-center justify-center">
+          {isLoading ? (
+            <div className="text-center">
+              <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              <p className="text-sm text-gray-600">PDF 로딩 중...</p>
+            </div>
+          ) : (
+            <canvas ref={canvasRef} className="shadow-lg bg-white" style={{ maxWidth: '100%', height: 'auto' }} />
+          )}
         </div>
-      </div>
-
-      {/* PDF 캔버스 */}
-      <div className="flex-1 overflow-auto p-4 flex justify-center">
-        <canvas
-          ref={canvasRef}
-          className={`shadow-lg ${highlightPage === currentPage ? 'ring-4 ring-yellow-400' : ''}`}
-        />
       </div>
     </div>
   )

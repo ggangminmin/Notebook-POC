@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2 } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
 
-// GPT-4o를 사용한 자연어 문서 분석
+// GPT-4o를 사용한 자연어 문서 분석 (NotebookLM 스타일)
 const generateNaturalSummary = async (extractedText, language = 'ko') => {
   const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 
@@ -13,41 +13,40 @@ const generateNaturalSummary = async (extractedText, language = 'ko') => {
 
   console.log('[DataPreview] 자연어 요약 생성 시작')
   console.log('[DataPreview] extractedText 길이:', extractedText.length)
-  console.log('[DataPreview] extractedText 첫 200자:', extractedText.substring(0, 200))
 
   try {
     const prompt = language === 'ko'
-      ? `다음 문서를 분석하여 아래 형식으로 요약해주세요:
+      ? `다음 문서를 NotebookLM 스타일로 분석하여 아래 형식으로 요약해주세요:
 
 **문서 내용:**
-${extractedText.substring(0, 3000)}
+${extractedText.substring(0, 4000)}
 
 **요구사항:**
-1. **문서 요약**: 이 문서가 무엇인지 한 문장으로 정의 (굵게 표시)
-2. **핵심 키워드**: 문서에서 가장 많이 언급된 단어 3~5개 (쉼표로 구분)
-3. **구조 분석**: 문서가 어떤 섹션들로 나뉘어 있는지 간단히 설명 (2-3줄)
+1. **핵심 요약**: 이 문서의 핵심 내용을 2-3문장으로 명확하게 요약
+2. **주요 내용**: 문서의 핵심 포인트를 3-5개의 간결한 문장으로 정리 (각 항목은 한 문장)
+3. **핵심 키워드**: 문서에서 가장 중요한 단어 3-5개
 
 JSON 형식으로 응답해주세요:
 {
-  "summary": "문서에 대한 한 문장 정의",
-  "keywords": ["키워드1", "키워드2", "키워드3"],
-  "structure": "구조 분석 설명"
+  "summary": "문서의 핵심 요약 (2-3문장)",
+  "keyPoints": ["핵심 포인트 1", "핵심 포인트 2", "핵심 포인트 3"],
+  "keywords": ["키워드1", "키워드2", "키워드3"]
 }`
-      : `Analyze the following document and summarize it in this format:
+      : `Analyze the following document in NotebookLM style:
 
 **Document Content:**
-${extractedText.substring(0, 3000)}
+${extractedText.substring(0, 4000)}
 
 **Requirements:**
-1. **Document Summary**: Define what this document is in one sentence (bold)
-2. **Key Keywords**: 3-5 most frequently mentioned words (comma-separated)
-3. **Structure Analysis**: Briefly describe how the document is organized (2-3 lines)
+1. **Core Summary**: Clear summary of the document in 2-3 sentences
+2. **Key Points**: 3-5 concise sentences highlighting core points (one sentence each)
+3. **Key Keywords**: 3-5 most important words
 
 Respond in JSON format:
 {
-  "summary": "One sentence definition of the document",
-  "keywords": ["keyword1", "keyword2", "keyword3"],
-  "structure": "Structure analysis description"
+  "summary": "Core summary (2-3 sentences)",
+  "keyPoints": ["Key point 1", "Key point 2", "Key point 3"],
+  "keywords": ["keyword1", "keyword2", "keyword3"]
 }`
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -63,36 +62,29 @@ Respond in JSON format:
           { role: 'user', content: prompt }
         ],
         temperature: 0.3,
-        max_tokens: 500
+        max_tokens: 800
       })
     })
 
     if (!response.ok) {
       console.error('[DataPreview] OpenAI API 오류:', response.status, response.statusText)
-      const errorData = await response.json()
-      console.error('[DataPreview] 에러 상세:', errorData)
       return null
     }
 
     const data = await response.json()
-    console.log('[DataPreview] OpenAI 응답:', data)
-
     const content = data.choices[0].message.content.trim()
     console.log('[DataPreview] GPT 응답 내용:', content)
 
     // JSON 파싱
     try {
-      // JSON 코드 블록 제거
       const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/)
       const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content
-      console.log('[DataPreview] 파싱할 JSON:', jsonStr)
 
       const parsed = JSON.parse(jsonStr)
       console.log('[DataPreview] 파싱 성공:', parsed)
       return parsed
     } catch (e) {
       console.error('[DataPreview] JSON 파싱 실패:', e)
-      console.error('[DataPreview] 파싱 시도한 내용:', content)
       return null
     }
   } catch (error) {
@@ -102,14 +94,15 @@ Respond in JSON format:
 }
 
 const DataPreview = ({ selectedFile }) => {
+  // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
   const [viewMode, setViewMode] = useState('natural') // 'natural' or 'json'
   const [naturalSummary, setNaturalSummary] = useState(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
-  const { t, language } = useLanguage()
+  const { language } = useLanguage()
 
-  // 파일이 변경되면 자연어 요약 생성 (viewMode 변경 시에는 재생성하지 않음)
+  // 파일 선택 시 자동으로 요약 생성 (Auto-Summary Trigger)
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedFile?.parsedData?.extractedText) {
@@ -119,26 +112,31 @@ const DataPreview = ({ selectedFile }) => {
         return
       }
 
-      console.log('[DataPreview] 자연어 요약 생성 시작 - 파일:', selectedFile.name)
+      console.log('[DataPreview] 자동 요약 트리거 - 파일:', selectedFile.name)
       setIsLoadingSummary(true)
+
       const summary = await generateNaturalSummary(
         selectedFile.parsedData.extractedText,
         language
       )
+
       setNaturalSummary(summary)
       setIsLoadingSummary(false)
+      console.log('[DataPreview] 요약 생성 완료')
     }
 
-    // 파일이 선택되고 자연어 모드일 때만 요약 생성
+    // 파일이 선택되면 즉시 요약 생성 시작
     if (selectedFile) {
       loadSummary()
     } else {
       setNaturalSummary(null)
       setIsLoadingSummary(false)
     }
-  }, [selectedFile?.id, language]) // viewMode 제거, selectedFile.id로 변경하여 파일 변경 시에만 재생성
+  }, [selectedFile?.id, language]) // selectedFile.id가 변경될 때만 재생성
 
-  const handleCopyToClipboard = async () => {
+  // 이벤트 전파 차단으로 리렌더링 범위 제한
+  const handleCopyToClipboard = async (e) => {
+    e.stopPropagation()
     if (!selectedFile?.parsedData) return
 
     try {
@@ -149,6 +147,12 @@ const DataPreview = ({ selectedFile }) => {
     } catch (error) {
       console.error('Failed to copy:', error)
     }
+  }
+
+  // 모드 전환 시 이벤트 전파 차단
+  const handleToggleViewMode = (e) => {
+    e.stopPropagation()
+    setViewMode(prev => prev === 'natural' ? 'json' : 'natural')
   }
 
   const toggleExpand = (key) => {
@@ -267,44 +271,51 @@ const DataPreview = ({ selectedFile }) => {
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Studio Header */}
-      <div className="px-4 py-3 border-b border-gray-200">
+      <div className="px-4 py-3 border-b border-gray-200 bg-white">
         <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-gray-800">
-            {language === 'ko' ? '스튜디오' : 'Studio'}
-          </h2>
+          <div className="flex items-center space-x-2">
+            <h2 className="text-sm font-bold text-gray-900">
+              {language === 'ko' ? '스튜디오' : 'Studio'}
+            </h2>
+            {viewMode === 'natural' && selectedFile && (
+              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">
+                AI
+              </span>
+            )}
+          </div>
           {selectedFile && (
             <div className="flex items-center space-x-2">
               {/* 데이터 보기 토글 버튼 */}
               <Tooltip
-                content={language === 'ko' ? '관리자용 원본 데이터 보기' : 'View raw data (admin)'}
+                content={language === 'ko' ? 'JSON 데이터 보기' : 'View JSON data'}
                 position="bottom"
               >
                 <button
-                  onClick={() => setViewMode(viewMode === 'natural' ? 'json' : 'natural')}
-                  className={`p-1.5 rounded-md text-xs font-medium transition-all ${
+                  onClick={handleToggleViewMode}
+                  className={`p-2 rounded-lg text-xs font-medium transition-all ${
                     viewMode === 'json'
-                      ? 'bg-blue-100 text-blue-700'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
+                      ? 'bg-indigo-100 text-indigo-700 shadow-sm'
+                      : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
                   }`}
                 >
-                  <Database className="w-3.5 h-3.5" />
+                  <Database className="w-4 h-4" />
                 </button>
               </Tooltip>
 
-              {/* 복사 버튼 (JSON 모드일 때만 활성화) */}
+              {/* 복사 버튼 (JSON 모드일 때만 표시) */}
               {viewMode === 'json' && (
                 <button
                   onClick={handleCopyToClipboard}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
+                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
                     isCopied
-                      ? 'bg-green-500 text-white'
+                      ? 'bg-green-500 text-white shadow-sm'
                       : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
                   }`}
                 >
                   {isCopied ? (
                     <>
                       <Check className="w-3.5 h-3.5" />
-                      <span>{language === 'ko' ? '복사됨!' : 'Copied!'}</span>
+                      <span>{language === 'ko' ? '복사됨' : 'Copied'}</span>
                     </>
                   ) : (
                     <>
@@ -317,9 +328,9 @@ const DataPreview = ({ selectedFile }) => {
             </div>
           )}
         </div>
-        {selectedFile && (
-          <p className="text-xs text-gray-500 truncate" title={selectedFile.name}>
-            {selectedFile.name}
+        {selectedFile && viewMode === 'natural' && (
+          <p className="text-xs text-gray-500">
+            {language === 'ko' ? 'GPT-4o 기반 문서 분석' : 'GPT-4o Document Analysis'}
           </p>
         )}
       </div>
@@ -330,83 +341,79 @@ const DataPreview = ({ selectedFile }) => {
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="w-12 h-12 mx-auto mb-3 bg-gray-200 rounded-lg flex items-center justify-center">
-                <Copy className="w-6 h-6 text-gray-400" />
+                <FileText className="w-6 h-6 text-gray-400" />
               </div>
               <p className="text-sm text-gray-500">
-                {language === 'ko' ? '소스를 선택하면\n데이터가 표시됩니다' : 'Select a source\nto view data'}
+                {language === 'ko' ? '소스를 선택하면\n분석 결과가 표시됩니다' : 'Select a source\nto view analysis'}
               </p>
             </div>
           </div>
         ) : viewMode === 'natural' ? (
-          /* 자연어 설명 모드 */
+          /* 자연어 분석 모드 (기본) */
           <div className="space-y-4">
             {isLoadingSummary ? (
               <div className="flex items-center justify-center h-64">
                 <div className="text-center">
                   <Loader2 className="w-8 h-8 mx-auto mb-3 text-blue-600 animate-spin" />
-                  <p className="text-sm text-gray-600">
-                    {language === 'ko' ? '문서 분석 중...' : 'Analyzing document...'}
+                  <p className="text-sm font-medium text-gray-700">
+                    {language === 'ko' ? 'AI 분석 중...' : 'AI analyzing...'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {language === 'ko' ? 'GPT-4o로 문서를 분석하고 있습니다' : 'Analyzing with GPT-4o'}
                   </p>
                 </div>
               </div>
             ) : naturalSummary ? (
               <>
-                {/* 문서 제목 및 메타데이터 */}
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 shadow-sm border border-blue-200">
-                  <div className="flex items-start justify-between">
+                {/* NotebookLM 스타일 핵심 요약 */}
+                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-6 shadow-sm border border-indigo-200">
+                  <div className="flex items-start space-x-3 mb-4">
+                    <div className="flex-shrink-0 w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                      <Lightbulb className="w-5 h-5 text-white" />
+                    </div>
                     <div className="flex-1">
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">
-                        {selectedFile.name}
+                      <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-2">
+                        {language === 'ko' ? '핵심 요약' : 'Core Summary'}
                       </h3>
-                      <div className="flex items-center space-x-4 text-xs text-gray-600">
-                        {selectedFile.parsedData?.pageCount && (
-                          <span className="flex items-center space-x-1">
-                            <span className="font-semibold">{language === 'ko' ? '페이지' : 'Pages'}:</span>
-                            <span className="bg-white px-2 py-0.5 rounded-full font-medium">
-                              {selectedFile.parsedData.pageCount}
-                            </span>
-                          </span>
-                        )}
-                        {selectedFile.parsedData?.extractedText && (
-                          <span className="flex items-center space-x-1">
-                            <span className="font-semibold">{language === 'ko' ? '문자' : 'Characters'}:</span>
-                            <span className="bg-white px-2 py-0.5 rounded-full font-medium">
-                              {selectedFile.parsedData.extractedText.length.toLocaleString()}
-                            </span>
-                          </span>
-                        )}
-                        <span className="flex items-center space-x-1">
-                          <span className="font-semibold">{language === 'ko' ? '유형' : 'Type'}:</span>
-                          <span className="bg-white px-2 py-0.5 rounded-full font-medium uppercase">
-                            {selectedFile.type}
-                          </span>
-                        </span>
-                      </div>
+                      <p className="text-sm text-gray-800 leading-relaxed font-medium">
+                        {naturalSummary.summary}
+                      </p>
                     </div>
                   </div>
                 </div>
 
-                {/* 핵심 요약 (하이라이트) */}
-                <div className="bg-white rounded-lg p-5 shadow-sm border-l-4 border-indigo-600">
-                  <h3 className="text-xs font-bold text-indigo-700 mb-3 uppercase tracking-wide flex items-center space-x-2">
-                    <span>💡</span>
-                    <span>{language === 'ko' ? '핵심 요약' : 'Key Summary'}</span>
-                  </h3>
-                  <p className="text-base text-gray-900 leading-relaxed font-medium">
-                    {naturalSummary.summary}
-                  </p>
+                {/* NotebookLM 스타일 주요 내용 리스트 */}
+                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <List className="w-4 h-4 text-gray-600" />
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                      {language === 'ko' ? '주요 내용' : 'Key Points'}
+                    </h3>
+                  </div>
+                  <div className="space-y-3">
+                    {naturalSummary.keyPoints && naturalSummary.keyPoints.map((point, index) => (
+                      <div key={index} className="flex items-start space-x-3 group">
+                        <div className="flex-shrink-0 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
+                          {index + 1}
+                        </div>
+                        <p className="flex-1 text-sm text-gray-700 leading-relaxed pt-0.5">
+                          {point}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* 핵심 키워드 */}
-                <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200">
-                  <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">
-                    {language === 'ko' ? '핵심 키워드' : 'Key Keywords'}
+                {/* 핵심 키워드 태그 */}
+                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
+                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">
+                    {language === 'ko' ? '핵심 키워드' : 'Keywords'}
                   </h3>
                   <div className="flex flex-wrap gap-2">
-                    {naturalSummary.keywords.map((keyword, index) => (
+                    {naturalSummary.keywords && naturalSummary.keywords.map((keyword, index) => (
                       <span
                         key={index}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200 hover:bg-blue-100 transition-colors"
+                        className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all cursor-default"
                       >
                         {keyword}
                       </span>
@@ -414,14 +421,38 @@ const DataPreview = ({ selectedFile }) => {
                   </div>
                 </div>
 
-                {/* 구조 분석 */}
-                <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200">
-                  <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">
-                    {language === 'ko' ? '구조 분석' : 'Structure Analysis'}
-                  </h3>
-                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                    {naturalSummary.structure}
-                  </p>
+                {/* 문서 메타데이터 */}
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">{language === 'ko' ? '파일명' : 'File'}</span>
+                      <span className="text-gray-900 font-medium truncate max-w-[100px]" title={selectedFile.name}>
+                        {selectedFile.name}
+                      </span>
+                    </div>
+                    {selectedFile.parsedData?.pageCount && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">{language === 'ko' ? '페이지' : 'Pages'}</span>
+                        <span className="text-gray-900 font-medium">
+                          {selectedFile.parsedData.pageCount}
+                        </span>
+                      </div>
+                    )}
+                    {selectedFile.parsedData?.extractedText && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-500">{language === 'ko' ? '문자 수' : 'Characters'}</span>
+                        <span className="text-gray-900 font-medium">
+                          {selectedFile.parsedData.extractedText.length.toLocaleString()}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <span className="text-gray-500">{language === 'ko' ? '타입' : 'Type'}</span>
+                      <span className="text-gray-900 font-medium uppercase">
+                        {selectedFile.type}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </>
             ) : (

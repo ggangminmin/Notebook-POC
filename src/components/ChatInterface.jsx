@@ -103,15 +103,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             parts.push(node.substring(lastIndex, match.index))
           }
 
-          // CitationBadge 컴포넌트
+          // CitationBadge 컴포넌트 (썸네일 + 파일명 포함)
           const pageNumber = parseInt(match[1])
-          const pageText = sourceData?.pageTexts?.find(p => p.pageNumber === pageNumber)?.text || match[2]
+          const pageData = sourceData?.pageTexts?.find(p => p.pageNumber === pageNumber)
+          const pageText = pageData?.text || match[2]
+          const thumbnail = pageData?.thumbnail // 썸네일 이미지 (Base64)
+          const fileName = sourceData?.fileName || sourceData?.name || '문서' // 파일명
 
           parts.push(
             <CitationBadge
               key={`cite-${pageNumber}-${match.index}`}
               pageNumber={pageNumber}
               text={pageText}
+              thumbnail={thumbnail}
+              fileName={fileName}
               onPageClick={handlePageClick}
             />
           )

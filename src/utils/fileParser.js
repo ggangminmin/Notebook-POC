@@ -6,14 +6,37 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString()
 
-// PDF 파일에서 텍스트 추출 (페이지별 메타데이터 포함)
+// PDF 페이지를 이미지로 변환 (썸네일용)
+const renderPDFPageToImage = async (page, scale = 0.5) => {
+  try {
+    const viewport = page.getViewport({ scale })
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    canvas.width = viewport.width
+    canvas.height = viewport.height
+
+    await page.render({
+      canvasContext: context,
+      viewport: viewport
+    }).promise
+
+    // Canvas를 Base64 이미지로 변환
+    return canvas.toDataURL('image/jpeg', 0.8)
+  } catch (error) {
+    console.error('[PDF 이미지 변환] 오류:', error)
+    return null
+  }
+}
+
+// PDF 파일에서 텍스트 추출 (페이지별 메타데이터 + 이미지 포함)
 const extractPDFText = async (file) => {
   try {
     console.log('[PDF 추출] 시작:', file.name, 'Size:', file.size)
     const arrayBuffer = await file.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
     let fullText = ''
-    const pageTexts = [] // 페이지별 텍스트 저장
+    const pageTexts = [] // 페이지별 텍스트 + 이미지 저장
+    const pageImages = [] // 페이지별 썸네일 이미지
 
     console.log('[PDF 추출] PDF 로드 성공, 총 페이지:', pdf.numPages)
 
@@ -38,27 +61,38 @@ const extractPDFText = async (file) => {
         .filter(str => str.trim().length > 0) // 빈 문자열 제거
         .join(' ')
 
-      // 페이지별 텍스트 저장
+      // 페이지를 이미지로 렌더링 (썸네일용)
+      const thumbnail = await renderPDFPageToImage(page, 0.3) // 작은 썸네일
+
+      // 페이지별 데이터 저장
       pageTexts.push({
         pageNumber: i,
         text: pageText,
-        wordCount: pageText.split(/\s+/).length
+        wordCount: pageText.split(/\s+/).length,
+        thumbnail: thumbnail // 썸네일 이미지 (Base64)
+      })
+
+      pageImages.push({
+        pageNumber: i,
+        thumbnail: thumbnail
       })
 
       fullText += pageText + '\n\n'
 
       if (i === 1) {
         console.log('[PDF 추출] 첫 페이지 추출 결과 (첫 200자):', pageText.substring(0, 200))
+        console.log('[PDF 추출] 썸네일 생성:', thumbnail ? '성공' : '실패')
       }
     }
 
     const finalText = fullText.trim()
-    console.log('[PDF 추출] 완료 - 총 길이:', finalText.length, '첫 500자:', finalText.substring(0, 500))
+    console.log('[PDF 추출] 완료 - 총 길이:', finalText.length, '썸네일 개수:', pageImages.length)
 
     return {
       text: finalText,
       pageCount: pdf.numPages,
-      pageTexts: pageTexts // 페이지별 텍스트 배열
+      pageTexts: pageTexts, // 페이지별 텍스트 + 썸네일 배열
+      pageImages: pageImages // 페이지별 썸네일만 별도 저장
     }
   } catch (error) {
     console.error('[PDF 추출] 오류:', error)
@@ -124,7 +158,9 @@ export const parseFileContent = async (file) => {
           fileSize: file.size,
           content: pdfData.text.substring(0, 500) + '...', // 미리보기용
           extractedText: pdfData.text, // 실제 전체 내용
-          pageTexts: pdfData.pageTexts, // 페이지별 텍스트 배열
+          pageTexts: pdfData.pageTexts, // 페이지별 텍스트 + 썸네일 배열
+          pageImages: pdfData.pageImages, // 페이지별 썸네일만 별도 저장
+          pageCount: pdfData.pageCount, // 전체 페이지 수
           metadata: {
             pages: pdfData.pageCount,
             author: 'Unknown',
@@ -137,6 +173,7 @@ export const parseFileContent = async (file) => {
           fileName: parsedData.fileName,
           extractedTextLength: parsedData.extractedText.length,
           pageTextsCount: parsedData.pageTexts.length,
+          pageImagesCount: parsedData.pageImages?.length || 0,
           extractedTextPreview: parsedData.extractedText.substring(0, 100)
         })
 
