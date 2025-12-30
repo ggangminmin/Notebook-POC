@@ -9,6 +9,7 @@ function AppContent() {
   const [sources, setSources] = useState([])
   const [selectedSourceIds, setSelectedSourceIds] = useState([])
   const [selectedModel, setSelectedModel] = useState('thinking') // 'instant' or 'thinking'
+  const [targetPdfPage, setTargetPdfPage] = useState(null)
   const { language, toggleLanguage, t } = useLanguage()
 
   // 선택된 소스들 가져오기
@@ -36,6 +37,12 @@ function AppContent() {
   const handleDeleteSource = (sourceId) => {
     setSources(prev => prev.filter(s => s.id !== sourceId))
     setSelectedSourceIds(prev => prev.filter(id => id !== sourceId))
+  }
+
+  const handlePageNavigate = (pageNumber) => {
+    setTargetPdfPage(pageNumber)
+    // TODO: 향후 PDF 뷰어 구현 시 사용
+    console.log('[페이지 이동 요청]', pageNumber)
   }
 
   return (
@@ -77,6 +84,7 @@ function AppContent() {
             selectedSources={selectedSources}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
+            onPageNavigate={handlePageNavigate}
           />
         </div>
 

@@ -11,6 +11,10 @@ const generateNaturalSummary = async (extractedText, language = 'ko') => {
     return null
   }
 
+  console.log('[DataPreview] 자연어 요약 생성 시작')
+  console.log('[DataPreview] extractedText 길이:', extractedText.length)
+  console.log('[DataPreview] extractedText 첫 200자:', extractedText.substring(0, 200))
+
   try {
     const prompt = language === 'ko'
       ? `다음 문서를 분석하여 아래 형식으로 요약해주세요:
@@ -63,17 +67,32 @@ Respond in JSON format:
       })
     })
 
+    if (!response.ok) {
+      console.error('[DataPreview] OpenAI API 오류:', response.status, response.statusText)
+      const errorData = await response.json()
+      console.error('[DataPreview] 에러 상세:', errorData)
+      return null
+    }
+
     const data = await response.json()
+    console.log('[DataPreview] OpenAI 응답:', data)
+
     const content = data.choices[0].message.content.trim()
+    console.log('[DataPreview] GPT 응답 내용:', content)
 
     // JSON 파싱
     try {
       // JSON 코드 블록 제거
       const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/) || content.match(/\{[\s\S]*\}/)
       const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : content
-      return JSON.parse(jsonStr)
+      console.log('[DataPreview] 파싱할 JSON:', jsonStr)
+
+      const parsed = JSON.parse(jsonStr)
+      console.log('[DataPreview] 파싱 성공:', parsed)
+      return parsed
     } catch (e) {
       console.error('[DataPreview] JSON 파싱 실패:', e)
+      console.error('[DataPreview] 파싱 시도한 내용:', content)
       return null
     }
   } catch (error) {
@@ -90,14 +109,17 @@ const DataPreview = ({ selectedFile }) => {
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const { t, language } = useLanguage()
 
-  // 파일이 변경되면 자연어 요약 생성
+  // 파일이 변경되면 자연어 요약 생성 (viewMode 변경 시에는 재생성하지 않음)
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedFile?.parsedData?.extractedText) {
+        console.log('[DataPreview] extractedText 없음, 요약 생성 건너뜀')
         setNaturalSummary(null)
+        setIsLoadingSummary(false)
         return
       }
 
+      console.log('[DataPreview] 자연어 요약 생성 시작 - 파일:', selectedFile.name)
       setIsLoadingSummary(true)
       const summary = await generateNaturalSummary(
         selectedFile.parsedData.extractedText,
@@ -107,10 +129,14 @@ const DataPreview = ({ selectedFile }) => {
       setIsLoadingSummary(false)
     }
 
-    if (viewMode === 'natural') {
+    // 파일이 선택되고 자연어 모드일 때만 요약 생성
+    if (selectedFile) {
       loadSummary()
+    } else {
+      setNaturalSummary(null)
+      setIsLoadingSummary(false)
     }
-  }, [selectedFile, language, viewMode])
+  }, [selectedFile?.id, language]) // viewMode 제거, selectedFile.id로 변경하여 파일 변경 시에만 재생성
 
   const handleCopyToClipboard = async () => {
     if (!selectedFile?.parsedData) return
@@ -325,12 +351,48 @@ const DataPreview = ({ selectedFile }) => {
               </div>
             ) : naturalSummary ? (
               <>
-                {/* 문서 요약 */}
-                <div className="bg-white rounded-lg p-5 shadow-sm border border-gray-200">
-                  <h3 className="text-xs font-semibold text-gray-500 mb-3 uppercase tracking-wide">
-                    {language === 'ko' ? '문서 요약' : 'Document Summary'}
+                {/* 문서 제목 및 메타데이터 */}
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg p-5 shadow-sm border border-blue-200">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h3 className="text-lg font-bold text-gray-900 mb-2">
+                        {selectedFile.name}
+                      </h3>
+                      <div className="flex items-center space-x-4 text-xs text-gray-600">
+                        {selectedFile.parsedData?.pageCount && (
+                          <span className="flex items-center space-x-1">
+                            <span className="font-semibold">{language === 'ko' ? '페이지' : 'Pages'}:</span>
+                            <span className="bg-white px-2 py-0.5 rounded-full font-medium">
+                              {selectedFile.parsedData.pageCount}
+                            </span>
+                          </span>
+                        )}
+                        {selectedFile.parsedData?.extractedText && (
+                          <span className="flex items-center space-x-1">
+                            <span className="font-semibold">{language === 'ko' ? '문자' : 'Characters'}:</span>
+                            <span className="bg-white px-2 py-0.5 rounded-full font-medium">
+                              {selectedFile.parsedData.extractedText.length.toLocaleString()}
+                            </span>
+                          </span>
+                        )}
+                        <span className="flex items-center space-x-1">
+                          <span className="font-semibold">{language === 'ko' ? '유형' : 'Type'}:</span>
+                          <span className="bg-white px-2 py-0.5 rounded-full font-medium uppercase">
+                            {selectedFile.type}
+                          </span>
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 핵심 요약 (하이라이트) */}
+                <div className="bg-white rounded-lg p-5 shadow-sm border-l-4 border-indigo-600">
+                  <h3 className="text-xs font-bold text-indigo-700 mb-3 uppercase tracking-wide flex items-center space-x-2">
+                    <span>💡</span>
+                    <span>{language === 'ko' ? '핵심 요약' : 'Key Summary'}</span>
                   </h3>
-                  <p className="text-base text-gray-900 font-semibold leading-relaxed">
+                  <p className="text-base text-gray-900 leading-relaxed font-medium">
                     {naturalSummary.summary}
                   </p>
                 </div>
@@ -344,7 +406,7 @@ const DataPreview = ({ selectedFile }) => {
                     {naturalSummary.keywords.map((keyword, index) => (
                       <span
                         key={index}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm font-medium"
+                        className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-sm font-medium border border-blue-200 hover:bg-blue-100 transition-colors"
                       >
                         {keyword}
                       </span>

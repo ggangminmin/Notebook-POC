@@ -6,13 +6,14 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString()
 
-// PDF 파일에서 텍스트 추출
+// PDF 파일에서 텍스트 추출 (페이지별 메타데이터 포함)
 const extractPDFText = async (file) => {
   try {
     console.log('[PDF 추출] 시작:', file.name, 'Size:', file.size)
     const arrayBuffer = await file.arrayBuffer()
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
     let fullText = ''
+    const pageTexts = [] // 페이지별 텍스트 저장
 
     console.log('[PDF 추출] PDF 로드 성공, 총 페이지:', pdf.numPages)
 
@@ -37,6 +38,13 @@ const extractPDFText = async (file) => {
         .filter(str => str.trim().length > 0) // 빈 문자열 제거
         .join(' ')
 
+      // 페이지별 텍스트 저장
+      pageTexts.push({
+        pageNumber: i,
+        text: pageText,
+        wordCount: pageText.split(/\s+/).length
+      })
+
       fullText += pageText + '\n\n'
 
       if (i === 1) {
@@ -49,7 +57,8 @@ const extractPDFText = async (file) => {
 
     return {
       text: finalText,
-      pageCount: pdf.numPages
+      pageCount: pdf.numPages,
+      pageTexts: pageTexts // 페이지별 텍스트 배열
     }
   } catch (error) {
     console.error('[PDF 추출] 오류:', error)
@@ -115,6 +124,7 @@ export const parseFileContent = async (file) => {
           fileSize: file.size,
           content: pdfData.text.substring(0, 500) + '...', // 미리보기용
           extractedText: pdfData.text, // 실제 전체 내용
+          pageTexts: pdfData.pageTexts, // 페이지별 텍스트 배열
           metadata: {
             pages: pdfData.pageCount,
             author: 'Unknown',
@@ -126,6 +136,7 @@ export const parseFileContent = async (file) => {
           fileType: parsedData.fileType,
           fileName: parsedData.fileName,
           extractedTextLength: parsedData.extractedText.length,
+          pageTextsCount: parsedData.pageTexts.length,
           extractedTextPreview: parsedData.extractedText.substring(0, 100)
         })
 

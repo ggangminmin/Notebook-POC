@@ -300,6 +300,10 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 - **핵심 명사, 기능명, 고유 대명사, 중요 수치**는 반드시 \`**굵게**\` 처리
 - 문단 구분점에는 \`###\` 헤더 사용하여 시각적 위계 구성
 - 3줄 이상의 나열은 반드시 글머리 기호(Bullet Points) 사용
+- **리스트 형식 규칙**: "1. **서론**" 또는 "- **핵심 내용**"처럼 숫자/기호와 텍스트를 같은 줄에 작성 (줄바꿈 금지)
+- **인용 태그 규칙 (PDF 문서인 경우)**: 특정 페이지의 내용을 인용할 때 \`<cite page="페이지번호">인용 텍스트</cite>\` 형식 사용
+  - 예: "문서 3페이지에 따르면 <cite page="3">AI 시장 규모는 500조원</cite>으로 추정됩니다"
+  - 인용 태그는 해당 페이지의 실제 내용만 포함하고, 페이지 번호는 정확해야 함
 - 예: "이 서비스의 핵심은 **AI 기술**, **24시간 운영**, **99.9% 정확도**입니다"
 
 **핵심 규칙:**
@@ -319,26 +323,29 @@ ${documentText}
 
 ### [핵심 요약]
 질문에 대한 답변을 **1~2줄로 강렬하게 요약** (핵심 단어는 굵게)
-- 예: "이 문서는 **삼성전자의 2024년 실적**을 다루며, **영업이익 35조원**, **시장점유율 1위** 달성이 핵심입니다"
+
+예: "이 문서는 **삼성전자의 2024년 실적**을 다루며, **영업이익 35조원**, **시장점유율 1위** 달성이 핵심입니다"
 
 ### [상세 분석]
-문서 데이터를 기반으로 한 **세부 설명** (리스트 형식 필수):
+문서 데이터를 기반으로 한 **세부 설명** (리스트 형식 필수, 각 항목은 한 줄로):
 
 **📄 직접 근거**
-- 문서에 명시된 내용 (큰따옴표로 인용, 핵심 단어 굵게)
-- 예: 문서에 따르면 "**반도체 부문 실적이 전년 대비 40% 증가**"했습니다
+1. 문서에 명시된 내용 (큰따옴표로 인용, 핵심 단어 굵게)
+2. 예: 문서에 따르면 "**반도체 부문 실적이 전년 대비 40% 증가**"했습니다
 
 **🔍 맥락 기반 분석** [문서 맥락 기반 추론]
-- 문서의 여러 정보를 종합한 통찰 (추론 태그 명시)
-- 예: 문서 전반에 걸쳐 **AI 칩**, **5nm 공정**, **글로벌 시장**이 반복 언급되므로, **기술 선도 전략**으로 파악됩니다
+1. 문서의 여러 정보를 종합한 통찰 (추론 태그 명시)
+2. 예: 문서 전반에 걸쳐 **AI 칩**, **5nm 공정**, **글로벌 시장**이 반복 언급되므로, **기술 선도 전략**으로 파악됩니다
 
 ### [AI 인사이트/추론]
 명시되지 않았지만 문서 흐름상 유추 가능한 정보나 제언
-- 예: 이러한 실적 추세로 볼 때, **2025년 목표 달성 가능성**이 높으며, **투자 확대** 전략이 예상됩니다 [문서 맥락 기반 추론]
+
+예: 이러한 실적 추세로 볼 때, **2025년 목표 달성 가능성**이 높으며, **투자 확대** 전략이 예상됩니다 [문서 맥락 기반 추론]
 
 ### [출처/참조]
 답변 근거가 된 문서의 **섹션이나 데이터 위치** 명시
-- 예: **2장 재무 현황**, **3페이지 실적 표**, **경영진 인터뷰** 섹션에서 도출
+
+예: **2장 재무 현황**, **3페이지 실적 표**, **경영진 인터뷰** 섹션에서 도출
 
 **특별 규칙:**
 - 목차, 구조, 전체 요약 등을 물어볼 경우: 문서 전체를 분석하여 **[가상 목차]** 또는 **[구조 분석]**을 직접 생성하세요
@@ -362,6 +369,10 @@ ${documentText}
 - **Key nouns, feature names, proper nouns, important numbers** must be \`**bolded**\`
 - Use \`###\` headers at paragraph breaks to create visual hierarchy
 - Lists of 3+ items must use bullet points
+- **List Format Rule**: Write number/symbol and text on the same line like "1. **Introduction**" or "- **Key Point**" (no line breaks)
+- **Citation Tag Rule (for PDF documents)**: When citing content from a specific page, use \`<cite page="page_number">quoted text</cite>\` format
+  - Example: "According to page 3, <cite page="3">AI market size is estimated at $500 billion</cite>"
+  - Citation tags must contain only actual content from that page, and page numbers must be accurate
 - Example: "The core is **AI technology**, **24/7 operation**, **99.9% accuracy**"
 
 **Core Rules:**
@@ -381,26 +392,29 @@ ${documentText}
 
 ### [Core Summary]
 Answer the question in **1-2 powerful summary sentences** (key words bolded)
-- Example: "This document covers **Samsung's 2024 performance**, with **operating profit of 35 trillion won** and **market share #1** as key achievements"
+
+Example: "This document covers **Samsung's 2024 performance**, with **operating profit of 35 trillion won** and **market share #1** as key achievements"
 
 ### [Detailed Analysis]
-Detailed explanation based on document data (**list format required**):
+Detailed explanation based on document data (**list format required, each item on one line**):
 
 **📄 Direct Evidence**
-- Information explicitly stated in the document (quoted, key words bolded)
-- Example: According to the document, "**semiconductor division performance increased by 40% year-over-year**"
+1. Information explicitly stated in the document (quoted, key words bolded)
+2. Example: According to the document, "**semiconductor division performance increased by 40% year-over-year**"
 
 **🔍 Context-Based Analysis** [Context-Based Reasoning]
-- Insights from synthesizing document information (reasoning tag specified)
-- Example: Throughout the document, **AI chips**, **5nm process**, **global market** are repeatedly mentioned, indicating a **technology leadership strategy**
+1. Insights from synthesizing document information (reasoning tag specified)
+2. Example: Throughout the document, **AI chips**, **5nm process**, **global market** are repeatedly mentioned, indicating a **technology leadership strategy**
 
 ### [AI Insights/Reasoning]
 Information or recommendations that can be inferred from document flow but not explicitly stated
-- Example: Based on this performance trend, **2025 goal achievement likelihood** is high, and **investment expansion** strategy is expected [Context-Based Reasoning]
+
+Example: Based on this performance trend, **2025 goal achievement likelihood** is high, and **investment expansion** strategy is expected [Context-Based Reasoning]
 
 ### [Source/Reference]
 Specify **section or data location** in the document that served as basis
-- Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table**, **Executive Interview** section
+
+Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table**, **Executive Interview** section
 
 **Special Rules:**
 - When asked about table of contents, structure, or overall summary: Analyze the entire document to generate a **[Virtual Table of Contents]** or **[Structure Analysis]**

@@ -34,3 +34,24 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #555;
 }
+
+/* NotebookLM 스타일 마크다운 리스트 (한 줄로 표시) */
+.markdown-content ol > li > p,
+.markdown-content ul > li > p {
+  display: inline;
+  margin: 0;
+}
+
+.markdown-content ol > li,
+.markdown-content ul > li {
+  margin-bottom: 0.25rem;
+}
+
+.markdown-content ol > li::marker {
+  font-weight: 400;
+}
+
+/* 리스트 아이템 안의 모든 블록 요소를 인라인으로 */
+.markdown-content li > * {
+  display: inline;
+}

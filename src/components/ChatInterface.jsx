@@ -4,8 +4,9 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
+import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onPageNavigate }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -21,6 +22,126 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // 인용 태그를 파싱하여 페이지 번호 추출
+  const parseCitations = (text) => {
+    const citations = []
+    const regex = /<cite page="(\d+)">(.*?)<\/cite>/g
+    let match
+
+    while ((match = regex.exec(text)) !== null) {
+      citations.push({
+        pageNumber: parseInt(match[1]),
+        text: match[2]
+      })
+    }
+
+    return citations
+  }
+
+  // 인용 태그를 CitationBadge로 변환
+  const renderContentWithCitations = (content, sourceData) => {
+    if (!content) return null
+
+    // <cite> 태그가 있는지 확인
+    if (!content.includes('<cite')) {
+      return content
+    }
+
+    const parts = []
+    let lastIndex = 0
+    const regex = /<cite page="(\d+)">(.*?)<\/cite>/g
+    let match
+
+    while ((match = regex.exec(content)) !== null) {
+      // 태그 이전 텍스트 추가
+      if (match.index > lastIndex) {
+        parts.push(content.substring(lastIndex, match.index))
+      }
+
+      // CitationBadge 추가
+      const pageNumber = parseInt(match[1])
+      const pageText = sourceData?.pageTexts?.find(p => p.pageNumber === pageNumber)?.text || match[2]
+
+      parts.push(
+        `[p.${pageNumber}]`
+      )
+
+      lastIndex = match.index + match[0].length
+    }
+
+    // 마지막 남은 텍스트 추가
+    if (lastIndex < content.length) {
+      parts.push(content.substring(lastIndex))
+    }
+
+    return parts.join('')
+  }
+
+  // 페이지 이동 핸들러
+  const handlePageClick = (pageNumber) => {
+    if (onPageNavigate) {
+      onPageNavigate(pageNumber)
+    }
+  }
+
+  // 텍스트에서 인용 태그를 찾아 CitationBadge로 변환
+  const processTextWithCitations = (children, sourceData) => {
+    if (!children) return children
+
+    const processNode = (node) => {
+      if (typeof node === 'string') {
+        // <cite page="N">text</cite> 패턴 찾기
+        const citationRegex = /<cite page="(\d+)">(.*?)<\/cite>/g
+        const parts = []
+        let lastIndex = 0
+        let match
+
+        while ((match = citationRegex.exec(node)) !== null) {
+          // 인용 태그 이전 텍스트
+          if (match.index > lastIndex) {
+            parts.push(node.substring(lastIndex, match.index))
+          }
+
+          // CitationBadge 컴포넌트
+          const pageNumber = parseInt(match[1])
+          const pageText = sourceData?.pageTexts?.find(p => p.pageNumber === pageNumber)?.text || match[2]
+
+          parts.push(
+            <CitationBadge
+              key={`cite-${pageNumber}-${match.index}`}
+              pageNumber={pageNumber}
+              text={pageText}
+              onPageClick={handlePageClick}
+            />
+          )
+
+          lastIndex = match.index + match[0].length
+        }
+
+        // 마지막 남은 텍스트
+        if (lastIndex < node.length) {
+          parts.push(node.substring(lastIndex))
+        }
+
+        return parts.length > 0 ? parts : node
+      } else if (Array.isArray(node)) {
+        return node.map((child, idx) => <span key={idx}>{processNode(child)}</span>)
+      } else if (node?.props?.children) {
+        return {
+          ...node,
+          props: {
+            ...node.props,
+            children: processNode(node.props.children)
+          }
+        }
+      }
+
+      return node
+    }
+
+    return processNode(children)
+  }
 
   // 소스 선택이 변경되면 자동 요약 및 추천 질문 생성
   useEffect(() => {
@@ -161,7 +282,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         source: response.source,
         foundInDocument: response.foundInDocument,
         matchedKeywords: response.matchedKeywords,
-        isReasoningBased: response.isReasoningBased // 추론 기반 답변 플래그
+        isReasoningBased: response.isReasoningBased, // 추론 기반 답변 플래그
+        sourceData: selectedSources.length > 0 ? selectedSources[0].parsedData : null // 인용 태그 처리용
       }
 
       setMessages(prev => [...prev, aiMessage])
@@ -318,9 +440,24 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                         strong: ({node, ...props}) => <strong className="font-bold" style={{fontWeight: 700}} {...props} />,
                         h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-3 mb-2" {...props} />,
                         ul: ({node, ...props}) => <ul className="list-disc list-inside my-2 space-y-1" {...props} />,
-                        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-1" {...props} />,
-                        li: ({node, ...props}) => <li className="ml-2" {...props} />,
-                        p: ({node, ...props}) => <p className="my-1.5" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-0.5" {...props} />,
+                        li: ({node, children, ...props}) => (
+                          <li className="ml-2" {...props}>
+                            <span className="inline">{children}</span>
+                          </li>
+                        ),
+                        p: ({node, children, ...props}) => {
+                          // li 안의 p 태그는 inline으로 처리
+                          const isInsideList = node?.position?.start?.line &&
+                                               message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
+
+                          // 인용 태그 처리
+                          const processedChildren = processTextWithCitations(children, message.sourceData)
+
+                          return isInsideList ?
+                            <span {...props}>{processedChildren}</span> :
+                            <p className="my-1.5" {...props}>{processedChildren}</p>
+                        },
                       }}
                     >
                       {message.content}

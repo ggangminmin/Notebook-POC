@@ -43,6 +43,8 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
             console.log('파일 파싱 시작:', file.name)
             const parsedData = await parseFileContent(file)
             console.log('파일 파싱 완료:', file.name, parsedData)
+            console.log('parsedData.extractedText 존재:', !!parsedData.extractedText)
+            console.log('parsedData.extractedText 길이:', parsedData.extractedText?.length || 0)
             return {
               id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               name: file.name,
@@ -50,7 +52,8 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               fileType: file.type,
               size: file.size,
               uploadedAt: new Date().toISOString(),
-              parsedData: parsedData
+              parsedData: parsedData,
+              file: file // 원본 파일 객체 저장 (PDF 뷰어용)
             }
           } catch (error) {
             console.error('파일 파싱 오류:', error)

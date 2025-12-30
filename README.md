@@ -241,6 +241,59 @@ notebooklm-dashboard/
 
 ## 최근 업데이트
 
+### ✨ 2025-12-30: NotebookLM 스타일 인용 시스템 + UI 개선
+
+#### 📌 인용(Citation) 기능 구현
+- [x] **CitationBadge 컴포넌트**: 페이지 번호 인용 배지 생성
+  - 파란색 배지 디자인 (FileText 아이콘 + 페이지 번호)
+  - 호버 시 페이지 미리보기 툴팁 표시 (200자 제한)
+  - 클릭 시 페이지 이동 이벤트 트리거
+- [x] **인용 태그 파싱**: `<cite page="N">텍스트</cite>` 형식 자동 변환
+  - ChatInterface에서 Markdown 렌더링 시 CitationBadge로 치환
+  - PDF parsedData의 pageTexts 배열 활용
+- [x] **PDF 페이지 메타데이터**: fileParser.js에 페이지별 텍스트 저장
+  - `pageTexts` 배열에 각 페이지 번호, 텍스트, 단어 수 저장
+  - GPT 프롬프트에 인용 태그 규칙 추가
+- [x] **PDFViewer 컴포넌트**: PDF 페이지 뷰어 구현 (미사용)
+  - PDF.js로 캔버스 렌더링
+  - 페이지 이동, 줌 인/아웃 기능
+  - 하이라이트 효과 (3초간 노란색 강조)
+
+#### 🎨 스튜디오 패널 UI 대폭 개선
+- [x] **문서 제목 및 메타데이터 카드**
+  - 그라데이션 배경 (파란색 → 남색)
+  - 큰 굵은 제목 (text-lg font-bold)
+  - 메타데이터 배지: 페이지 수, 문자 수, 파일 유형
+  - 흰색 둥근 배지 스타일 (bg-white px-2 py-0.5 rounded-full)
+- [x] **핵심 요약 섹션 강화**
+  - 💡 아이콘 추가
+  - 왼쪽 남색 테두리 (4px, border-l-4 border-indigo-600)
+  - "핵심 요약" 제목으로 변경 (문서 요약 → 핵심 요약)
+  - 더 큰 폰트 (text-base) + 굵은 글씨 (font-medium)
+- [x] **키워드 UI 개선**
+  - 파란색 테두리 추가 (border-blue-200)
+  - 호버 효과 (hover:bg-blue-100)
+  - 더 부드러운 색상 전환 (transition-colors)
+
+#### 🔧 채팅 히스토리 유지 개선
+- [x] **DataPreview useEffect 최적화**
+  - viewMode를 의존성 배열에서 제거
+  - `[selectedFile?.id, language]`로 변경
+  - 자연어/JSON 모드 전환 시 채팅 초기화 방지
+- [x] **디버깅 로그 강화**
+  - extractedText 존재 여부 및 길이 추적
+  - GPT API 응답 상태 로그
+  - JSON 파싱 과정 상세 로그
+
+#### 📝 리스트 형식 개선 (NotebookLM 스타일)
+- [x] **한 줄 리스트 렌더링**: "1. **서론**" 형식으로 표시
+  - CSS 규칙 추가 (index.css): `li > p { display: inline; }`
+  - ReactMarkdown 컴포넌트 커스터마이징
+  - GPT 프롬프트에 리스트 규칙 명시
+- [x] **인용 태그와 리스트 통합 처리**
+  - `processTextWithCitations()` 함수로 텍스트 내 인용 태그 변환
+  - 리스트 아이템 내에서도 인용 배지 정상 렌더링
+
 ### 🎨 2025-12-26: 스튜디오 패널 NotebookLM 스타일 업그레이드
 
 - [x] **자연어 문서 분석 모드 (기본값)**: GPT-4o 기반 자동 분석
