@@ -4,14 +4,14 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
-// GPT 모델 설정
+// GPT 모델 설정 (2025년 12월 기준 최신)
 const GPT_MODELS = {
-  INSTANT: 'gpt-4o-mini',  // 빠른 응답 (실제 모델)
-  THINKING: 'gpt-4o'       // 심층 추론 (실제 모델)
+  INSTANT: 'gpt-5.1-chat-latest',  // 빠른 응답 (GPT-5.1 Instant - 적응형 추론)
+  THINKING: 'gpt-5.1'              // 심층 추론 (GPT-5.1 Thinking - 고급 추론)
 }
 
-// Gemini 모델 설정
-const GEMINI_MODEL = 'gemini-1.5-pro' // 고품질 분석용
+// Gemini 모델 설정 (2025년 12월 기준 최신)
+const GEMINI_MODEL = 'gemini-3-flash-preview' // Gemini 3 Flash (공식 Preview 버전 - 2025.12.17 출시)
 
 // Gemini AI 초기화
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
@@ -37,9 +37,19 @@ const isSmallTalk = (query) => {
 }
 
 // OpenAI API 호출
-const callOpenAI = async (messages, temperature = 0.3, useThinking = false) => {
+// GPT-5.1은 temperature를 지원하지 않음 (고정값 1)
+const callOpenAI = async (messages, useThinking = false) => {
   try {
     const model = useThinking ? GPT_MODELS.THINKING : GPT_MODELS.INSTANT
+
+    // GPT-5.1은 temperature, top_p, presence_penalty, frequency_penalty 모두 미지원
+    // 내부적으로 temperature=1 고정
+    // 심층 분석 모드는 더 긴 응답 허용 (4000 토큰)
+    const requestBody = {
+      model: model,
+      messages: messages,
+      max_completion_tokens: useThinking ? 4000 : 2000  // 심층 분석은 4000, 일반은 2000
+    }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -47,12 +57,8 @@ const callOpenAI = async (messages, temperature = 0.3, useThinking = false) => {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
-      body: JSON.stringify({
-        model: model,
-        messages: messages,
-        temperature: temperature,
-        max_tokens: 2000
-      })
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(120000)  // 120초 타임아웃 (심층 분석용)
     })
 
     if (!response.ok) {
@@ -61,7 +67,12 @@ const callOpenAI = async (messages, temperature = 0.3, useThinking = false) => {
     }
 
     const data = await response.json()
-    return data.choices[0].message.content
+
+    // 응답 길이 확인 및 로깅
+    const content = data.choices[0].message.content
+    console.log(`[OpenAI ${useThinking ? 'Thinking' : 'Instant'}] 응답 길이: ${content.length}자`)
+
+    return content
   } catch (error) {
     console.error('OpenAI API 오류:', error)
     throw error
@@ -69,7 +80,7 @@ const callOpenAI = async (messages, temperature = 0.3, useThinking = false) => {
 }
 
 // Gemini API 호출
-const callGemini = async (messages, temperature = 0.3) => {
+const callGemini = async (messages, temperature = 0.3, isDeepAnalysis = false) => {
   try {
     if (!genAI) {
       throw new Error('Gemini API 키가 설정되지 않았습니다')
@@ -90,14 +101,31 @@ const callGemini = async (messages, temperature = 0.3) => {
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
       generationConfig: {
         temperature: temperature,
-        maxOutputTokens: 2000,
+        maxOutputTokens: isDeepAnalysis ? 4000 : 2000,  // 심층 분석은 4000, 일반은 2000
       },
     })
 
     const response = result.response
-    return response.text()
+    const content = response.text()
+
+    // 응답 길이 확인 및 로깅
+    console.log(`[Gemini ${isDeepAnalysis ? 'Deep Analysis' : 'Standard'}] 응답 길이: ${content.length}자`)
+
+    return content
   } catch (error) {
     console.error('Gemini API 오류:', error)
+
+    // 사용자 친화적 에러 메시지 처리
+    if (error.message?.includes('404') || error.message?.includes('not found')) {
+      throw new Error(`지원하지 않는 Gemini 모델 설정입니다 (${GEMINI_MODEL}). 모델명을 확인해주세요.`)
+    } else if (error.message?.includes('API key')) {
+      throw new Error('Gemini API 키가 유효하지 않습니다. 환경 변수를 확인해주세요.')
+    } else if (error.message?.includes('quota') || error.message?.includes('limit')) {
+      throw new Error('Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.')
+    } else if (error.message?.includes('permission')) {
+      throw new Error('Gemini API 키에 해당 모델 사용 권한이 없습니다.')
+    }
+
     throw error
   }
 }
@@ -148,7 +176,7 @@ ${documentText.substring(0, 3000)}
       { role: 'user', content: language === 'ko' ? '이 문서를 요약해주세요.' : 'Please summarize this document.' }
     ]
 
-    const summary = await callOpenAI(messages, 0.3, false) // Instant 모델
+    const summary = await callOpenAI(messages, false) // Instant 모델 (GPT-5.1)
     return summary
 
   } catch (error) {
@@ -205,7 +233,7 @@ ${documentText.substring(0, 3000)}
       { role: 'user', content: language === 'ko' ? '질문 3개를 생성해주세요.' : 'Generate 3 questions.' }
     ]
 
-    const response = await callOpenAI(messages, 0.5, false) // Instant 모델
+    const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.1)
 
     // JSON 파싱 시도
     try {
@@ -248,7 +276,7 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       // 일상 대화는 항상 빠른 모델 사용
       const answer = selectedModel === 'gemini'
         ? await callGemini(messages, 0.8)
-        : await callOpenAI(messages, 0.8, false)
+        : await callOpenAI(messages, false)
 
       return {
         answer: answer,
@@ -293,9 +321,25 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       }
     }
 
-    // 모든 문서 텍스트 종합
-    const combinedDocumentText = allTexts.map(item =>
-      `[출처: ${item.name}]\n${item.text}`
+    // 페이지별 텍스트 정보 추출 (페이지 번호 메타데이터 포함)
+    const pageTextInfo = documentContextArray.map(doc => {
+      const pageTexts = doc.parsedData?.pageTexts || []
+      if (pageTexts.length > 0) {
+        // PDF 파일: 페이지별로 구분된 텍스트
+        console.log(`[페이지 데이터] PDF 파일 "${doc.name}" - 총 ${pageTexts.length}개 페이지`)
+        return pageTexts.map(page =>
+          `[페이지 ${page.pageNumber}]\n${page.text}`
+        ).join('\n\n')
+      } else {
+        // 일반 텍스트 파일: 전체 텍스트
+        console.log(`[페이지 데이터] 텍스트 파일 "${doc.name}" - pageTexts 배열 없음, extractedText 사용`)
+        return doc.parsedData?.extractedText || ''
+      }
+    }).filter(text => text.length > 0)
+
+    // 모든 문서 텍스트 종합 (페이지 정보 포함)
+    const combinedDocumentText = allTexts.map((item, index) =>
+      `[출처: ${item.name}]\n${pageTextInfo[index] || item.text}`
     ).join('\n\n---\n\n')
 
     const sourceNames = allTexts.map(item => item.name).join(', ')
@@ -349,22 +393,28 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 
 **📌 인용 배지 규칙 (최우선 - 매우 중요! 강제 적용)**
 - **🔴 절대 규칙: 모든 답변에 반드시 인용 배지를 포함하세요!** 문서의 특정 내용을 언급할 때마다 페이지 번호를 [N] 형식으로 표시
+- **페이지 정보 활용**: 문서 텍스트에 "[페이지 N]" 마커가 포함되어 있으므로, 이를 기반으로 정확한 페이지 번호를 인용하세요
 - **간단한 형식**:
   - 단일 페이지: [페이지번호] 또는 <cite page="페이지번호">인용 텍스트</cite>
   - **범위 인용** (여러 페이지): [시작페이지-끝페이지] 형식 사용
+- **인용 배지 거부 금지**: "인용을 생성할 수 없습니다" 같은 답변은 절대 불가. 관련성이 가장 높은 페이지를 추론해서라도 반드시 배지 생성
 - **예시**:
   - "AI 시장 규모는 500조원으로 추정됩니다[3]"
   - "문서에 따르면 <cite page="5">반도체 부문 실적이 40% 증가</cite>했습니다"
   - "2024년 목표는 영업이익 35조원입니다[1]"
   - **"가격 정책에 대한 상세 설명이 제시되어 있습니다[11-14]"** (범위 인용)
   - **"1장부터 3장까지 서론이 이어집니다[1-3]"** (범위 인용)
+  - **"문서의 전체 맥락을 분석한 결과**, 주요 타겟은 B2B 시장으로 파악됩니다[5, 12, 18]"** (추론 기반 다중 인용)
 - **강제 요구사항 (100% 준수)**:
   - 답변의 모든 핵심 정보에 페이지 번호를 붙이세요 (최소 5-10개 이상)
-  - **텍스트 일치도가 낮아도 반드시 인용 추가**: 키워드 유사도, 주제 연관성, 문맥 흐름을 기반으로 가장 관련성 높은 페이지를 추론하여 배지 생성
+  - **🚨 추론 기반 배지 생성 (핵심!)**: 텍스트 일치도가 낮아도 반드시 인용 추가
+    * **"[문서 맥락 기반 추론]" 또는 "🔍 맥락 기반 분석" 섹션에도 페이지 배지 100% 필수!**
+    * 키워드 유사도, 주제 연관성, 문맥 흐름을 기반으로 가장 관련성 높은 페이지를 추론하여 배지 생성
+    * 추론의 근거가 된 페이지를 모두 나열 (예: [15, 23] 또는 [5-8, 12])
+    * 예: "문서 전반에 걸쳐 **AI**, **자동화**, **효율성** 키워드가 반복되므로[3, 7, 15, 23], 기술 혁신 중심 전략으로 파악됩니다"
   - **목차 생성 시**: 각 항목마다 해당 주제가 처음 등장하거나 가장 많이 다뤄지는 페이지를 자동 계산하여 배지 부착 필수
   - **요약 생성 시**: 각 문단/섹션마다 최소 2-3개의 페이지 번호 포함
   - 여러 파일이 선택된 경우, 각 파일의 정보를 명확히 구분하여 인용
-  - **추론 기반 답변도 인용 필수**: 추론의 근거가 된 페이지들을 모두 표시
   - **범위 인용 사용 규칙**: 특정 주제나 내용이 여러 페이지에 걸쳐 있다면 반드시 [시작-끝] 형식 사용
 - **인용 없는 답변은 절대 금지**: 모든 문장에 최소 1개 이상의 페이지 번호 포함 필수
 - **목차 특별 규칙**: "1. **서론**[1-3]" 또는 "- **핵심 내용**[5]" 형식으로 각 항목마다 반드시 페이지 범위 또는 대표 페이지 표시
@@ -397,13 +447,13 @@ ${documentText}
 2. 예: 문서에 따르면 "**반도체 부문 실적이 전년 대비 40% 증가**"했습니다
 
 **🔍 맥락 기반 분석** [문서 맥락 기반 추론]
-1. 문서의 여러 정보를 종합한 통찰 (추론 태그 명시)
-2. 예: 문서 전반에 걸쳐 **AI 칩**, **5nm 공정**, **글로벌 시장**이 반복 언급되므로, **기술 선도 전략**으로 파악됩니다
+1. 문서의 여러 정보를 종합한 통찰 (추론 태그 명시, **페이지 배지 필수**)
+2. 예: 문서 전반에 걸쳐 **AI 칩**, **5nm 공정**, **글로벌 시장**이 반복 언급되므로[3, 7, 15, 23], **기술 선도 전략**으로 파악됩니다
 
 ### [AI 인사이트/추론]
-명시되지 않았지만 문서 흐름상 유추 가능한 정보나 제언
+명시되지 않았지만 문서 흐름상 유추 가능한 정보나 제언 (**페이지 배지 필수**)
 
-예: 이러한 실적 추세로 볼 때, **2025년 목표 달성 가능성**이 높으며, **투자 확대** 전략이 예상됩니다 [문서 맥락 기반 추론]
+예: 이러한 실적 추세로 볼 때[5, 12, 18], **2025년 목표 달성 가능성**이 높으며, **투자 확대** 전략이 예상됩니다 [문서 맥락 기반 추론]
 
 ### [출처/참조]
 답변 근거가 된 문서의 **섹션이나 데이터 위치** 명시
@@ -441,22 +491,28 @@ ${documentText}
 
 **📌 Citation Badge Rules (Top Priority - Very Important! Mandatory)**
 - **🔴 Absolute Rule: Always include citation badges in every answer!** When mentioning specific content from the document, mark page numbers in [N] format
+- **Page information usage**: Document text includes "[페이지 N]" markers, so cite accurate page numbers based on these
 - **Simple format**:
   - Single page: [page_number] or <cite page="page_number">quoted text</cite>
   - **Range citation** (multiple pages): Use [start_page-end_page] format
+- **Citation refusal prohibited**: Never answer "cannot generate citations". Infer most relevant pages and always generate badges
 - **Examples**:
   - "AI market size is estimated at $500 billion[3]"
   - "According to the document, <cite page="5">semiconductor division performance increased by 40%</cite>"
   - "2024 target is operating profit of $35 billion[1]"
   - **"Detailed pricing policy is presented[11-14]"** (range citation)
   - **"Introduction continues from chapter 1 to 3[1-3]"** (range citation)
+  - **"Based on analyzing the document's overall context**, main target is identified as B2B market[5, 12, 18]"** (reasoning-based multiple citations)
 - **Mandatory Requirements (100% Compliance)**:
   - Add page numbers to all key information in your answer (minimum 5-10 citations)
-  - **Add citations even with low text match**: Infer most relevant pages based on keyword similarity, topic relevance, and contextual flow to generate badges
+  - **🚨 Reasoning-Based Badge Generation (Critical!)**: Add citations even with low text match
+    * **Page badges 100% mandatory in "[Context-Based Reasoning]" or "🔍 Context-Based Analysis" sections!**
+    * Infer most relevant pages based on keyword similarity, topic relevance, and contextual flow to generate badges
+    * List all pages that served as basis for reasoning (e.g., [15, 23] or [5-8, 12])
+    * Example: "Throughout the document, **AI**, **automation**, **efficiency** keywords recur[3, 7, 15, 23], indicating technology innovation-focused strategy"
   - **When generating Table of Contents**: Auto-calculate and attach page badges for each item based on where the topic first appears or is most discussed
   - **When generating summaries**: Include minimum 2-3 page numbers per paragraph/section
   - When multiple files are selected, clearly distinguish and cite information from each file
-  - **Citations required for reasoning-based answers**: Display all pages that served as basis for reasoning
   - **Range citation usage rule**: If a topic or content spans multiple pages, always use [start-end] format
 - **Answers without citations are strictly prohibited**: Every sentence must include at least 1 page number
 - **Special TOC Rule**: Format each item as "1. **Introduction**[1-3]" or "- **Key Content**[5]" with page range or representative page mandatory
@@ -489,13 +545,13 @@ Detailed explanation based on document data (**list format required, each item o
 2. Example: According to the document, "**semiconductor division performance increased by 40% year-over-year**"
 
 **🔍 Context-Based Analysis** [Context-Based Reasoning]
-1. Insights from synthesizing document information (reasoning tag specified)
-2. Example: Throughout the document, **AI chips**, **5nm process**, **global market** are repeatedly mentioned, indicating a **technology leadership strategy**
+1. Insights from synthesizing document information (reasoning tag specified, **page badges mandatory**)
+2. Example: Throughout the document, **AI chips**, **5nm process**, **global market** are repeatedly mentioned[3, 7, 15, 23], indicating a **technology leadership strategy**
 
 ### [AI Insights/Reasoning]
-Information or recommendations that can be inferred from document flow but not explicitly stated
+Information or recommendations that can be inferred from document flow but not explicitly stated (**page badges mandatory**)
 
-Example: Based on this performance trend, **2025 goal achievement likelihood** is high, and **investment expansion** strategy is expected [Context-Based Reasoning]
+Example: Based on this performance trend[5, 12, 18], **2025 goal achievement likelihood** is high, and **investment expansion** strategy is expected [Context-Based Reasoning]
 
 ### [Source/Reference]
 Specify **section or data location** in the document that served as basis
@@ -521,11 +577,18 @@ Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table
 
     // 선택된 모델에 따라 API 호출
     let answer
+    const useThinking = selectedModel === 'thinking'
+
     if (selectedModel === 'gemini') {
-      answer = await callGemini(messages, 0.3)
+      answer = await callGemini(messages, 0.3, useThinking)  // 심층 분석 여부 전달
     } else {
-      const useThinking = selectedModel === 'thinking'
-      answer = await callOpenAI(messages, 0.3, useThinking)
+      answer = await callOpenAI(messages, useThinking)
+    }
+
+    // 응답 검증: 빈 응답 방지
+    if (!answer || answer.trim().length < 10) {
+      console.error('[심층 분석 오류] 비정상적으로 짧은 응답:', answer)
+      throw new Error('AI 모델이 충분한 응답을 생성하지 못했습니다. 다시 시도해주세요.')
     }
 
     // 답변에서 "찾을 수 없습니다" 패턴 감지

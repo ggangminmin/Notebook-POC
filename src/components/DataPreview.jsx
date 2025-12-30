@@ -63,13 +63,13 @@ Respond in JSON format:
         'Authorization': `Bearer ${OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: 'gpt-5.1-chat-latest',  // GPT-5.1로 업데이트
         messages: [
           { role: 'system', content: 'You are an expert document analyst. Always respond with valid JSON.' },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.3,
-        max_tokens: 800
+        // GPT-5.1은 temperature를 지원하지 않음 (내부적으로 1 고정)
+        max_completion_tokens: 800  // GPT-5.1은 max_completion_tokens 사용
       })
     })
 
@@ -143,9 +143,9 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
 
         console.log('[DataPreview PDF] PDF 로드 완료 - 페이지 수:', loadedPdf.numPages)
 
-        // 컨테이너 너비 계산 (우측 패널 45% 기준)
-        // 우측 패널은 전체 화면의 45%, 여기서 padding(py-4)과 maxWidth(95%)를 고려
-        const containerWidth = window.innerWidth * 0.45 * 0.95 // 45%의 95%
+        // 컨테이너 너비 계산 (우측 패널 50% 기준)
+        // 우측 패널은 전체 화면의 50%, 여기서 padding(py-4)과 maxWidth(95%)를 고려
+        const containerWidth = window.innerWidth * 0.50 * 0.95 // 50%의 95%
         console.log('[DataPreview PDF] 계산된 컨테이너 너비:', containerWidth)
 
         // 모든 페이지를 렌더링
@@ -527,7 +527,7 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
         </div>
         {selectedFile && viewMode === 'natural' && (
           <p className="text-xs text-gray-500">
-            {language === 'ko' ? 'GPT-4o 기반 문서 분석' : 'GPT-4o Document Analysis'}
+            {language === 'ko' ? 'GPT-5.1 기반 문서 분석' : 'GPT-5.1 Document Analysis'}
           </p>
         )}
         {viewMode === 'pdf' && selectedFile && (
@@ -635,7 +635,7 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
                     {language === 'ko' ? 'AI 분석 중...' : 'AI analyzing...'}
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {language === 'ko' ? 'GPT-4o로 문서를 분석하고 있습니다' : 'Analyzing with GPT-4o'}
+                    {language === 'ko' ? 'GPT-5.1로 문서를 분석하고 있습니다' : 'Analyzing with GPT-5.1'}
                   </p>
                 </div>
               </div>
