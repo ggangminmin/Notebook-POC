@@ -69,7 +69,7 @@
 
 ### 💬 채팅 인터페이스 (중앙 35%)
 
-- **모델 선택 토글**: ⚡ 빠름 (GPT-4o-mini) / 🧠 심층 (GPT-4o)
+- **3개 AI 모델 선택**: ⚡ 빠름 (GPT-4o-mini) / 🧠 심층 (GPT-4o) / 💎 Gemini (gemini-1.5-pro)
 - **선택된 소스 표시**: 파란색 태그 (최대 2개 표시 + 나머지 개수)
 - **메신저 스타일 대화형 UI**
   - **Universal Document Analyzer**: 맥락 기반 자율 분석 (No "No" Policy)
@@ -240,6 +240,35 @@ notebooklm-dashboard/
 - 다국어 설정
 
 ## 최근 업데이트
+
+### 🤖 2025-12-30: Google Gemini API 통합 - 3개 AI 모델 지원
+
+#### ✨ 멀티 모델 아키텍처
+
+- [x] **Google Gemini 1.5 Pro 통합**: OpenAI GPT와 함께 사용 가능
+- [x] **3개 모델 선택 UI**:
+  - ⚡ **빠름** (GPT-4o-mini) - 빠른 응답
+  - 🧠 **심층** (GPT-4o) - 심층 분석
+  - 💎 **Gemini** (gemini-1.5-pro) - Google AI 고품질 분석
+- [x] **통합 프롬프트 시스템**: 모든 모델이 동일한 Universal Document Analyzer 프롬프트 사용
+- [x] **인용 시스템 호환**: Gemini도 [N], [N-M] 페이지 인용 배지 지원
+
+#### 🔧 기술 구현
+
+- [x] **@google/generative-ai SDK 설치**
+- [x] **환경 변수**: `VITE_GEMINI_API_KEY` 추가
+- [x] **aiService.js 리팩토링**:
+  - `callGemini()` 함수 추가
+  - `generateStrictRAGResponse()` 모델 라우팅 로직 구현
+- [x] **ChatInterface.jsx UI 업데이트**:
+  - 3개 모델 버튼 (에메랄드 색상 Gemini 버튼)
+  - 모델 파라미터 전달 방식 개선
+
+#### 🎯 사용 방법
+
+1. `.env` 파일에 `VITE_GEMINI_API_KEY` 추가
+2. 채팅 인터페이스 상단에서 모델 선택
+3. GPT-4o-mini, GPT-4o, Gemini 중 선택하여 문서 분석
 
 ### 🎨 2025-12-30: PDF 뷰어 완전 최적화 - 레이아웃 + 100% 렌더링 + UI 개선
 

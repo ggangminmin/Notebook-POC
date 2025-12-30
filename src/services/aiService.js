@@ -1,12 +1,20 @@
 import { extractTextFromParsedData } from '../utils/fileParser'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
 // GPT 모델 설정
 const GPT_MODELS = {
   INSTANT: 'gpt-4o-mini',  // 빠른 응답 (실제 모델)
   THINKING: 'gpt-4o'       // 심층 추론 (실제 모델)
 }
+
+// Gemini 모델 설정
+const GEMINI_MODEL = 'gemini-1.5-pro' // 고품질 분석용
+
+// Gemini AI 초기화
+const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
 
 // 언어 감지 (간단한 휴리스틱)
 export const detectLanguage = (text) => {
@@ -56,6 +64,40 @@ const callOpenAI = async (messages, temperature = 0.3, useThinking = false) => {
     return data.choices[0].message.content
   } catch (error) {
     console.error('OpenAI API 오류:', error)
+    throw error
+  }
+}
+
+// Gemini API 호출
+const callGemini = async (messages, temperature = 0.3) => {
+  try {
+    if (!genAI) {
+      throw new Error('Gemini API 키가 설정되지 않았습니다')
+    }
+
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+
+    // messages 배열을 Gemini 형식으로 변환
+    // system 프롬프트와 user 메시지를 합침
+    const systemMessage = messages.find(m => m.role === 'system')
+    const userMessage = messages.find(m => m.role === 'user')
+
+    const prompt = systemMessage
+      ? `${systemMessage.content}\n\n사용자 질문: ${userMessage?.content || ''}`
+      : userMessage?.content || ''
+
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: {
+        temperature: temperature,
+        maxOutputTokens: 2000,
+      },
+    })
+
+    const response = result.response
+    return response.text()
+  } catch (error) {
+    console.error('Gemini API 오류:', error)
     throw error
   }
 }
@@ -188,9 +230,9 @@ ${documentText.substring(0, 3000)}
 }
 
 // 하이브리드 RAG 응답 생성 (일상 대화 + 엄격한 문서 기반)
-// useThinking: true면 Thinking 모델 사용 (심층 추론), false면 Instant 모델 사용 (빠른 응답)
+// selectedModel: 'instant', 'thinking', 'gemini' 중 하나
 // documentContext: 단일 객체 또는 배열 모두 지원
-export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', useThinking = true) => {
+export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', selectedModel = 'thinking') => {
   try {
     // 1. 일상 대화 모드 - 문서 없이도 응답 가능
     if (isSmallTalk(query)) {
@@ -203,7 +245,10 @@ export const generateStrictRAGResponse = async (query, documentContext, language
         { role: 'user', content: query }
       ]
 
-      const answer = await callOpenAI(messages, 0.8, false) // Instant 모델 - 일상 대화
+      // 일상 대화는 항상 빠른 모델 사용
+      const answer = selectedModel === 'gemini'
+        ? await callGemini(messages, 0.8)
+        : await callOpenAI(messages, 0.8, false)
 
       return {
         answer: answer,
@@ -474,7 +519,14 @@ Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table
       { role: 'user', content: query }
     ]
 
-    const answer = await callOpenAI(messages, 0.3, useThinking) // Thinking 모델로 심층 분석
+    // 선택된 모델에 따라 API 호출
+    let answer
+    if (selectedModel === 'gemini') {
+      answer = await callGemini(messages, 0.3)
+    } else {
+      const useThinking = selectedModel === 'thinking'
+      answer = await callOpenAI(messages, 0.3, useThinking)
+    }
 
     // 답변에서 "찾을 수 없습니다" 패턴 감지
     const notFoundPatterns = [

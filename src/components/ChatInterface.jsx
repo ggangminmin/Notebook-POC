@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -279,7 +279,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           }))
         : null
 
-      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel === 'thinking')
+      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel)
 
       const aiMessage = {
         id: Date.now() + 1,
@@ -341,11 +341,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-800">{t('chat.title')}</h2>
 
-          {/* Model Selector - Compact */}
+          {/* Model Selector - Compact (3 models) */}
           <div className="flex bg-gray-100 rounded-md p-0.5">
             <button
               onClick={() => onModelChange('instant')}
-              className={`flex items-center space-x-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+              className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
                 selectedModel === 'instant'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
@@ -356,7 +356,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             </button>
             <button
               onClick={() => onModelChange('thinking')}
-              className={`flex items-center space-x-1 px-2.5 py-1 rounded text-[10px] font-medium transition-all ${
+              className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
                 selectedModel === 'thinking'
                   ? 'bg-white text-purple-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
@@ -364,6 +364,17 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             >
               <Brain className="w-3 h-3" />
               <span>{language === 'ko' ? '심층' : 'Deep'}</span>
+            </button>
+            <button
+              onClick={() => onModelChange('gemini')}
+              className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
+                selectedModel === 'gemini'
+                  ? 'bg-white text-emerald-600 shadow-sm'
+                  : 'text-gray-600 hover:text-gray-800'
+              }`}
+            >
+              <Gem className="w-3 h-3" />
+              <span>{language === 'ko' ? 'Gemini' : 'Gemini'}</span>
             </button>
           </div>
         </div>
