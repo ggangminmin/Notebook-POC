@@ -241,7 +241,7 @@ notebooklm-dashboard/
 
 ## 최근 업데이트
 
-### 🎨 2025-12-30: 우측 PDF 뷰어 패널 확장 (레이아웃 최적화)
+### 🎨 2025-12-30: PDF 뷰어 완전 최적화 - 레이아웃 + 100% 렌더링 + UI 개선
 
 #### 📐 레이아웃 비율 재조정
 
@@ -252,11 +252,32 @@ notebooklm-dashboard/
 - [x] **PDF 가독성 향상**: 우측 패널에 더 많은 공간 할당으로 PDF 페이지 전체 뷰 개선
 - [x] **반응형 레이아웃**: Flexbox 기반으로 창 크기 변경 시에도 비율 유지
 
+#### 🖼️ PDF 100% 가로폭 렌더링
+
+- [x] **동적 스케일 계산**: 컨테이너 너비에 맞게 PDF 스케일 자동 조정
+  - `targetWidth = window.innerWidth * 0.45 * 0.95`
+  - `scale = targetWidth / baseViewport.width`
+- [x] **100% 너비 렌더링**: PDF 페이지가 우측 패널 가로폭에 꽉 차게 표시
+- [x] **고해상도 유지**: devicePixelRatio 적용으로 선명한 이미지 품질
+- [x] **반응형 지원**: 창 크기 변경 시 자동으로 재렌더링 (향후 구현 예정)
+
+#### 🎨 NotebookLM 스타일 UI 대폭 개선
+
+- [x] **배경 그라데이션**: `bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50`
+- [x] **페이지 간 간격 확대**: `space-y-6`, `py-6 px-4`
+- [x] **프리미엄 카드 디자인**: `shadow-xl`, `rounded-xl`, `hover:shadow-2xl`
+- [x] **페이지 헤더 개선**:
+  - 그라데이션 배경 (`from-blue-50 to-indigo-50`)
+  - FileText 아이콘 추가
+  - 페이지 번호 배지 (흰색 둥근 배지)
+- [x] **페이지 이미지 최적화**: `maxWidth: 100%`, `display: block`
+
 #### 🎯 목적
 
 - NotebookLM처럼 PDF 문서를 큰 화면으로 읽을 수 있도록 우측 패널 확대
 - 인용 배지 클릭 시 넓은 화면에서 PDF 페이지 확인 가능
 - 채팅과 문서를 동시에 보면서 작업하기에 최적화된 레이아웃
+- PDF 페이지가 컨테이너에 빈틈없이 꽉 차서 가독성 극대화
 
 ### 🎯 2025-12-30: NotebookLM 스타일 PDF 인용 및 이동 시스템 완성
 
