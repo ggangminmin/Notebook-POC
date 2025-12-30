@@ -11,6 +11,7 @@ function AppContent() {
   const [selectedSourceIds, setSelectedSourceIds] = useState([])
   const [selectedModel, setSelectedModel] = useState('thinking') // 'instant' or 'thinking'
   const [pdfViewerState, setPdfViewerState] = useState({ isOpen: false, file: null, page: 1 })
+  const [rightPanelState, setRightPanelState] = useState({ mode: 'natural', pdfPage: null }) // 우측 패널 상태
   const { language, toggleLanguage, t } = useLanguage()
 
   // 선택된 소스들 가져오기
@@ -41,14 +42,9 @@ function AppContent() {
   }
 
   const handlePageNavigate = (pageNumber) => {
-    // PDF 파일 찾기
-    const pdfSource = selectedSources.find(s => s.file?.type?.includes('pdf'))
-    if (pdfSource && pdfSource.file) {
-      setPdfViewerState({ isOpen: true, file: pdfSource.file, page: pageNumber })
-      console.log('[페이지 이동] PDF 뷰어 열기 - 페이지:', pageNumber)
-    } else {
-      console.warn('[페이지 이동] PDF 파일을 찾을 수 없습니다')
-    }
+    // 우측 패널을 PDF 뷰어 모드로 전환
+    setRightPanelState({ mode: 'pdf', pdfPage: pageNumber })
+    console.log('[페이지 이동] 우측 패널 PDF 뷰어 활성화 - 페이지:', pageNumber)
   }
 
   const handleClosePDFViewer = () => {
@@ -75,10 +71,10 @@ function AppContent() {
         </button>
       </div>
 
-      {/* Main Content - 3 Column Layout (25% | 50% | 25%) */}
+      {/* Main Content - 3 Column Layout (20% | 35% | 45%) */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Sources (25%) */}
-        <div className="w-1/4 border-r border-gray-200 bg-white overflow-hidden">
+        {/* Left Panel - Sources (20%) */}
+        <div className="w-1/5 border-r border-gray-200 bg-white overflow-hidden">
           <SourcePanel
             sources={sources}
             onAddSources={handleAddSources}
@@ -88,8 +84,8 @@ function AppContent() {
           />
         </div>
 
-        {/* Center Panel - Chat Interface (50%) */}
-        <div className="w-1/2 bg-white overflow-hidden">
+        {/* Center Panel - Chat Interface (35%) */}
+        <div className="flex-1 bg-white overflow-hidden" style={{ maxWidth: '35%' }}>
           <ChatInterface
             selectedSources={selectedSources}
             selectedModel={selectedModel}
@@ -98,9 +94,13 @@ function AppContent() {
           />
         </div>
 
-        {/* Right Panel - Studio/JSON Preview (25%) */}
-        <div className="w-1/4 border-l border-gray-200 bg-gray-50 overflow-hidden">
-          <DataPreview selectedFile={selectedSources[0]} />
+        {/* Right Panel - Studio/PDF Viewer (45%) */}
+        <div className="flex-1 border-l border-gray-200 bg-gray-50 overflow-hidden">
+          <DataPreview
+            selectedFile={selectedSources[0]}
+            rightPanelState={rightPanelState}
+            onPanelModeChange={(mode) => setRightPanelState({ mode, pdfPage: null })}
+          />
         </div>
       </div>
 

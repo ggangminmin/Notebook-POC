@@ -1,7 +1,14 @@
-import { useState, useEffect } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List, ChevronLeft, X } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
+import * as pdfjsLib from 'pdfjs-dist'
+
+// PDF.js worker 설정
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url
+).toString()
 
 // GPT-4o를 사용한 자연어 문서 분석 (NotebookLM 스타일)
 const generateNaturalSummary = async (extractedText, language = 'ko') => {
@@ -93,20 +100,136 @@ Respond in JSON format:
   }
 }
 
-const DataPreview = ({ selectedFile }) => {
+const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
   // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
-  const [viewMode, setViewMode] = useState('natural') // 'natural' or 'json'
+  const [viewMode, setViewMode] = useState('natural') // 'natural', 'json', 'pdf'
   const [naturalSummary, setNaturalSummary] = useState(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
+  const [pdfState, setPdfState] = useState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [] })
+  const scrollContainerRef = useRef(null)
+  const pageRefs = useRef({})
   const { language } = useLanguage()
+
+  // 우측 패널 상태 변경 감지 및 스크롤 이동
+  useEffect(() => {
+    if (rightPanelState?.mode === 'pdf' && rightPanelState?.pdfPage) {
+      setViewMode('pdf')
+
+      // 페이지로 스크롤 (약간의 지연을 두어 DOM이 렌더링된 후 실행)
+      setTimeout(() => {
+        const pageElement = pageRefs.current[`page-${rightPanelState.pdfPage}`]
+        if (pageElement && scrollContainerRef.current) {
+          pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          console.log('[DataPreview PDF] 페이지로 스크롤:', rightPanelState.pdfPage)
+        }
+      }, 300)
+    }
+  }, [rightPanelState])
+
+  // PDF 파일 로드 및 전체 페이지 렌더링
+  useEffect(() => {
+    if (!selectedFile?.file || !selectedFile.file.type?.includes('pdf')) {
+      setPdfState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [] })
+      return
+    }
+
+    const loadAndRenderAllPages = async () => {
+      try {
+        setPdfState(prev => ({ ...prev, isLoading: true, renderedPages: [] }))
+        const arrayBuffer = await selectedFile.file.arrayBuffer()
+        const loadedPdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+
+        console.log('[DataPreview PDF] PDF 로드 완료 - 페이지 수:', loadedPdf.numPages)
+
+        // 모든 페이지를 렌더링
+        const renderedPages = []
+        for (let pageNum = 1; pageNum <= loadedPdf.numPages; pageNum++) {
+          const page = await loadedPdf.getPage(pageNum)
+          const imageData = await renderPageToImage(page)
+          renderedPages.push({
+            pageNumber: pageNum,
+            imageData: imageData
+          })
+
+          // 진행 상황 업데이트 (매 페이지마다)
+          console.log(`[DataPreview PDF] 렌더링 진행: ${pageNum}/${loadedPdf.numPages}`)
+        }
+
+        setPdfState({
+          pdf: loadedPdf,
+          currentPage: 1,
+          numPages: loadedPdf.numPages,
+          isLoading: false,
+          renderedPages: renderedPages
+        })
+
+        console.log('[DataPreview PDF] 모든 페이지 렌더링 완료')
+      } catch (error) {
+        console.error('[DataPreview PDF] PDF 로드 오류:', error)
+        setPdfState(prev => ({ ...prev, isLoading: false }))
+      }
+    }
+
+    // PDF 페이지를 이미지로 렌더링하는 헬퍼 함수
+    const renderPageToImage = async (page) => {
+      try {
+        const scale = 1.2 // 패널 너비에 맞는 스케일
+        const viewport = page.getViewport({ scale, rotation: 0 })
+        const canvas = document.createElement('canvas')
+        const context = canvas.getContext('2d')
+
+        // Canvas 크기 설정 (고해상도)
+        const outputScale = window.devicePixelRatio || 1
+        canvas.width = Math.floor(viewport.width * outputScale)
+        canvas.height = Math.floor(viewport.height * outputScale)
+
+        // 배경 흰색으로 초기화
+        context.fillStyle = '#ffffff'
+        context.fillRect(0, 0, canvas.width, canvas.height)
+
+        // Identity Matrix로 좌표계 완전 리셋 (반전 방지)
+        context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
+
+        await page.render({
+          canvasContext: context,
+          viewport: viewport
+        }).promise
+
+        return canvas.toDataURL('image/png', 1.0)
+      } catch (error) {
+        console.error('[DataPreview PDF] 페이지 렌더링 오류:', error)
+        return null
+      }
+    }
+
+    loadAndRenderAllPages()
+  }, [selectedFile?.file])
 
   // 파일 선택 시 자동으로 요약 생성 (Auto-Summary Trigger)
   useEffect(() => {
     const loadSummary = async () => {
       if (!selectedFile?.parsedData?.extractedText) {
-        console.log('[DataPreview] extractedText 없음, 요약 생성 건너뜀')
+        console.log('[DataPreview] extractedText 없음, 메타데이터 기반 기본 요약 생성')
+
+        // 메타데이터 기반 기본 요약 생성 (Fallback)
+        if (selectedFile?.parsedData) {
+          const metadata = selectedFile.parsedData
+          const pageCount = metadata.pageCount || metadata.numPages || 1
+          const fileName = metadata.fileName || selectedFile.name
+          const fileType = metadata.fileType || 'document'
+
+          const fallbackSummary = language === 'ko'
+            ? `### 📄 문서 정보\n\n**파일명**: ${fileName}[1]\n**파일 형식**: ${fileType.toUpperCase()}\n**전체 페이지**: ${pageCount}페이지[1]\n\n### 📌 안내\n\n이 문서는 **${pageCount}개의 페이지**로 구성되어 있습니다[1]. 문서 내용에 대해 궁금한 점이 있으시면 질문해 주세요!\n\n채팅창에서 인용 배지[1]를 클릭하면 우측 패널에서 해당 페이지를 바로 확인할 수 있습니다.`
+            : `### 📄 Document Information\n\n**Filename**: ${fileName}[1]\n**File Type**: ${fileType.toUpperCase()}\n**Total Pages**: ${pageCount} pages[1]\n\n### 📌 Guide\n\nThis document consists of **${pageCount} pages**[1]. Feel free to ask questions about the content!\n\nClick citation badges[1] in the chat to view the corresponding page in the right panel.`
+
+          setNaturalSummary(fallbackSummary)
+          setIsLoadingSummary(false)
+          console.log('[DataPreview] 메타데이터 기반 기본 요약 생성 완료')
+          return
+        }
+
         setNaturalSummary(null)
         setIsLoadingSummary(false)
         return
@@ -120,7 +243,23 @@ const DataPreview = ({ selectedFile }) => {
         language
       )
 
-      setNaturalSummary(summary)
+      // AI 요약 생성 실패 시 메타데이터 기반 기본 요약 생성
+      if (!summary && selectedFile?.parsedData) {
+        console.log('[DataPreview] AI 요약 실패, 메타데이터 기반 기본 요약 생성')
+        const metadata = selectedFile.parsedData
+        const pageCount = metadata.pageCount || metadata.numPages || 1
+        const fileName = metadata.fileName || selectedFile.name
+        const fileType = metadata.fileType || 'document'
+
+        const fallbackSummary = language === 'ko'
+          ? `### 📄 문서 정보\n\n**파일명**: ${fileName}[1]\n**파일 형식**: ${fileType.toUpperCase()}\n**전체 페이지**: ${pageCount}페이지[1]\n\n### 📌 안내\n\n이 문서는 **${pageCount}개의 페이지**로 구성되어 있습니다[1]. 문서 내용에 대해 궁금한 점이 있으시면 질문해 주세요!\n\n채팅창에서 인용 배지[1]를 클릭하면 우측 패널에서 해당 페이지를 바로 확인할 수 있습니다.`
+          : `### 📄 Document Information\n\n**Filename**: ${fileName}[1]\n**File Type**: ${fileType.toUpperCase()}\n**Total Pages**: ${pageCount} pages[1]\n\n### 📌 Guide\n\nThis document consists of **${pageCount} pages**[1]. Feel free to ask questions about the content!\n\nClick citation badges[1] in the chat to view the corresponding page in the right panel.`
+
+        setNaturalSummary(fallbackSummary)
+      } else {
+        setNaturalSummary(summary)
+      }
+
       setIsLoadingSummary(false)
       console.log('[DataPreview] 요약 생성 완료')
     }
@@ -152,7 +291,19 @@ const DataPreview = ({ selectedFile }) => {
   // 모드 전환 시 이벤트 전파 차단
   const handleToggleViewMode = (e) => {
     e.stopPropagation()
-    setViewMode(prev => prev === 'natural' ? 'json' : 'natural')
+    const nextMode = viewMode === 'natural' ? 'json' : 'natural'
+    setViewMode(nextMode)
+    if (onPanelModeChange) {
+      onPanelModeChange(nextMode)
+    }
+  }
+
+  // 요약 보기로 돌아가기
+  const handleBackToSummary = () => {
+    setViewMode('natural')
+    if (onPanelModeChange) {
+      onPanelModeChange('natural')
+    }
   }
 
   const toggleExpand = (key) => {
@@ -274,16 +425,33 @@ const DataPreview = ({ selectedFile }) => {
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center space-x-2">
-            <h2 className="text-sm font-bold text-gray-900">
-              {language === 'ko' ? '스튜디오' : 'Studio'}
-            </h2>
-            {viewMode === 'natural' && selectedFile && (
-              <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">
-                AI
-              </span>
+            {viewMode === 'pdf' ? (
+              <>
+                <button
+                  onClick={handleBackToSummary}
+                  className="p-1 rounded-lg hover:bg-gray-100 transition-all"
+                  title={language === 'ko' ? '요약 보기' : 'Back to Summary'}
+                >
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
+                </button>
+                <h2 className="text-sm font-bold text-gray-900">
+                  {language === 'ko' ? 'PDF 뷰어' : 'PDF Viewer'}
+                </h2>
+              </>
+            ) : (
+              <>
+                <h2 className="text-sm font-bold text-gray-900">
+                  {language === 'ko' ? '스튜디오' : 'Studio'}
+                </h2>
+                {viewMode === 'natural' && selectedFile && (
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">
+                    AI
+                  </span>
+                )}
+              </>
             )}
           </div>
-          {selectedFile && (
+          {selectedFile && viewMode !== 'pdf' && (
             <div className="flex items-center space-x-2">
               {/* 데이터 보기 토글 버튼 */}
               <Tooltip
@@ -327,10 +495,29 @@ const DataPreview = ({ selectedFile }) => {
               )}
             </div>
           )}
+          {viewMode === 'pdf' && pdfState.numPages > 0 && (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-1 rounded">
+                {pdfState.numPages} {language === 'ko' ? '페이지' : 'pages'}
+              </span>
+              <button
+                onClick={handleBackToSummary}
+                className="p-2 rounded-lg hover:bg-red-100 text-red-600 transition-all"
+                title={language === 'ko' ? '닫기' : 'Close'}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
         </div>
         {selectedFile && viewMode === 'natural' && (
           <p className="text-xs text-gray-500">
             {language === 'ko' ? 'GPT-4o 기반 문서 분석' : 'GPT-4o Document Analysis'}
+          </p>
+        )}
+        {viewMode === 'pdf' && selectedFile && (
+          <p className="text-xs text-gray-500 truncate" title={selectedFile.name}>
+            {selectedFile.name}
           </p>
         )}
       </div>
@@ -347,6 +534,78 @@ const DataPreview = ({ selectedFile }) => {
                 {language === 'ko' ? '소스를 선택하면\n분석 결과가 표시됩니다' : 'Select a source\nto view analysis'}
               </p>
             </div>
+          </div>
+        ) : viewMode === 'pdf' ? (
+          /* PDF 뷰어 모드 - 전체 스크롤형 */
+          <div className="h-full flex flex-col bg-white">
+            {pdfState.isLoading ? (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <Loader2 className="w-8 h-8 mx-auto mb-3 text-blue-600 animate-spin" />
+                  <p className="text-sm font-medium text-gray-700">
+                    {language === 'ko' ? 'PDF 페이지 렌더링 중...' : 'Rendering PDF pages...'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {language === 'ko' ? '전체 페이지를 고해상도로 준비하고 있습니다' : 'Preparing all pages in high quality'}
+                  </p>
+                </div>
+              </div>
+            ) : pdfState.renderedPages.length > 0 ? (
+              <div
+                ref={scrollContainerRef}
+                className="flex-1 overflow-y-auto bg-gray-100"
+                style={{ scrollBehavior: 'smooth' }}
+              >
+                <div className="py-4 space-y-4">
+                  {pdfState.renderedPages.map((pageData) => (
+                    <div
+                      key={`page-${pageData.pageNumber}`}
+                      ref={(el) => pageRefs.current[`page-${pageData.pageNumber}`] = el}
+                      className="bg-white mx-auto shadow-lg rounded-lg overflow-hidden"
+                      style={{ maxWidth: '95%' }}
+                    >
+                      {/* 페이지 번호 표시 */}
+                      <div className="bg-gray-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
+                        <span className="text-xs font-semibold text-gray-600">
+                          {language === 'ko' ? '페이지' : 'Page'} {pageData.pageNumber}
+                        </span>
+                        <span className="text-xs text-gray-400">
+                          {pageData.pageNumber} / {pdfState.numPages}
+                        </span>
+                      </div>
+                      {/* 페이지 이미지 */}
+                      {pageData.imageData ? (
+                        <img
+                          src={pageData.imageData}
+                          alt={`Page ${pageData.pageNumber}`}
+                          className="w-full h-auto"
+                          style={{
+                            imageRendering: 'high-quality',
+                            transform: 'scale(1) rotate(0deg)',
+                            transformOrigin: 'center'
+                          }}
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-64 bg-gray-50">
+                          <p className="text-sm text-gray-500">
+                            {language === 'ko' ? '페이지를 불러올 수 없습니다' : 'Cannot load page'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <div className="text-center">
+                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                  <p className="text-sm text-gray-500">
+                    {language === 'ko' ? 'PDF 파일을 불러올 수 없습니다' : 'Cannot load PDF file'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         ) : viewMode === 'natural' ? (
           /* 자연어 분석 모드 (기본) */

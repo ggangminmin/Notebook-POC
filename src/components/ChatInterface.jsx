@@ -10,7 +10,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
-  const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
@@ -23,61 +22,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     scrollToBottom()
   }, [messages])
 
-  // 인용 태그를 파싱하여 페이지 번호 추출
-  const parseCitations = (text) => {
-    const citations = []
-    const regex = /<cite page="(\d+)">(.*?)<\/cite>/g
-    let match
-
-    while ((match = regex.exec(text)) !== null) {
-      citations.push({
-        pageNumber: parseInt(match[1]),
-        text: match[2]
-      })
-    }
-
-    return citations
-  }
-
-  // 인용 태그를 CitationBadge로 변환
-  const renderContentWithCitations = (content, sourceData) => {
-    if (!content) return null
-
-    // <cite> 태그가 있는지 확인
-    if (!content.includes('<cite')) {
-      return content
-    }
-
-    const parts = []
-    let lastIndex = 0
-    const regex = /<cite page="(\d+)">(.*?)<\/cite>/g
-    let match
-
-    while ((match = regex.exec(content)) !== null) {
-      // 태그 이전 텍스트 추가
-      if (match.index > lastIndex) {
-        parts.push(content.substring(lastIndex, match.index))
-      }
-
-      // CitationBadge 추가
-      const pageNumber = parseInt(match[1])
-      const pageText = sourceData?.pageTexts?.find(p => p.pageNumber === pageNumber)?.text || match[2]
-
-      parts.push(
-        `[p.${pageNumber}]`
-      )
-
-      lastIndex = match.index + match[0].length
-    }
-
-    // 마지막 남은 텍스트 추가
-    if (lastIndex < content.length) {
-      parts.push(content.substring(lastIndex))
-    }
-
-    return parts.join('')
-  }
-
   // 페이지 이동 핸들러
   const handlePageClick = (pageNumber) => {
     if (onPageNavigate) {
@@ -85,14 +29,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
   }
 
-  // 텍스트에서 인용 태그를 찾아 CitationBadge로 변환
-  const processTextWithCitations = (children, sourceData) => {
+  // 텍스트에서 인용 태그를 찾아 CitationBadge로 변환 (다중 파일 지원)
+  const processTextWithCitations = (children, sourceData, allSources) => {
     if (!children) return children
 
     const processNode = (node) => {
       if (typeof node === 'string') {
-        // <cite page="N">text</cite> 패턴 찾기
-        const citationRegex = /<cite page="(\d+)">(.*?)<\/cite>/g
+        // 1. <cite page="N">text</cite> 패턴, 2. [N] 패턴, 3. [N-M] 범위 패턴 찾기
+        const citationRegex = /<cite page="(\d+)">(.*?)<\/cite>|\[(\d+)-(\d+)\]|\[(\d+)\]/g
         const parts = []
         let lastIndex = 0
         let match
@@ -103,21 +47,52 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             parts.push(node.substring(lastIndex, match.index))
           }
 
-          // CitationBadge 컴포넌트 (썸네일 + 파일명 포함)
-          const pageNumber = parseInt(match[1])
-          const pageData = sourceData?.pageTexts?.find(p => p.pageNumber === pageNumber)
-          const pageText = pageData?.text || match[2]
+          // 페이지 번호 추출
+          // match[1]: <cite page="N">의 N
+          // match[3], match[4]: [N-M]의 N, M (범위)
+          // match[5]: [N]의 N (단일)
+          const isRange = match[3] && match[4]
+          const startPage = isRange ? parseInt(match[3]) : parseInt(match[1] || match[5])
+          const endPage = isRange ? parseInt(match[4]) : null
+          const pageNumber = startPage
+
+          // 다중 파일 지원: 모든 소스에서 페이지 검색
+          let pageData = null
+          let fileName = '문서'
+          let fileId = null
+
+          if (allSources && allSources.length > 0) {
+            // 모든 파일을 순회하며 해당 페이지 찾기
+            for (const source of allSources) {
+              const foundPage = source.pageTexts?.find(p => p.pageNumber === startPage)
+              if (foundPage) {
+                pageData = foundPage
+                fileName = source.fileName || source.name
+                fileId = source.id
+                break // 첫 번째 매칭 파일 사용
+              }
+            }
+          }
+
+          // Fallback: sourceData에서 찾기 (하위 호환성)
+          if (!pageData && sourceData) {
+            pageData = sourceData.pageTexts?.find(p => p.pageNumber === startPage)
+            fileName = sourceData.fileName || sourceData.name || '문서'
+          }
+
+          const pageText = pageData?.text || match[2] || ''
           const thumbnail = pageData?.thumbnail // 썸네일 이미지 (Base64)
-          const fileName = sourceData?.fileName || sourceData?.name || '문서' // 파일명
 
           parts.push(
             <CitationBadge
-              key={`cite-${pageNumber}-${match.index}`}
+              key={`cite-${fileId || 'default'}-${startPage}${endPage ? `-${endPage}` : ''}-${match.index}`}
               pageNumber={pageNumber}
               text={pageText}
               thumbnail={thumbnail}
               fileName={fileName}
               onPageClick={handlePageClick}
+              startPage={isRange ? startPage : undefined}
+              endPage={isRange ? endPage : undefined}
             />
           )
 
@@ -152,7 +127,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   useEffect(() => {
     const analyzeDocument = async () => {
       if (selectedSources.length > 0) {
-        setIsAnalyzing(true)
         setMessages([])
         setSuggestedQuestions([])
 
@@ -218,17 +192,45 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
         } catch (error) {
           console.error('문서 분석 오류:', error)
-          const errorMessage = {
-            id: Date.now() + 1,
-            type: 'assistant',
-            content: language === 'ko'
-              ? `문서 분석 중 오류가 발생했습니다. 하지만 문서 기반 질문은 가능합니다.`
-              : `An error occurred during analysis. However, you can still ask questions about the document.`,
-            timestamp: new Date().toISOString()
+
+          // 오류 발생 시 메타데이터 기반 기본 요약 생성
+          const metadata = selectedSources[0]?.parsedData
+          if (metadata) {
+            const pageCount = metadata.pageCount || metadata.numPages || 1
+            const fileName = metadata.fileName || selectedSources[0].name
+            const fileType = metadata.fileType || 'document'
+
+            const fallbackSummary = language === 'ko'
+              ? `### 📄 문서 정보\n\n**파일명**: ${fileName}[1]\n**파일 형식**: ${fileType.toUpperCase()}\n**전체 페이지**: ${pageCount}페이지[1]\n\n### 📌 안내\n\n이 문서는 **${pageCount}개의 페이지**로 구성되어 있습니다[1]. AI 요약 생성에 실패했지만, 문서 내용에 대해 자유롭게 질문해 주세요!\n\n채팅창에서 인용 배지[1]를 클릭하면 우측 패널에서 해당 페이지를 바로 확인할 수 있습니다.`
+              : `### 📄 Document Information\n\n**Filename**: ${fileName}[1]\n**File Type**: ${fileType.toUpperCase()}\n**Total Pages**: ${pageCount} pages[1]\n\n### 📌 Guide\n\nThis document consists of **${pageCount} pages**[1]. Summary generation failed, but feel free to ask questions about the content!\n\nClick citation badges[1] in the chat to view the corresponding page in the right panel.`
+
+            const fallbackMessage = {
+              id: Date.now() + 1,
+              type: 'assistant',
+              content: fallbackSummary,
+              timestamp: new Date().toISOString(),
+              isSummary: true,
+              sourceData: selectedSources[0].parsedData,
+              allSources: selectedSources.map(s => ({
+                id: s.id,
+                name: s.name,
+                fileName: s.parsedData?.fileName || s.name,
+                pageTexts: s.parsedData?.pageTexts || [],
+                pageCount: s.parsedData?.pageCount || 0
+              }))
+            }
+            setMessages([fallbackMessage])
+          } else {
+            const errorMessage = {
+              id: Date.now() + 1,
+              type: 'assistant',
+              content: language === 'ko'
+                ? `문서 분석 중 오류가 발생했습니다. 하지만 문서 기반 질문은 가능합니다.`
+                : `An error occurred during analysis. However, you can still ask questions about the document.`,
+              timestamp: new Date().toISOString()
+            }
+            setMessages([errorMessage])
           }
-          setMessages([errorMessage])
-        } finally {
-          setIsAnalyzing(false)
         }
       } else {
         // 파일이 없으면 환영 메시지 표시
@@ -288,7 +290,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         foundInDocument: response.foundInDocument,
         matchedKeywords: response.matchedKeywords,
         isReasoningBased: response.isReasoningBased, // 추론 기반 답변 플래그
-        sourceData: selectedSources.length > 0 ? selectedSources[0].parsedData : null // 인용 태그 처리용
+        sourceData: selectedSources.length > 0 ? selectedSources[0].parsedData : null, // 인용 태그 처리용 (기본: 첫 번째 파일)
+        allSources: selectedSources.map(s => ({ // 다중 파일 지원 (파일ID + 이름 포함)
+          id: s.id,
+          name: s.name,
+          fileName: s.parsedData?.fileName || s.name,
+          pageTexts: s.parsedData?.pageTexts || [],
+          pageCount: s.parsedData?.pageCount || 0
+        }))
       }
 
       setMessages(prev => [...prev, aiMessage])
@@ -448,7 +457,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                         ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-0.5" {...props} />,
                         li: ({node, children, ...props}) => (
                           <li className="ml-2" {...props}>
-                            <span className="inline">{children}</span>
+                            <span className="inline">{processTextWithCitations(children, message.sourceData, message.allSources)}</span>
                           </li>
                         ),
                         p: ({node, children, ...props}) => {
@@ -456,12 +465,16 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                           const isInsideList = node?.position?.start?.line &&
                                                message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
 
-                          // 인용 태그 처리
-                          const processedChildren = processTextWithCitations(children, message.sourceData)
+                          // 인용 태그 처리 (다중 파일 지원)
+                          const processedChildren = processTextWithCitations(children, message.sourceData, message.allSources)
 
                           return isInsideList ?
                             <span {...props}>{processedChildren}</span> :
                             <p className="my-1.5" {...props}>{processedChildren}</p>
+                        },
+                        // 텍스트 노드에서도 인용 태그 처리
+                        text: ({children}) => {
+                          return <>{processTextWithCitations(children, message.sourceData, message.allSources)}</>
                         },
                       }}
                     >
@@ -574,7 +587,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyDown={handleKeyPress}
               placeholder={selectedSources.length === 0
                 ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
                 : t('chat.placeholder')}

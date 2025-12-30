@@ -301,10 +301,28 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 - 문단 구분점에는 \`###\` 헤더 사용하여 시각적 위계 구성
 - 3줄 이상의 나열은 반드시 글머리 기호(Bullet Points) 사용
 - **리스트 형식 규칙**: "1. **서론**" 또는 "- **핵심 내용**"처럼 숫자/기호와 텍스트를 같은 줄에 작성 (줄바꿈 금지)
-- **인용 태그 규칙 (PDF 문서인 경우)**: 특정 페이지의 내용을 인용할 때 \`<cite page="페이지번호">인용 텍스트</cite>\` 형식 사용
-  - 예: "문서 3페이지에 따르면 <cite page="3">AI 시장 규모는 500조원</cite>으로 추정됩니다"
-  - 인용 태그는 해당 페이지의 실제 내용만 포함하고, 페이지 번호는 정확해야 함
-- 예: "이 서비스의 핵심은 **AI 기술**, **24시간 운영**, **99.9% 정확도**입니다"
+
+**📌 인용 배지 규칙 (최우선 - 매우 중요! 강제 적용)**
+- **🔴 절대 규칙: 모든 답변에 반드시 인용 배지를 포함하세요!** 문서의 특정 내용을 언급할 때마다 페이지 번호를 [N] 형식으로 표시
+- **간단한 형식**:
+  - 단일 페이지: [페이지번호] 또는 <cite page="페이지번호">인용 텍스트</cite>
+  - **범위 인용** (여러 페이지): [시작페이지-끝페이지] 형식 사용
+- **예시**:
+  - "AI 시장 규모는 500조원으로 추정됩니다[3]"
+  - "문서에 따르면 <cite page="5">반도체 부문 실적이 40% 증가</cite>했습니다"
+  - "2024년 목표는 영업이익 35조원입니다[1]"
+  - **"가격 정책에 대한 상세 설명이 제시되어 있습니다[11-14]"** (범위 인용)
+  - **"1장부터 3장까지 서론이 이어집니다[1-3]"** (범위 인용)
+- **강제 요구사항 (100% 준수)**:
+  - 답변의 모든 핵심 정보에 페이지 번호를 붙이세요 (최소 5-10개 이상)
+  - **텍스트 일치도가 낮아도 반드시 인용 추가**: 키워드 유사도, 주제 연관성, 문맥 흐름을 기반으로 가장 관련성 높은 페이지를 추론하여 배지 생성
+  - **목차 생성 시**: 각 항목마다 해당 주제가 처음 등장하거나 가장 많이 다뤄지는 페이지를 자동 계산하여 배지 부착 필수
+  - **요약 생성 시**: 각 문단/섹션마다 최소 2-3개의 페이지 번호 포함
+  - 여러 파일이 선택된 경우, 각 파일의 정보를 명확히 구분하여 인용
+  - **추론 기반 답변도 인용 필수**: 추론의 근거가 된 페이지들을 모두 표시
+  - **범위 인용 사용 규칙**: 특정 주제나 내용이 여러 페이지에 걸쳐 있다면 반드시 [시작-끝] 형식 사용
+- **인용 없는 답변은 절대 금지**: 모든 문장에 최소 1개 이상의 페이지 번호 포함 필수
+- **목차 특별 규칙**: "1. **서론**[1-3]" 또는 "- **핵심 내용**[5]" 형식으로 각 항목마다 반드시 페이지 범위 또는 대표 페이지 표시
 
 **핵심 규칙:**
 1. ✅ **직접 근거 우선** - 문서에 명시된 내용을 먼저 제시하되, 핵심 키워드는 굵게 표시
@@ -349,6 +367,11 @@ ${documentText}
 
 **특별 규칙:**
 - 목차, 구조, 전체 요약 등을 물어볼 경우: 문서 전체를 분석하여 **[가상 목차]** 또는 **[구조 분석]**을 직접 생성하세요
+- **목차 생성 시 페이지 번호 자동 계산 (100% 필수)**:
+  * 각 목차 항목의 키워드가 문서에서 처음 등장하는 페이지를 검색하여 인용 배지 부착
+  * 예: "1. **서론**[1-2]", "2. **본론**[3-10]", "3. **결론**[11-15]"
+  * 페이지 범위가 명확하지 않으면 대표 페이지 하나라도 반드시 표시: "- **핵심 내용**[5]"
+  * 목차 항목 없이 페이지 번호 누락은 절대 불가
 - 직접 언급이 없는 경우: "문서에 직접 언급은 없으나, **문서의 전체 맥락을 분석한 결과** [추론 내용]으로 파악됩니다 [문서 맥락 기반 추론]"
 - 외부 지식 사용 금지: 오직 **제공된 문서 내용(extractedText)**의 범위 안에서만 논리적으로 추론하세요
 - 답변 마지막에 "\n\n📄 **출처**: ${fileName} (${today} 분석)"을 추가하세요
@@ -370,10 +393,28 @@ ${documentText}
 - Use \`###\` headers at paragraph breaks to create visual hierarchy
 - Lists of 3+ items must use bullet points
 - **List Format Rule**: Write number/symbol and text on the same line like "1. **Introduction**" or "- **Key Point**" (no line breaks)
-- **Citation Tag Rule (for PDF documents)**: When citing content from a specific page, use \`<cite page="page_number">quoted text</cite>\` format
-  - Example: "According to page 3, <cite page="3">AI market size is estimated at $500 billion</cite>"
-  - Citation tags must contain only actual content from that page, and page numbers must be accurate
-- Example: "The core is **AI technology**, **24/7 operation**, **99.9% accuracy**"
+
+**📌 Citation Badge Rules (Top Priority - Very Important! Mandatory)**
+- **🔴 Absolute Rule: Always include citation badges in every answer!** When mentioning specific content from the document, mark page numbers in [N] format
+- **Simple format**:
+  - Single page: [page_number] or <cite page="page_number">quoted text</cite>
+  - **Range citation** (multiple pages): Use [start_page-end_page] format
+- **Examples**:
+  - "AI market size is estimated at $500 billion[3]"
+  - "According to the document, <cite page="5">semiconductor division performance increased by 40%</cite>"
+  - "2024 target is operating profit of $35 billion[1]"
+  - **"Detailed pricing policy is presented[11-14]"** (range citation)
+  - **"Introduction continues from chapter 1 to 3[1-3]"** (range citation)
+- **Mandatory Requirements (100% Compliance)**:
+  - Add page numbers to all key information in your answer (minimum 5-10 citations)
+  - **Add citations even with low text match**: Infer most relevant pages based on keyword similarity, topic relevance, and contextual flow to generate badges
+  - **When generating Table of Contents**: Auto-calculate and attach page badges for each item based on where the topic first appears or is most discussed
+  - **When generating summaries**: Include minimum 2-3 page numbers per paragraph/section
+  - When multiple files are selected, clearly distinguish and cite information from each file
+  - **Citations required for reasoning-based answers**: Display all pages that served as basis for reasoning
+  - **Range citation usage rule**: If a topic or content spans multiple pages, always use [start-end] format
+- **Answers without citations are strictly prohibited**: Every sentence must include at least 1 page number
+- **Special TOC Rule**: Format each item as "1. **Introduction**[1-3]" or "- **Key Content**[5]" with page range or representative page mandatory
 
 **Core Rules:**
 1. ✅ **Direct Evidence First** - Present information explicitly stated in the document first, with key keywords in bold
@@ -418,6 +459,11 @@ Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table
 
 **Special Rules:**
 - When asked about table of contents, structure, or overall summary: Analyze the entire document to generate a **[Virtual Table of Contents]** or **[Structure Analysis]**
+- **Auto-calculate page numbers for TOC generation (100% Mandatory)**:
+  * Search for the first page where each TOC item's keyword appears in the document and attach citation badge
+  * Example: "1. **Introduction**[1-2]", "2. **Main Body**[3-10]", "3. **Conclusion**[11-15]"
+  * If page range is unclear, display at least one representative page: "- **Key Content**[5]"
+  * TOC items without page numbers are absolutely prohibited
 - When not directly mentioned: "While not directly mentioned in the document, **based on analyzing the document's overall context**, [inferred content] is identified [Context-Based Reasoning]"
 - No external knowledge: Only reason logically within the scope of **the provided document content (extractedText)**
 - Add "\n\n📄 **Source**: ${fileName} (Analyzed on ${today})" at the end of your response

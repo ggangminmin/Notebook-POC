@@ -6,22 +6,33 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   import.meta.url
 ).toString()
 
-// PDF 페이지를 이미지로 변환 (썸네일용)
-const renderPDFPageToImage = async (page, scale = 0.5) => {
+// PDF 페이지를 이미지로 변환 (썸네일용 - 회전 정보 정규화 + 고해상도)
+const renderPDFPageToImage = async (page, scale = 0.6) => {
   try {
-    const viewport = page.getViewport({ scale })
+    // PDF 페이지의 회전 정보를 무시하고 항상 0도로 고정 (정방향)
+    const viewport = page.getViewport({ scale, rotation: 0 })
     const canvas = document.createElement('canvas')
     const context = canvas.getContext('2d')
-    canvas.width = viewport.width
-    canvas.height = viewport.height
+
+    // 고해상도 렌더링을 위한 픽셀 밀도 조정 (3.0배로 매우 선명하게)
+    const outputScale = 3.0
+    canvas.width = Math.floor(viewport.width * outputScale)
+    canvas.height = Math.floor(viewport.height * outputScale)
+
+    // 컨텍스트 초기화 및 배경 흰색으로 설정
+    context.fillStyle = 'white'
+    context.fillRect(0, 0, canvas.width, canvas.height)
+
+    // Identity Matrix로 좌표계 완전 리셋 (반전 방지 - 전역 적용)
+    context.setTransform(outputScale, 0, 0, outputScale, 0, 0)
 
     await page.render({
       canvasContext: context,
       viewport: viewport
     }).promise
 
-    // Canvas를 Base64 이미지로 변환
-    return canvas.toDataURL('image/jpeg', 0.8)
+    // Canvas를 Base64 이미지로 변환 (최고 품질)
+    return canvas.toDataURL('image/png', 1.0)
   } catch (error) {
     console.error('[PDF 이미지 변환] 오류:', error)
     return null
@@ -61,8 +72,8 @@ const extractPDFText = async (file) => {
         .filter(str => str.trim().length > 0) // 빈 문자열 제거
         .join(' ')
 
-      // 페이지를 이미지로 렌더링 (썸네일용)
-      const thumbnail = await renderPDFPageToImage(page, 0.3) // 작은 썸네일
+      // 페이지를 이미지로 렌더링 (고해상도 썸네일용 - 스케일 증가)
+      const thumbnail = await renderPDFPageToImage(page, 0.6) // 고해상도 썸네일
 
       // 페이지별 데이터 저장
       pageTexts.push({
@@ -120,20 +131,42 @@ export const parseFileContent = async (file) => {
         reader.onerror = () => reject(new Error('파일 읽기 실패'))
         reader.readAsText(file)
       } else if (file.type === 'text/plain' || file.name.endsWith('.txt')) {
-        // TXT 파일인 경우 - 실제 내용 읽기
+        // TXT 파일인 경우 - 실제 내용 읽기 + 페이지 구조 추가
         const reader = new FileReader()
         reader.onload = (e) => {
           const content = e.target.result
           const lines = content.split('\n').filter(line => line.trim())
+
+          // TXT 파일을 페이지 단위로 나누기 (500단어당 1페이지로 가정)
+          const wordsPerPage = 500
+          const words = content.split(/\s+/)
+          const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage))
+          const pageTexts = []
+
+          for (let i = 0; i < totalPages; i++) {
+            const startIdx = i * wordsPerPage
+            const endIdx = Math.min((i + 1) * wordsPerPage, words.length)
+            const pageContent = words.slice(startIdx, endIdx).join(' ')
+
+            pageTexts.push({
+              pageNumber: i + 1,
+              text: pageContent,
+              wordCount: endIdx - startIdx,
+              thumbnail: null // TXT 파일은 썸네일 없음
+            })
+          }
+
           parsedData = {
             fileType: 'text',
             fileName: file.name,
             fileSize: file.size,
             encoding: 'utf-8',
             totalLines: lines.length,
+            pageCount: totalPages,
             content: content,
             lines: lines,
             extractedText: content, // 실제 파일 내용
+            pageTexts: pageTexts, // 페이지별 텍스트 구조 추가
             metadata: {
               paragraphs: content.split('\n\n').filter(p => p.trim()).length,
               words: content.split(/\s+/).length,
