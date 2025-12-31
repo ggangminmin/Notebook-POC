@@ -71,7 +71,7 @@ function AppContent() {
         </button>
       </div>
 
-      {/* Main Content - 3 Column Layout (15% | 35% | 50%) - 우측 패널 확대 */}
+      {/* Main Content - 3 Column Layout (15% | 42.5% | 42.5%) - 채팅과 PDF 뷰어 1:1 대칭 */}
       <div className="flex flex-1 overflow-hidden">
         {/* Left Panel - Sources (15%) */}
         <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '15%' }}>
@@ -84,8 +84,8 @@ function AppContent() {
           />
         </div>
 
-        {/* Center Panel - Chat Interface (35%) */}
-        <div className="bg-white overflow-hidden" style={{ width: '35%' }}>
+        {/* Center Panel - Chat Interface (42.5%) - PDF 뷰어와 1:1 대칭 */}
+        <div className="bg-white overflow-hidden" style={{ width: '42.5%' }}>
           <ChatInterface
             selectedSources={selectedSources}
             selectedModel={selectedModel}
@@ -94,8 +94,8 @@ function AppContent() {
           />
         </div>
 
-        {/* Right Panel - Studio/PDF Viewer (50%) - 가독성 향상을 위해 확대 */}
-        <div className="border-l border-gray-200 bg-gray-50 overflow-hidden" style={{ width: '50%' }}>
+        {/* Right Panel - Studio/PDF Viewer (42.5%) - 채팅창과 1:1 대칭 */}
+        <div className="border-l border-gray-200 bg-gray-50 overflow-hidden" style={{ width: '42.5%' }}>
           <DataPreview
             selectedFile={selectedSources[0]}
             rightPanelState={rightPanelState}

@@ -143,9 +143,9 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
 
         console.log('[DataPreview PDF] PDF 로드 완료 - 페이지 수:', loadedPdf.numPages)
 
-        // 컨테이너 너비 계산 (우측 패널 50% 기준)
-        // 우측 패널은 전체 화면의 50%, 여기서 padding(py-4)과 maxWidth(95%)를 고려
-        const containerWidth = window.innerWidth * 0.50 * 0.95 // 50%의 95%
+        // 컨테이너 너비 계산 (우측 패널 42.5% 기준 - 채팅창과 1:1 대칭)
+        // 우측 패널은 전체 화면의 42.5%, 여기서 padding(py-4)과 maxWidth(95%)를 고려
+        const containerWidth = window.innerWidth * 0.425 * 0.95 // 42.5%의 95%
         console.log('[DataPreview PDF] 계산된 컨테이너 너비:', containerWidth)
 
         // 모든 페이지를 렌더링
@@ -177,18 +177,20 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
       }
     }
 
-    // PDF 페이지를 이미지로 렌더링하는 헬퍼 함수 (동적 스케일 계산)
+    // PDF 페이지를 이미지로 렌더링하는 헬퍼 함수 (고품질 렌더링: scale 2.0)
     const renderPageToImage = async (page, targetWidth) => {
       try {
         // 기본 viewport를 구해서 원본 너비 확인
         const baseViewport = page.getViewport({ scale: 1.0, rotation: 0 })
 
-        // 목표 너비에 맞는 스케일 계산 (100% 너비로 꽉 차게)
-        const scale = targetWidth / baseViewport.width
-        console.log('[DataPreview PDF] 동적 스케일 계산:', {
+        // 목표 너비에 맞는 스케일 계산 후 2배로 확대 (고품질 렌더링)
+        const baseScale = targetWidth / baseViewport.width
+        const scale = baseScale * 2.0  // 2배 스케일로 선명도 향상
+        console.log('[DataPreview PDF] 고품질 스케일 계산:', {
           원본너비: baseViewport.width,
           목표너비: targetWidth,
-          계산된스케일: scale
+          기본스케일: baseScale,
+          최종스케일: scale
         })
 
         const viewport = page.getViewport({ scale, rotation: 0 })
@@ -589,7 +591,7 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
                           {pageData.pageNumber} / {pdfState.numPages}
                         </span>
                       </div>
-                      {/* 페이지 이미지 - 100% 너비 */}
+                      {/* 페이지 이미지 - 100% 너비, 2배 스케일 이미지를 50% 크기로 표시 (고품질) */}
                       {pageData.imageData ? (
                         <img
                           src={pageData.imageData}
@@ -597,9 +599,11 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
                           className="w-full h-auto"
                           style={{
                             imageRendering: 'high-quality',
-                            transform: 'scale(1) rotate(0deg)',
-                            transformOrigin: 'center',
-                            display: 'block'
+                            transform: 'scale(0.5) rotate(0deg)',
+                            transformOrigin: 'top left',
+                            display: 'block',
+                            width: '200%',
+                            maxWidth: '200%'
                           }}
                         />
                       ) : (

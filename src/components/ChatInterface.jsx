@@ -411,15 +411,15 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         )}
       </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+      {/* Messages Area - 넓은 채팅창에 맞춘 여백과 행간 */}
+      <div className="flex-1 overflow-y-auto p-8 space-y-5 bg-gray-50">
         {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`flex max-w-[80%] ${
+              className={`flex max-w-[90%] ${
                 message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
               }`}
             >
@@ -446,10 +446,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 </div>
               </div>
 
-              {/* Message Content */}
+              {/* Message Content - 가독성 향상된 말풍선 */}
               <div className="flex-1">
                 <div
-                  className={`px-4 py-3 rounded-2xl ${
+                  className={`px-5 py-4 rounded-2xl ${
                     message.type === 'user'
                       ? 'bg-blue-500 text-white'
                       : message.isError
@@ -457,7 +457,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                       : 'bg-white text-gray-800 border border-gray-200 shadow-sm'
                   }`}
                 >
-                  <div className="text-sm prose prose-sm max-w-none markdown-content">
+                  <div className="text-[15px] leading-relaxed prose prose-sm max-w-none markdown-content">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{

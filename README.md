@@ -52,9 +52,9 @@
 - 채팅 컨텍스트가 선택된 소스로 즉시 고정
 - 소스 삭제 기능
 
-## UI 레이아웃 (NotebookLM 스타일 3단 구조: 20% | 35% | 45%)
+## UI 레이아웃 (NotebookLM 스타일 3단 구조: 15% | 42.5% | 42.5%)
 
-### 📁 소스 패널 (좌측 20%)
+### 📁 소스 패널 (좌측 15%)
 
 - **NotebookLM 스타일 "+ 소스 추가" 버튼** (캡슐 디자인)
 - **Deep Research 배너**: 그라데이션 배경 (보라→파랑→초록)
@@ -67,10 +67,14 @@
   - 원본 링크 버튼 (ExternalLink 아이콘)
 - **컴팩트 디자인**: 좁은 패널에 최적화된 텍스트 크기 (text-xs, text-[10px])
 
-### 💬 채팅 인터페이스 (중앙 35%)
+### 💬 채팅 인터페이스 (중앙 42.5% - PDF 뷰어와 1:1 대칭)
 
-- **3개 AI 모델 선택**: ⚡ 빠름 (GPT-4o-mini) / 🧠 심층 (GPT-4o) / 💎 Gemini (gemini-1.5-pro)
+- **3개 AI 모델 선택**: ⚡ 빠름 (GPT-5.1 Chat Latest) / 🧠 심층 (GPT-5.1 Thinking) / 💎 Gemini (Gemini 3 Flash Preview)
 - **선택된 소스 표시**: 파란색 태그 (최대 2개 표시 + 나머지 개수)
+- **넓은 채팅창 최적화**:
+  - **말풍선 최대 너비 90%**: 텍스트 여유 공간 확보
+  - **여백 확대**: p-8 (32px), space-y-5 (20px)
+  - **가독성 향상**: text-[15px], leading-relaxed, px-5 py-4
 - **메신저 스타일 대화형 UI**
   - **Universal Document Analyzer**: 맥락 기반 자율 분석 (No "No" Policy)
   - **ReactMarkdown 렌더링**: 굵은 글씨 (font-weight: 700), 헤더, 리스트 지원
@@ -82,7 +86,7 @@
 - **일상 대화 모드**: 문서 없이도 간단한 대화 가능
 - Enter/Shift+Enter 키보드 단축키
 
-### 📊 스튜디오 패널 (우측 45%)
+### 📊 스튜디오 패널 (우측 42.5% - 채팅창과 1:1 대칭)
 
 - **NotebookLM "Studio" 디자인**
 - **복사 버튼**: JSON 데이터 원클릭 복사 (복사됨! 피드백)
@@ -240,6 +244,79 @@ notebooklm-dashboard/
 - 다국어 설정
 
 ## 최근 업데이트
+
+### 🎨 2025-12-31: 1:1 대칭 레이아웃 + 채팅창 가독성 최적화
+
+#### 📐 완벽한 대칭 레이아웃 (15% | 42.5% | 42.5%)
+
+- [x] **채팅창과 PDF 뷰어 1:1 비율**: 좌측 사이드바 제외 나머지 영역을 정확히 50:50 분할
+- [x] **넓은 채팅 공간**: 35% → 42.5%로 확대 (7.5% 증가)
+- [x] **PDF 뷰어 대칭**: 50% → 42.5%로 조정하여 채팅창과 완전 대칭
+
+#### 💬 채팅창 가독성 대폭 강화
+
+- [x] **말풍선 최대 너비 확대**: 80% → 90%로 증가
+- [x] **여백 증가**:
+  - 메시지 영역 패딩: p-6 → p-8 (32px)
+  - 메시지 간 간격: space-y-4 → space-y-5 (20px)
+- [x] **텍스트 가독성 향상**:
+  - 폰트 크기: text-sm (14px) → text-[15px] (15px)
+  - 행간: 기본 → leading-relaxed (1.625)
+  - 말풍선 패딩: px-4 py-3 → px-5 py-4
+
+#### 🖼️ PDF 고품질 렌더링 (Scale 2.0)
+
+- [x] **2배 스케일 렌더링**: 기본 스케일 × 2.0으로 선명도 극대화
+- [x] **스마트 이미지 표시**: 2배 크기 이미지를 50% scale로 표시 (고품질 유지)
+- [x] **컨테이너 너비 자동 계산**: 42.5% 패널에 맞춘 동적 스케일 계산
+
+#### 🔧 기술 구현
+
+**레이아웃 비율 (App.jsx):**
+```javascript
+// 15% | 42.5% | 42.5% - 완벽한 대칭
+<div style={{ width: '15%' }}>SourcePanel</div>
+<div style={{ width: '42.5%' }}>ChatInterface</div>
+<div style={{ width: '42.5%' }}>DataPreview</div>
+```
+
+**채팅 가독성 (ChatInterface.jsx):**
+```javascript
+// 넓은 채팅창에 최적화
+<div className="p-8 space-y-5">
+  <div className="max-w-[90%]">
+    <div className="px-5 py-4">
+      <div className="text-[15px] leading-relaxed">
+```
+
+**PDF 고품질 렌더링 (DataPreview.jsx):**
+```javascript
+// 2배 스케일 렌더링
+const baseScale = targetWidth / baseViewport.width
+const scale = baseScale * 2.0  // 선명도 향상
+
+// 컨테이너 너비 계산 (42.5%)
+const containerWidth = window.innerWidth * 0.425 * 0.95
+```
+
+**이미지 표시 최적화:**
+```javascript
+<img
+  style={{
+    transform: 'scale(0.5)',
+    transformOrigin: 'top left',
+    width: '200%',
+    maxWidth: '200%'
+  }}
+/>
+```
+
+#### 🎯 사용자 경험 개선
+
+- **시각적 균형**: 채팅과 PDF 뷰어가 동일한 너비로 시선 분산 최소화
+- **읽기 편의성**: 넓어진 채팅창에서 긴 답변도 편안하게 읽기 가능
+- **PDF 선명도**: 2배 스케일 렌더링으로 작은 텍스트도 선명하게 표시
+- **레이아웃 일관성**: 모든 기능(인용 배지 클릭, 스크롤 등) 완벽 유지
 
 ### 🚀 2025-12-30: GPT-5.1 + Gemini 3 Flash 업그레이드 + 심층 분석 최적화
 
