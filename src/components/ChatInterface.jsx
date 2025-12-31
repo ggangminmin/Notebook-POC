@@ -279,7 +279,13 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           }))
         : null
 
-      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel)
+      // 이전 대화 기록을 API 형식으로 변환 (GPT ↔ Gemini 전환 시에도 대화 맥락 유지)
+      const conversationHistory = messages.map(msg => ({
+        role: msg.type === 'user' ? 'user' : 'assistant',
+        content: msg.content
+      }))
+
+      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel, conversationHistory)
 
       const aiMessage = {
         id: Date.now() + 1,

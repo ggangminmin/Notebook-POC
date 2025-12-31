@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 전역 스케일 최적화: 80% 효과 (16px * 0.8 = 12.8px) */
+html {
+  font-size: 12.8px;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',

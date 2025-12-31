@@ -12,6 +12,7 @@ function AppContent() {
   const [selectedModel, setSelectedModel] = useState('thinking') // 'instant' or 'thinking'
   const [pdfViewerState, setPdfViewerState] = useState({ isOpen: false, file: null, page: 1 })
   const [rightPanelState, setRightPanelState] = useState({ mode: 'natural', pdfPage: null }) // 우측 패널 상태
+  const [systemPromptOverrides, setSystemPromptOverrides] = useState([]) // AI 시스템 프롬프트 덮어쓰기
   const { language, toggleLanguage, t } = useLanguage()
 
   // 선택된 소스들 가져오기
@@ -51,6 +52,38 @@ function AppContent() {
     setPdfViewerState({ isOpen: false, file: null, page: 1 })
   }
 
+  // 소스 데이터 업데이트 함수 (양방향 동기화)
+  const handleUpdateSourceData = (sourceId, field, newValue) => {
+    setSources(prev => prev.map(source => {
+      if (source.id === sourceId) {
+        // parsedData 내부 필드 업데이트
+        return {
+          ...source,
+          parsedData: {
+            ...source.parsedData,
+            [field]: newValue
+          }
+        }
+      }
+      return source
+    }))
+    console.log('[App] 소스 데이터 업데이트:', sourceId, field, newValue)
+  }
+
+  // 소스 이름 업데이트 함수
+  const handleUpdateSourceName = (sourceId, newName) => {
+    setSources(prev => prev.map(source => {
+      if (source.id === sourceId) {
+        return {
+          ...source,
+          name: newName
+        }
+      }
+      return source
+    }))
+    console.log('[App] 소스 이름 업데이트:', sourceId, newName)
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top Header */}
@@ -71,10 +104,10 @@ function AppContent() {
         </button>
       </div>
 
-      {/* Main Content - 3 Column Layout (15% | 42.5% | 42.5%) - 채팅과 PDF 뷰어 1:1 대칭 */}
+      {/* Main Content - 3 Column Layout (16% | 42% | 42%) - 채팅과 PDF 뷰어 1:1 대칭 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Sources (15%) */}
-        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '15%' }}>
+        {/* Left Panel - Sources (16%) */}
+        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '16%' }}>
           <SourcePanel
             sources={sources}
             onAddSources={handleAddSources}
@@ -84,22 +117,26 @@ function AppContent() {
           />
         </div>
 
-        {/* Center Panel - Chat Interface (42.5%) - PDF 뷰어와 1:1 대칭 */}
-        <div className="bg-white overflow-hidden" style={{ width: '42.5%' }}>
+        {/* Center Panel - Chat Interface (42%) - PDF 뷰어와 1:1 대칭 */}
+        <div className="bg-white overflow-hidden" style={{ width: '42%' }}>
           <ChatInterface
             selectedSources={selectedSources}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
             onPageNavigate={handlePageNavigate}
+            systemPromptOverrides={systemPromptOverrides}
           />
         </div>
 
-        {/* Right Panel - Studio/PDF Viewer (42.5%) - 채팅창과 1:1 대칭 */}
-        <div className="border-l border-gray-200 bg-gray-50 overflow-hidden" style={{ width: '42.5%' }}>
+        {/* Right Panel - Studio/PDF Viewer (42%) - 채팅창과 1:1 대칭 */}
+        <div className="border-l border-gray-200 bg-gray-50 overflow-hidden" style={{ width: '42%' }}>
           <DataPreview
             selectedFile={selectedSources[0]}
             rightPanelState={rightPanelState}
             onPanelModeChange={(mode) => setRightPanelState({ mode, pdfPage: null })}
+            onUpdateData={handleUpdateSourceData}
+            onUpdateName={handleUpdateSourceName}
+            onSystemPromptUpdate={setSystemPromptOverrides}
           />
         </div>
       </div>

@@ -89,16 +89,43 @@ const callGemini = async (messages, temperature = 0.3, isDeepAnalysis = false) =
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
 
     // messages 배열을 Gemini 형식으로 변환
-    // system 프롬프트와 user 메시지를 합침
+    // Gemini는 system role을 직접 지원하지 않으므로, system 메시지를 첫 user 메시지에 포함
     const systemMessage = messages.find(m => m.role === 'system')
-    const userMessage = messages.find(m => m.role === 'user')
+    const conversationMessages = messages.filter(m => m.role !== 'system')
 
-    const prompt = systemMessage
-      ? `${systemMessage.content}\n\n사용자 질문: ${userMessage?.content || ''}`
-      : userMessage?.content || ''
+    // Gemini 대화 기록 형식으로 변환
+    const geminiContents = []
+
+    // 첫 번째 메시지에 system 프롬프트 포함
+    if (conversationMessages.length > 0) {
+      const firstUserMsg = conversationMessages[0]
+      const contentWithSystem = systemMessage
+        ? `${systemMessage.content}\n\n사용자 질문: ${firstUserMsg.content}`
+        : firstUserMsg.content
+
+      geminiContents.push({
+        role: 'user',
+        parts: [{ text: contentWithSystem }]
+      })
+
+      // 나머지 대화 기록 추가 (user ↔ assistant 번갈아가며)
+      for (let i = 1; i < conversationMessages.length; i++) {
+        const msg = conversationMessages[i]
+        geminiContents.push({
+          role: msg.role === 'assistant' ? 'model' : 'user',  // Gemini는 'model' role 사용
+          parts: [{ text: msg.content }]
+        })
+      }
+    } else if (systemMessage) {
+      // 대화 기록이 없고 system 메시지만 있는 경우
+      geminiContents.push({
+        role: 'user',
+        parts: [{ text: systemMessage.content }]
+      })
+    }
 
     const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      contents: geminiContents,
       generationConfig: {
         temperature: temperature,
         maxOutputTokens: isDeepAnalysis ? 4000 : 2000,  // 심층 분석은 4000, 일반은 2000
@@ -109,7 +136,7 @@ const callGemini = async (messages, temperature = 0.3, isDeepAnalysis = false) =
     const content = response.text()
 
     // 응답 길이 확인 및 로깅
-    console.log(`[Gemini ${isDeepAnalysis ? 'Deep Analysis' : 'Standard'}] 응답 길이: ${content.length}자`)
+    console.log(`[Gemini ${isDeepAnalysis ? 'Deep Analysis' : 'Standard'}] 응답 길이: ${content.length}자, 대화 기록: ${conversationMessages.length}개`)
 
     return content
   } catch (error) {
@@ -260,7 +287,8 @@ ${documentText.substring(0, 3000)}
 // 하이브리드 RAG 응답 생성 (일상 대화 + 엄격한 문서 기반)
 // selectedModel: 'instant', 'thinking', 'gemini' 중 하나
 // documentContext: 단일 객체 또는 배열 모두 지원
-export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', selectedModel = 'thinking') => {
+// conversationHistory: 이전 대화 기록 배열 (옵션)
+export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', selectedModel = 'thinking', conversationHistory = []) => {
   try {
     // 1. 일상 대화 모드 - 문서 없이도 응답 가능
     if (isSmallTalk(query)) {
@@ -270,6 +298,7 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 
       const messages = [
         { role: 'system', content: casualPrompt },
+        ...conversationHistory,  // 이전 대화 기록 포함
         { role: 'user', content: query }
       ]
 
@@ -572,6 +601,7 @@ Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table
 
     const messages = [
       { role: 'system', content: systemPrompt },
+      ...conversationHistory,  // 이전 대화 기록 포함 (GPT ↔ Gemini 전환 시에도 유지)
       { role: 'user', content: query }
     ]
 
