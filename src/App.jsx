@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import SourcePanel from './components/SourcePanel'
 import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
 import PDFViewer from './components/PDFViewer'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
+import pdfViewerController from './utils/pdfViewerController'
 
 function AppContent() {
   const [sources, setSources] = useState([])
@@ -15,6 +16,26 @@ function AppContent() {
   const [chatHistory, setChatHistory] = useState([]) // 실시간 대화 이력 (JSON 데이터 동기화용)
   const [lastSyncTime, setLastSyncTime] = useState(null) // 마지막 동기화 시간
   const { t } = useLanguage()
+
+  // 전역 PDF 뷰어 컨트롤러 초기화 (Event Bus 패턴)
+  useEffect(() => {
+    console.log('[App.jsx] PDF 뷰어 컨트롤러 리스너 등록')
+
+    // 모드 변경 이벤트 리스너
+    const handleModeChange = ({ mode, pageNumber }) => {
+      console.log('[App.jsx] 모드 변경 이벤트 수신:', mode, '페이지:', pageNumber)
+      setRightPanelState({ mode, pdfPage: pageNumber })
+    }
+
+    // 리스너 등록
+    pdfViewerController.on('modeChange', handleModeChange)
+
+    // 클린업: 컴포넌트 언마운트 시 리스너 제거
+    return () => {
+      console.log('[App.jsx] PDF 뷰어 컨트롤러 리스너 제거')
+      pdfViewerController.off('modeChange', handleModeChange)
+    }
+  }, [])
 
   // 선택된 소스들 가져오기
   const selectedSources = sources.filter(s => selectedSourceIds.includes(s.id))
@@ -44,11 +65,13 @@ function AppContent() {
   }
 
   const handlePageNavigate = (pageNumber) => {
-    // 우측 패널을 PDF 뷰어 모드로 전환
-    console.log('[App.jsx] 인용 배지 클릭 감지! 페이지 이동 시작:', pageNumber)
-    console.log('[App.jsx] 현재 rightPanelState:', rightPanelState)
-    setRightPanelState({ mode: 'pdf', pdfPage: pageNumber })
-    console.log('[App.jsx] rightPanelState 업데이트 완료 → DataPreview가 감지할 예정')
+    // 전역 PDF 뷰어 컨트롤러로 이벤트 전달 (Event Bus 패턴)
+    console.log('[App.jsx] ========== 인용 배지 클릭 감지 (진입점) ==========')
+    console.log('[App.jsx] 요청 페이지:', pageNumber)
+    console.log('[App.jsx] 전역 컨트롤러로 이벤트 위임...')
+
+    // 전역 컨트롤러가 모든 로직을 처리 (모드 전환, 페이지 이동, 하이라이트)
+    pdfViewerController.handleCitationClick(pageNumber)
   }
 
   const handleClosePDFViewer = () => {

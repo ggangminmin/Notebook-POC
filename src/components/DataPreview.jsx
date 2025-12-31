@@ -3,6 +3,7 @@ import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, F
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
 import * as pdfjsLib from 'pdfjs-dist'
+import pdfViewerController from '../utils/pdfViewerController'
 
 // PDF.js worker 설정
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -521,40 +522,100 @@ Set field to "invalid" if the request cannot be fulfilled.`
     console.log('[DataPreview viewMode 변경] selectedFile:', selectedFile?.name)
   }, [viewMode, pdfState.renderedPages.length])
 
-  // 우측 패널 상태 변경 감지 및 스크롤 이동 (인용 배지 클릭 시)
+  // 전역 PDF 뷰어 컨트롤러 이벤트 리스너 등록 (Event Bus 패턴)
   useEffect(() => {
-    console.log('[DataPreview useEffect] rightPanelState 변경 감지:', rightPanelState)
-    console.log('[DataPreview useEffect] 현재 viewMode:', viewMode)
-    console.log('[DataPreview useEffect] PDF 상태:', { numPages: pdfState.numPages, renderedPages: pdfState.renderedPages.length })
+    console.log('[DataPreview] PDF 뷰어 컨트롤러 리스너 등록')
 
-    if (rightPanelState?.mode === 'pdf' && rightPanelState?.pdfPage) {
-      console.log('[DataPreview] PDF 뷰어 모드로 전환 시작!')
+    // 페이지 이동 이벤트 리스너
+    const handlePageNavigate = ({ pageNumber }) => {
+      console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷')
+      console.log('[DataPreview] 페이지 이동 이벤트 수신!')
+      console.log('[DataPreview] 목표 페이지:', pageNumber)
+      console.log('[DataPreview] 현재 viewMode:', viewMode)
+      console.log('[DataPreview] PDF 상태:', {
+        로드됨: !!pdfState.pdf,
+        전체페이지: pdfState.numPages,
+        렌더링된페이지: pdfState.renderedPages.length,
+        로딩중: pdfState.isLoading
+      })
+      console.log('[DataPreview] 사용 가능한 pageRefs:', Object.keys(pageRefs.current).join(', '))
+      console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷')
+
+      // ✅ 강제 PDF 뷰어 모드로 전환
+      console.log('[DataPreview] ⚙️ 강제 PDF 뷰어 모드 전환...')
       setViewMode('pdf')
 
-      // 페이지로 스크롤 (약간의 지연을 두어 DOM이 렌더링된 후 실행)
+      // DOM 렌더링 완료 대기 후 스크롤 이동 (700ms - 충분한 여유)
       setTimeout(() => {
-        const targetPage = rightPanelState.pdfPage
-        const pageElement = pageRefs.current[`page-${targetPage}`]
+        console.log('[DataPreview] ⏱️ 스크롤 이동 시작 (700ms 대기 완료)')
 
-        console.log('[DataPreview] 페이지 요소 검색:', `page-${targetPage}`, pageElement ? '찾음' : '없음')
-        console.log('[DataPreview] 사용 가능한 pageRefs:', Object.keys(pageRefs.current))
+        const pageKey = `page-${pageNumber}`
+        const pageElement = pageRefs.current[pageKey]
+
+        console.log('[DataPreview] 페이지 요소 검색:', pageKey, pageElement ? '✅ 찾음' : '❌ 없음')
 
         if (pageElement && scrollContainerRef.current) {
-          // Smooth scroll로 페이지 최상단으로 이동
-          pageElement.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          // 80% 줌 스케일 보정 적용
+          const elementTop = pageElement.offsetTop
+          const containerScrollTop = scrollContainerRef.current.scrollTop
+          const adjustedScroll = pdfViewerController.calculateScaleAdjustedScroll(elementTop)
 
-          // 하이라이트 효과 (2초간 강조)
-          setHighlightedPage(targetPage)
-          setTimeout(() => setHighlightedPage(null), 2000)
+          console.log('[DataPreview] 📏 스크롤 위치 계산:')
+          console.log('  - 요소 offsetTop:', elementTop, 'px')
+          console.log('  - 컨테이너 현재 스크롤:', containerScrollTop, 'px')
+          console.log('  - 80% 스케일 보정값:', adjustedScroll, 'px')
 
-          console.log('✅ [인용 배지 → PDF 뷰어] 페이지 이동 성공:', targetPage)
+          // 강제 스크롤 이동 (Smooth)
+          scrollContainerRef.current.scrollTo({
+            top: elementTop,
+            behavior: 'smooth'
+          })
+
+          console.log('✅✅✅ [PDF 뷰어] 페이지 이동 완료:', pageNumber)
         } else {
-          console.error('❌ [PDF 뷰어] 페이지를 찾을 수 없음:', targetPage, '/ 총 페이지:', pdfState.numPages)
-          console.error('[PDF 뷰어] PDF가 로드되지 않았거나 페이지가 렌더링되지 않았습니다')
+          console.error('❌❌❌ [PDF 뷰어] 페이지 요소를 찾을 수 없음!')
+          console.error('[PDF 뷰어] 검색한 키:', pageKey)
+          console.error('[PDF 뷰어] pageElement 존재:', !!pageElement)
+          console.error('[PDF 뷰어] scrollContainerRef 존재:', !!scrollContainerRef.current)
+          console.error('[PDF 뷰어] 사용 가능한 페이지:', Object.keys(pageRefs.current))
+
+          // 사용자에게 경고
+          if (typeof window !== 'undefined') {
+            alert(`페이지 ${pageNumber}를 찾을 수 없습니다. PDF가 완전히 로드되지 않았을 수 있습니다.`)
+          }
         }
-      }, 300)
+      }, 700)
     }
-  }, [rightPanelState, pdfState.numPages, viewMode])
+
+    // 페이지 하이라이트 이벤트 리스너
+    const handlePageHighlight = ({ pageNumber, duration }) => {
+      console.log('[DataPreview] 페이지 하이라이트 효과:', pageNumber, '지속 시간:', duration)
+      setHighlightedPage(pageNumber)
+      setTimeout(() => setHighlightedPage(null), duration)
+    }
+
+    // 리스너 등록
+    pdfViewerController.on('pageNavigate', handlePageNavigate)
+    pdfViewerController.on('pageHighlight', handlePageHighlight)
+
+    // 클린업
+    return () => {
+      console.log('[DataPreview] PDF 뷰어 컨트롤러 리스너 제거')
+      pdfViewerController.off('pageNavigate', handlePageNavigate)
+      pdfViewerController.off('pageHighlight', handlePageHighlight)
+    }
+  }, [pdfState.numPages, pdfState.renderedPages.length])
+
+  // 우측 패널 상태 변경 감지 (모드 전환)
+  useEffect(() => {
+    if (rightPanelState?.mode) {
+      console.log('[DataPreview] rightPanelState 모드 변경:', rightPanelState.mode)
+      if (rightPanelState.mode !== 'pdf') {
+        // PDF 모드가 아니면 해당 모드로 전환
+        setViewMode(rightPanelState.mode)
+      }
+    }
+  }, [rightPanelState?.mode])
 
   // PDF 파일 로드 및 전체 페이지 렌더링
   useEffect(() => {
@@ -575,6 +636,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
     if (!selectedFile?.file || !isPDF) {
       console.log('[DataPreview PDF 로드 체크] PDF 아님 또는 파일 없음 → PDF 상태 초기화')
       setPdfState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [] })
+      pdfViewerController.reset() // 전역 컨트롤러 리셋
       return
     }
 
@@ -614,6 +676,10 @@ Set field to "invalid" if the request cannot be fulfilled.`
         })
 
         console.log('[DataPreview PDF] 모든 페이지 렌더링 완료')
+
+        // 전역 PDF 뷰어 컨트롤러에 준비 완료 알림
+        pdfViewerController.setReady(loadedPdf.numPages)
+        console.log('[DataPreview PDF] 전역 컨트롤러에 준비 완료 알림:', loadedPdf.numPages, '페이지')
       } catch (error) {
         console.error('[DataPreview PDF] PDF 로드 오류:', error)
         setPdfState(prev => ({ ...prev, isLoading: false }))
@@ -1046,11 +1112,16 @@ Set field to "invalid" if the request cannot be fulfilled.`
                     <div
                       key={`page-${pageData.pageNumber}`}
                       ref={(el) => pageRefs.current[`page-${pageData.pageNumber}`] = el}
-                      className={`bg-white mx-auto shadow-lg rounded-lg overflow-hidden transition-all hover:shadow-xl ${
+                      className={`bg-white mx-auto shadow-lg rounded-lg overflow-hidden transition-all duration-300 hover:shadow-xl ${
                         highlightedPage === pageData.pageNumber
-                          ? 'border-4 border-blue-500 ring-4 ring-blue-200 animate-pulse'
+                          ? 'border-4 border-blue-500 ring-8 ring-blue-300 ring-opacity-50 animate-pulse scale-105 shadow-2xl'
                           : 'border border-gray-200'
                       }`}
+                      style={highlightedPage === pageData.pageNumber ? {
+                        transform: 'scale(1.02)',
+                        boxShadow: '0 20px 60px rgba(59, 130, 246, 0.4)',
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                      } : {}}
                     >
                       {/* 페이지 번호 표시 - NotebookLM 스타일 (슬림화) + 하이라이트 효과 */}
                       <div className={`px-3 py-2 border-b border-gray-200 flex items-center justify-between transition-all ${
@@ -1101,11 +1172,33 @@ Set field to "invalid" if the request cannot be fulfilled.`
               </div>
             ) : (
               <div className="flex items-center justify-center h-full">
-                <div className="text-center">
-                  <FileText className="w-12 h-12 mx-auto mb-3 text-gray-400" />
-                  <p className="text-sm text-gray-500">
-                    {language === 'ko' ? 'PDF 파일을 불러올 수 없습니다' : 'Cannot load PDF file'}
+                <div className="text-center p-6 bg-red-50 rounded-lg border-2 border-red-200">
+                  <FileText className="w-16 h-16 mx-auto mb-4 text-red-400" />
+                  <p className="text-lg font-bold text-red-700 mb-2">
+                    {language === 'ko' ? '⚠️ PDF 파일을 불러올 수 없습니다' : '⚠️ Cannot load PDF file'}
                   </p>
+                  <p className="text-sm text-gray-600 mb-4">
+                    {language === 'ko' ? 'PDF 뷰어 모드로 전환되었지만 렌더링된 페이지가 없습니다.' : 'Switched to PDF viewer mode but no rendered pages available.'}
+                  </p>
+                  <div className="text-xs text-left bg-white p-3 rounded border border-gray-300 font-mono">
+                    <div className="mb-1"><strong>디버그 정보:</strong></div>
+                    <div>• PDF 로드됨: {pdfState.pdf ? '✅ Yes' : '❌ No'}</div>
+                    <div>• 전체 페이지: {pdfState.numPages}</div>
+                    <div>• 렌더링된 페이지: {pdfState.renderedPages.length}</div>
+                    <div>• 로딩 중: {pdfState.isLoading ? 'Yes' : 'No'}</div>
+                    <div>• 파일명: {selectedFile?.name || 'N/A'}</div>
+                    <div>• 파일 타입: {selectedFile?.file?.type || 'N/A'}</div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      console.log('[PDF 디버그] 전체 pdfState:', pdfState)
+                      console.log('[PDF 디버그] selectedFile:', selectedFile)
+                      alert('콘솔 로그를 확인하세요 (F12)')
+                    }}
+                    className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
+                  >
+                    {language === 'ko' ? '상세 디버그 정보 출력' : 'Print Debug Info'}
+                  </button>
                 </div>
               </div>
             )}

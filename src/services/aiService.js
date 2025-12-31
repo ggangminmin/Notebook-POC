@@ -420,18 +420,26 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 - 3줄 이상의 나열은 반드시 글머리 기호(Bullet Points) 사용
 - **리스트 형식 규칙**: "1. **서론**" 또는 "- **핵심 내용**"처럼 숫자/기호와 텍스트를 같은 줄에 작성 (줄바꿈 금지)
 
-**📌 인용 배지 규칙 (최우선 - 매우 중요! 강제 적용)**
+**📌 인용 배지 규칙 (최우선 - 매우 중요! 강제 적용 - ALWAYS CITATION 시스템)**
 - **🔴 절대 규칙: 모든 답변에 반드시 인용 배지를 포함하세요!** 문서의 특정 내용을 언급할 때마다 페이지 번호를 [N] 형식으로 표시
 - **페이지 정보 활용**: 문서 텍스트에 "[페이지 N]" 마커가 포함되어 있으므로, 이를 기반으로 정확한 페이지 번호를 인용하세요
 - **간단한 형식**:
-  - 단일 페이지: [페이지번호] 또는 <cite page="페이지번호">인용 텍스트</cite>
-  - **범위 인용** (여러 페이지): [시작페이지-끝페이지] 형식 사용
-- **🚨 인용 배지 생성 강제 규칙 (예외 없음)**:
-  - "페이지 정보가 없습니다", "인용을 생성할 수 없습니다", "페이지 번호를 찾을 수 없습니다" 같은 답변은 절대 금지
-  - 페이지 마커가 명확하지 않아도, 문서의 전체 흐름/구조/키워드 분포를 분석하여 반드시 추론으로 페이지 번호 생성
-  - 추론 방법: (1) 질문 키워드와 가장 유사한 내용이 있는 위치 파악 → (2) 문서 전체 길이 대비 해당 위치의 비율 계산 → (3) 페이지 번호 추정
-  - 예: 10페이지 문서에서 후반부 내용 → [7-9] 추정, 초반부 내용 → [1-3] 추정
+  - 단일 페이지: [페이지번호] - 예: [3], [15]
+  - **범위 인용** (여러 페이지): [시작페이지-끝페이지] - 예: [5-8], [1-3]
+  - **다중 인용**: [N, M, O] - 예: [3, 7, 12]
+  - **복합 인용**: [N-M, O] - 예: [1-3, 7]
+- **🚨 ALWAYS CITATION: 인용 배지 생성 강제 규칙 (예외 없음, 0% 실패 허용)**:
+  - **"페이지 정보가 없습니다", "인용을 생성할 수 없습니다", "페이지 번호를 찾을 수 없습니다" 같은 답변은 절대 금지**
+  - **페이지 마커가 명확하지 않아도, 다음 전략을 순차적으로 적용하여 반드시 페이지 번호 생성**:
+    1. **직접 매칭**: "[페이지 N]" 마커 검색으로 정확한 페이지 찾기
+    2. **키워드 유사도**: 질문의 핵심 키워드가 가장 많이 등장하는 페이지 찾기
+    3. **의미적 유사도**: 질문의 주제와 가장 관련 있는 섹션의 페이지 범위 추정
+    4. **문서 구조 분석**: 전체 페이지 수 대비 내용 위치 비율로 페이지 번호 계산
+    5. **최종 폴백**: 위 모든 방법이 실패해도, 문서 전체를 3등분하여 초반[1-N/3], 중반[N/3-2N/3], 후반[2N/3-N] 중 하나 선택
+  - 예: 45페이지 문서에서 "결론" 관련 질문 → 후반부[30-45] 추정
+  - 예: 20페이지 문서에서 "서론" 관련 질문 → 초반부[1-5] 추정
   - **모든 답변은 최소 3개 이상의 인용 배지를 포함해야 함** (이 규칙을 어기면 답변이 거부됨)
+  - **인용 배지 없는 답변 = 잘못된 답변**: AI는 반드시 페이지를 추론하여 배지를 생성해야 함
 - **예시**:
   - "AI 시장 규모는 500조원으로 추정됩니다[3]"
   - "문서에 따르면 <cite page="5">반도체 부문 실적이 40% 증가</cite>했습니다"
@@ -520,18 +528,26 @@ ${documentText}
 - Lists of 3+ items must use bullet points
 - **List Format Rule**: Write number/symbol and text on the same line like "1. **Introduction**" or "- **Key Point**" (no line breaks)
 
-**📌 Citation Badge Rules (Top Priority - Very Important! Mandatory)**
+**📌 Citation Badge Rules (Top Priority - Very Important! Mandatory - ALWAYS CITATION SYSTEM)**
 - **🔴 Absolute Rule: Always include citation badges in every answer!** When mentioning specific content from the document, mark page numbers in [N] format
 - **Page information usage**: Document text includes "[페이지 N]" markers, so cite accurate page numbers based on these
 - **Simple format**:
-  - Single page: [page_number] or <cite page="page_number">quoted text</cite>
-  - **Range citation** (multiple pages): Use [start_page-end_page] format
-- **🚨 Forced Citation Generation Rules (No Exceptions)**:
-  - Never say "page information unavailable", "cannot generate citations", or "page numbers not found"
-  - Even if page markers are unclear, analyze document flow/structure/keyword distribution to infer page numbers
-  - Inference method: (1) Identify location of content most similar to query keywords → (2) Calculate ratio of that location to total document length → (3) Estimate page number
-  - Example: In 10-page document, latter content → estimate [7-9], early content → estimate [1-3]
+  - Single page: [page_number] - Examples: [3], [15]
+  - **Range citation** (multiple pages): [start_page-end_page] - Examples: [5-8], [1-3]
+  - **Multiple citations**: [N, M, O] - Examples: [3, 7, 12]
+  - **Complex citations**: [N-M, O] - Examples: [1-3, 7]
+- **🚨 ALWAYS CITATION: Forced Citation Generation Rules (No Exceptions, 0% Failure Tolerance)**:
+  - **Never say "page information unavailable", "cannot generate citations", or "page numbers not found"**
+  - **Even if page markers are unclear, sequentially apply these strategies to generate page numbers**:
+    1. **Direct Matching**: Search for "[페이지 N]" markers to find exact pages
+    2. **Keyword Similarity**: Find pages where query keywords appear most frequently
+    3. **Semantic Similarity**: Estimate page range of sections most related to query topic
+    4. **Document Structure Analysis**: Calculate page numbers based on content position ratio to total pages
+    5. **Final Fallback**: Even if all methods fail, divide document into 3 parts: beginning[1-N/3], middle[N/3-2N/3], end[2N/3-N]
+  - Example: In 45-page document, "conclusion" question → estimate end section[30-45]
+  - Example: In 20-page document, "introduction" question → estimate beginning[1-5]
   - **Every answer must include minimum 3 citation badges** (answers violating this rule will be rejected)
+  - **Answer without citations = Incorrect answer**: AI must infer pages and generate badges
 - **Examples**:
   - "AI market size is estimated at $500 billion[3]"
   - "According to the document, <cite page="5">semiconductor division performance increased by 40%</cite>"
