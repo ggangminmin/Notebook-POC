@@ -6,7 +6,7 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onPageNavigate }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onPageNavigate, onChatUpdate }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -22,10 +22,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     scrollToBottom()
   }, [messages])
 
+  // 대화 이력을 App.jsx로 전달 (DataPreview JSON 동기화용)
+  useEffect(() => {
+    if (onChatUpdate && messages.length > 0) {
+      onChatUpdate(messages)
+    }
+  }, [messages, onChatUpdate])
+
   // 페이지 이동 핸들러
   const handlePageClick = (pageNumber) => {
+    console.log('[ChatInterface] 인용 배지 클릭 → App.jsx로 페이지 이동 전달:', pageNumber)
     if (onPageNavigate) {
       onPageNavigate(pageNumber)
+    } else {
+      console.warn('[ChatInterface] onPageNavigate 핸들러가 연결되지 않았습니다!')
     }
   }
 
@@ -40,8 +50,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         const parts = []
         let lastIndex = 0
         let match
+        let citationCount = 0
 
         while ((match = citationRegex.exec(node)) !== null) {
+          citationCount++
           // 인용 태그 이전 텍스트
           if (match.index > lastIndex) {
             parts.push(node.substring(lastIndex, match.index))
@@ -102,6 +114,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         // 마지막 남은 텍스트
         if (lastIndex < node.length) {
           parts.push(node.substring(lastIndex))
+        }
+
+        // 디버깅: 인용 감지 로그
+        if (citationCount > 0) {
+          console.log(`[인용 감지] ${citationCount}개 인용 발견, allSources:`, allSources?.length || 0, 'sourceData:', !!sourceData)
         }
 
         return parts.length > 0 ? parts : node
@@ -248,7 +265,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     analyzeDocument()
-  }, [selectedSources.length, selectedSources.map(s => s.id).join(','), language])
+  }, [selectedSources.length, selectedSources.map(s => s.id).join(',')])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -287,23 +304,48 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
       const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel, conversationHistory)
 
+      // 디버깅: AI 응답 내용 확인
+      console.log('[AI 응답] 내용 미리보기:', response.answer.substring(0, 200))
+      let processedAnswer = response.answer
+      const citationMatches = processedAnswer.match(/\[\d+\]|\[\d+-\d+\]|<cite page="\d+">/g)
+      console.log('[AI 응답] 인용 패턴 확인:', citationMatches)
+      console.log('[AI 응답] 인용 개수:', citationMatches?.length || 0)
+
+      // 🚨 강제 인용 배지 삽입: AI가 인용을 생성하지 않았을 경우 자동 추가 (최소화)
+      if (selectedSources.length > 0 && selectedSources[0].parsedData?.pageCount) {
+        const pageCount = selectedSources[0].parsedData.pageCount
+
+        if (!citationMatches || citationMatches.length === 0) {
+          console.warn('⚠️ [인용 누락 → 최소 삽입] AI가 인용을 생성하지 않아 대표 페이지 1개만 추가합니다')
+          // 문서 중간 대표 페이지 1개만 추가 (과도한 인용 방지)
+          const representativePage = Math.max(1, Math.floor(pageCount / 2))
+          processedAnswer += ` [${representativePage}]`
+        }
+        // 1-2개 있으면 그대로 두고, 추가하지 않음 (자연스러움 우선)
+      }
+
+      // allSources 데이터 검증
+      const allSourcesData = selectedSources.map(s => ({
+        id: s.id,
+        name: s.name,
+        fileName: s.parsedData?.fileName || s.name,
+        pageTexts: s.parsedData?.pageTexts || [],
+        pageCount: s.parsedData?.pageCount || 0
+      }))
+
+      console.log('[allSources 검증] 총', allSourcesData.length, '개 파일, 페이지 데이터:', allSourcesData.map(s => `${s.name}(${s.pageTexts.length}페이지)`).join(', '))
+
       const aiMessage = {
         id: Date.now() + 1,
         type: 'assistant',
-        content: response.answer,
+        content: processedAnswer, // 강제 인용 배지가 추가된 버전 사용
         timestamp: new Date().toISOString(),
         source: response.source,
         foundInDocument: response.foundInDocument,
         matchedKeywords: response.matchedKeywords,
         isReasoningBased: response.isReasoningBased, // 추론 기반 답변 플래그
         sourceData: selectedSources.length > 0 ? selectedSources[0].parsedData : null, // 인용 태그 처리용 (기본: 첫 번째 파일)
-        allSources: selectedSources.map(s => ({ // 다중 파일 지원 (파일ID + 이름 포함)
-          id: s.id,
-          name: s.name,
-          fileName: s.parsedData?.fileName || s.name,
-          pageTexts: s.parsedData?.pageTexts || [],
-          pageCount: s.parsedData?.pageCount || 0
-        }))
+        allSources: allSourcesData // 다중 파일 지원 (파일ID + 이름 포함)
       }
 
       setMessages(prev => [...prev, aiMessage])
@@ -417,26 +459,26 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         )}
       </div>
 
-      {/* Messages Area - 넓은 채팅창에 맞춘 여백과 행간 */}
-      <div className="flex-1 overflow-y-auto p-8 space-y-5 bg-gray-50">
+      {/* Messages Area - NotebookLM 스타일 슬림화 (스크롤바 고정으로 레이아웃 안정화) */}
+      <div className="flex-1 p-5 space-y-3 bg-gray-50" style={{ overflowY: 'scroll' }}>
         {messages.map((message) => (
           <div
             key={message.id}
             className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
           >
             <div
-              className={`flex max-w-[90%] ${
+              className={`flex max-w-[85%] ${
                 message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
               }`}
             >
-              {/* Avatar */}
+              {/* Avatar - Compact */}
               <div
                 className={`flex-shrink-0 ${
-                  message.type === 'user' ? 'ml-3' : 'mr-3'
+                  message.type === 'user' ? 'ml-2' : 'mr-2'
                 }`}
               >
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
                     message.type === 'user'
                       ? 'bg-blue-500'
                       : message.isError
@@ -445,17 +487,17 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                   }`}
                 >
                   {message.type === 'user' ? (
-                    <User className="w-5 h-5 text-white" />
+                    <User className="w-4 h-4 text-white" />
                   ) : (
-                    <Bot className="w-5 h-5 text-white" />
+                    <Bot className="w-4 h-4 text-white" />
                   )}
                 </div>
               </div>
 
-              {/* Message Content - 가독성 향상된 말풍선 */}
+              {/* Message Content - NotebookLM 스타일 슬림 말풍선 */}
               <div className="flex-1">
                 <div
-                  className={`px-5 py-4 rounded-2xl ${
+                  className={`px-3.5 py-2.5 rounded-xl ${
                     message.type === 'user'
                       ? 'bg-blue-500 text-white'
                       : message.isError
@@ -463,15 +505,15 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                       : 'bg-white text-gray-800 border border-gray-200 shadow-sm'
                   }`}
                 >
-                  <div className="text-[15px] leading-relaxed prose prose-sm max-w-none markdown-content">
+                  <div className="text-[13px] leading-[1.55] prose prose-sm max-w-none markdown-content">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        // 커스텀 컴포넌트 스타일링
-                        strong: ({node, ...props}) => <strong className="font-bold" style={{fontWeight: 700}} {...props} />,
-                        h3: ({node, ...props}) => <h3 className="text-base font-semibold mt-3 mb-2" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc list-inside my-2 space-y-1" {...props} />,
-                        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-2 space-y-0.5" {...props} />,
+                        // 커스텀 컴포넌트 스타일링 - NotebookLM 스타일 (슬림화)
+                        strong: ({node, ...props}) => <strong className="font-bold" style={{fontWeight: 600}} {...props} />,
+                        h3: ({node, ...props}) => <h3 className="text-[13.5px] font-semibold mt-2 mb-1.5" {...props} />,
+                        ul: ({node, ...props}) => <ul className="list-disc list-inside my-1.5 space-y-0.5" {...props} />,
+                        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-1.5 space-y-0.5" {...props} />,
                         li: ({node, children, ...props}) => (
                           <li className="ml-2" {...props}>
                             <span className="inline">{processTextWithCitations(children, message.sourceData, message.allSources)}</span>
@@ -487,7 +529,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
                           return isInsideList ?
                             <span {...props}>{processedChildren}</span> :
-                            <p className="my-1.5" {...props}>{processedChildren}</p>
+                            <p className="my-1" {...props}>{processedChildren}</p>
                         },
                         // 텍스트 노드에서도 인용 태그 처리
                         text: ({children}) => {
@@ -499,11 +541,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                     </ReactMarkdown>
                   </div>
 
-                  {/* 문서 참조 정보 */}
+                  {/* 문서 참조 정보 - 슬림화 */}
                   {message.source && message.foundInDocument && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
+                    <div className="mt-2 pt-2 border-t border-gray-200">
                       <div className="flex items-center justify-between">
-                        <div className="flex items-center text-xs text-gray-500">
+                        <div className="flex items-center text-[11px] text-gray-500">
                           <FileText className="w-3 h-3 mr-1" />
                           <span>
                             {language === 'ko' ? '출처' : 'Source'}: {message.source}
@@ -524,7 +566,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                           {message.matchedKeywords.map((keyword, idx) => (
                             <span
                               key={idx}
-                              className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-xs"
+                              className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]"
                             >
                               {keyword}
                             </span>
@@ -534,31 +576,31 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                     </div>
                   )}
 
-                  {/* 문서에서 못 찾은 경우 표시 */}
+                  {/* 문서에서 못 찾은 경우 표시 - 슬림화 */}
                   {message.source && !message.foundInDocument && (
-                    <div className="mt-3 pt-3 border-t border-amber-200">
-                      <div className="flex items-center text-xs text-amber-700">
+                    <div className="mt-2 pt-2 border-t border-amber-200">
+                      <div className="flex items-center text-[11px] text-amber-700">
                         <AlertCircle className="w-3 h-3 mr-1" />
                         <span>{language === 'ko' ? '문서에서 찾을 수 없음' : 'Not found in document'}</span>
                       </div>
                     </div>
                   )}
 
-                  {/* 추천 질문 버튼 (요약 메시지에만 표시) */}
+                  {/* 추천 질문 버튼 (요약 메시지에만 표시) - 슬림화 */}
                   {message.isSummary && message.hasSuggestedQuestions && suggestedQuestions.length > 0 && (
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <div className="flex items-center mb-2">
-                        <Sparkles className="w-4 h-4 text-purple-600 mr-1.5" />
-                        <span className="text-xs font-medium text-gray-700">
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <div className="flex items-center mb-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-purple-600 mr-1" />
+                        <span className="text-[11px] font-medium text-gray-700">
                           {language === 'ko' ? '추천 질문' : 'Suggested Questions'}
                         </span>
                       </div>
-                      <div className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-1.5">
                         {suggestedQuestions.map((question, idx) => (
                           <button
                             key={idx}
                             onClick={() => handleSuggestedQuestionClick(question)}
-                            className="text-left px-3 py-2 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border border-purple-200 rounded-lg text-sm text-gray-700 transition-all hover:shadow-sm"
+                            className="text-left px-2.5 py-1.5 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border border-purple-200 rounded-lg text-[12px] text-gray-700 transition-all hover:shadow-sm"
                           >
                             {question}
                           </button>
@@ -567,7 +609,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-400 mt-1 px-2">
+                <p className="text-[10px] text-gray-400 mt-0.5 px-1">
                   {new Date(message.timestamp).toLocaleTimeString()}
                 </p>
               </div>
@@ -575,19 +617,19 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           </div>
         ))}
 
-        {/* Typing Indicator */}
+        {/* Typing Indicator - Compact */}
         {isTyping && (
           <div className="flex justify-start">
             <div className="flex">
-              <div className="mr-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-white" />
+              <div className="mr-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                  <Bot className="w-4 h-4 text-white" />
                 </div>
               </div>
-              <div className="bg-white px-4 py-3 rounded-2xl border border-gray-200 shadow-sm">
-                <div className="flex items-center space-x-2">
-                  <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
-                  <span className="text-sm text-gray-600">{t('chat.typing')}</span>
+              <div className="bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
+                <div className="flex items-center space-x-1.5">
+                  <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
+                  <span className="text-[12px] text-gray-600">{t('chat.typing')}</span>
                 </div>
               </div>
             </div>
@@ -597,8 +639,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Area - Wide and Centered */}
-      <div className="px-4 py-3 border-t border-gray-200 bg-white">
+      {/* Input Area - Compact */}
+      <div className="px-4 py-2.5 border-t border-gray-200 bg-white">
         <form onSubmit={handleSubmit} className="flex items-center space-x-2">
           <div className="flex-1">
             <textarea
@@ -608,21 +650,21 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               placeholder={selectedSources.length === 0
                 ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
                 : t('chat.placeholder')}
-              className="w-full px-4 py-2.5 text-sm border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               rows="1"
-              style={{ minHeight: '42px', maxHeight: '120px' }}
+              style={{ minHeight: '36px', maxHeight: '100px' }}
             />
           </div>
           <button
             type="submit"
             disabled={!input.trim() || isTyping}
-            className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-1.5"
+            className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
           >
-            <Send className="w-4 h-4" />
-            <span className="text-sm font-medium">{t('chat.send')}</span>
+            <Send className="w-3.5 h-3.5" />
+            <span className="text-[12px] font-medium">{t('chat.send')}</span>
           </button>
         </form>
-        <p className="text-[10px] text-gray-400 mt-1.5 text-center">
+        <p className="text-[9px] text-gray-400 mt-1 text-center">
           {selectedSources.length === 0
             ? (language === 'ko' ? '문서 없이도 대화 가능 · Enter로 전송' : 'Chat without docs · Press Enter to send')
             : (language === 'ko' ? 'Enter로 전송 · Shift+Enter로 줄바꿈' : 'Enter to send · Shift+Enter for new line')}

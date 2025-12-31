@@ -16,12 +16,31 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* 채팅창 텍스트 선명도 최적화 (NotebookLM 스타일) */
+.markdown-content {
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.markdown-content strong {
+  font-weight: 600;
+  letter-spacing: -0.015em;
+}
+
+.markdown-content h3 {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
 code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
     monospace;
 }
 
-/* Custom scrollbar */
+/* Custom scrollbar - 레이아웃 안정화 */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -32,12 +51,19 @@ code {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: #c0c0c0;
   border-radius: 4px;
+  transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: #888;
+}
+
+/* 스크롤바 항상 표시로 레이아웃 흔들림 방지 (스크롤 가능한 요소에만 적용) */
+.overflow-y-scroll,
+[style*="overflowY: 'scroll'"] {
+  scrollbar-gutter: stable;
 }
 
 /* NotebookLM 스타일 마크다운 리스트 (한 줄로 표시) */

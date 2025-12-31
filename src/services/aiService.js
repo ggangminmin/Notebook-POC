@@ -426,7 +426,12 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 - **간단한 형식**:
   - 단일 페이지: [페이지번호] 또는 <cite page="페이지번호">인용 텍스트</cite>
   - **범위 인용** (여러 페이지): [시작페이지-끝페이지] 형식 사용
-- **인용 배지 거부 금지**: "인용을 생성할 수 없습니다" 같은 답변은 절대 불가. 관련성이 가장 높은 페이지를 추론해서라도 반드시 배지 생성
+- **🚨 인용 배지 생성 강제 규칙 (예외 없음)**:
+  - "페이지 정보가 없습니다", "인용을 생성할 수 없습니다", "페이지 번호를 찾을 수 없습니다" 같은 답변은 절대 금지
+  - 페이지 마커가 명확하지 않아도, 문서의 전체 흐름/구조/키워드 분포를 분석하여 반드시 추론으로 페이지 번호 생성
+  - 추론 방법: (1) 질문 키워드와 가장 유사한 내용이 있는 위치 파악 → (2) 문서 전체 길이 대비 해당 위치의 비율 계산 → (3) 페이지 번호 추정
+  - 예: 10페이지 문서에서 후반부 내용 → [7-9] 추정, 초반부 내용 → [1-3] 추정
+  - **모든 답변은 최소 3개 이상의 인용 배지를 포함해야 함** (이 규칙을 어기면 답변이 거부됨)
 - **예시**:
   - "AI 시장 규모는 500조원으로 추정됩니다[3]"
   - "문서에 따르면 <cite page="5">반도체 부문 실적이 40% 증가</cite>했습니다"
@@ -434,15 +439,12 @@ export const generateStrictRAGResponse = async (query, documentContext, language
   - **"가격 정책에 대한 상세 설명이 제시되어 있습니다[11-14]"** (범위 인용)
   - **"1장부터 3장까지 서론이 이어집니다[1-3]"** (범위 인용)
   - **"문서의 전체 맥락을 분석한 결과**, 주요 타겟은 B2B 시장으로 파악됩니다[5, 12, 18]"** (추론 기반 다중 인용)
-- **강제 요구사항 (100% 준수)**:
-  - 답변의 모든 핵심 정보에 페이지 번호를 붙이세요 (최소 5-10개 이상)
-  - **🚨 추론 기반 배지 생성 (핵심!)**: 텍스트 일치도가 낮아도 반드시 인용 추가
-    * **"[문서 맥락 기반 추론]" 또는 "🔍 맥락 기반 분석" 섹션에도 페이지 배지 100% 필수!**
-    * 키워드 유사도, 주제 연관성, 문맥 흐름을 기반으로 가장 관련성 높은 페이지를 추론하여 배지 생성
-    * 추론의 근거가 된 페이지를 모두 나열 (예: [15, 23] 또는 [5-8, 12])
-    * 예: "문서 전반에 걸쳐 **AI**, **자동화**, **효율성** 키워드가 반복되므로[3, 7, 15, 23], 기술 혁신 중심 전략으로 파악됩니다"
-  - **목차 생성 시**: 각 항목마다 해당 주제가 처음 등장하거나 가장 많이 다뤄지는 페이지를 자동 계산하여 배지 부착 필수
-  - **요약 생성 시**: 각 문단/섹션마다 최소 2-3개의 페이지 번호 포함
+- **인용 배지 사용 원칙 (자연스럽고 직관적으로)**:
+  - 답변의 핵심 정보에 페이지 번호를 붙이되, **과도하지 않게** (문단당 1-2개 정도)
+  - **직접 인용할 때만 배지 사용**: 문서에 명확히 나온 내용만 인용하고, 추론이나 일반적 설명에는 배지 불필요
+  - **범위 인용 활용**: 여러 페이지에 걸친 내용은 [N-M] 형식으로 간결하게 표현
+  - **목차 생성 시**: 각 항목마다 대표 페이지 1개만 표시 (예: "1. **서론**[1]")
+  - **요약 생성 시**: 문단당 1-2개의 대표 페이지만 포함 (과도한 인용 지양)
   - 여러 파일이 선택된 경우, 각 파일의 정보를 명확히 구분하여 인용
   - **범위 인용 사용 규칙**: 특정 주제나 내용이 여러 페이지에 걸쳐 있다면 반드시 [시작-끝] 형식 사용
 - **인용 없는 답변은 절대 금지**: 모든 문장에 최소 1개 이상의 페이지 번호 포함 필수
@@ -524,7 +526,12 @@ ${documentText}
 - **Simple format**:
   - Single page: [page_number] or <cite page="page_number">quoted text</cite>
   - **Range citation** (multiple pages): Use [start_page-end_page] format
-- **Citation refusal prohibited**: Never answer "cannot generate citations". Infer most relevant pages and always generate badges
+- **🚨 Forced Citation Generation Rules (No Exceptions)**:
+  - Never say "page information unavailable", "cannot generate citations", or "page numbers not found"
+  - Even if page markers are unclear, analyze document flow/structure/keyword distribution to infer page numbers
+  - Inference method: (1) Identify location of content most similar to query keywords → (2) Calculate ratio of that location to total document length → (3) Estimate page number
+  - Example: In 10-page document, latter content → estimate [7-9], early content → estimate [1-3]
+  - **Every answer must include minimum 3 citation badges** (answers violating this rule will be rejected)
 - **Examples**:
   - "AI market size is estimated at $500 billion[3]"
   - "According to the document, <cite page="5">semiconductor division performance increased by 40%</cite>"
@@ -532,15 +539,12 @@ ${documentText}
   - **"Detailed pricing policy is presented[11-14]"** (range citation)
   - **"Introduction continues from chapter 1 to 3[1-3]"** (range citation)
   - **"Based on analyzing the document's overall context**, main target is identified as B2B market[5, 12, 18]"** (reasoning-based multiple citations)
-- **Mandatory Requirements (100% Compliance)**:
-  - Add page numbers to all key information in your answer (minimum 5-10 citations)
-  - **🚨 Reasoning-Based Badge Generation (Critical!)**: Add citations even with low text match
-    * **Page badges 100% mandatory in "[Context-Based Reasoning]" or "🔍 Context-Based Analysis" sections!**
-    * Infer most relevant pages based on keyword similarity, topic relevance, and contextual flow to generate badges
-    * List all pages that served as basis for reasoning (e.g., [15, 23] or [5-8, 12])
-    * Example: "Throughout the document, **AI**, **automation**, **efficiency** keywords recur[3, 7, 15, 23], indicating technology innovation-focused strategy"
-  - **When generating Table of Contents**: Auto-calculate and attach page badges for each item based on where the topic first appears or is most discussed
-  - **When generating summaries**: Include minimum 2-3 page numbers per paragraph/section
+- **Citation Badge Usage Principles (Natural and Intuitive)**:
+  - Add page numbers to key information, but **not excessively** (about 1-2 per paragraph)
+  - **Use badges only for direct citations**: Cite only when content is clearly in the document; no badges needed for reasoning or general explanations
+  - **Utilize range citations**: Use [N-M] format for content spanning multiple pages
+  - **When generating TOC**: Show only 1 representative page per item (e.g., "1. **Introduction**[1]")
+  - **When generating summaries**: Include only 1-2 representative pages per paragraph (avoid excessive citations)
   - When multiple files are selected, clearly distinguish and cite information from each file
   - **Range citation usage rule**: If a topic or content spans multiple pages, always use [start-end] format
 - **Answers without citations are strictly prohibited**: Every sentence must include at least 1 page number

@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import { Globe } from 'lucide-react'
 import SourcePanel from './components/SourcePanel'
 import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
@@ -13,7 +12,9 @@ function AppContent() {
   const [pdfViewerState, setPdfViewerState] = useState({ isOpen: false, file: null, page: 1 })
   const [rightPanelState, setRightPanelState] = useState({ mode: 'natural', pdfPage: null }) // 우측 패널 상태
   const [systemPromptOverrides, setSystemPromptOverrides] = useState([]) // AI 시스템 프롬프트 덮어쓰기
-  const { language, toggleLanguage, t } = useLanguage()
+  const [chatHistory, setChatHistory] = useState([]) // 실시간 대화 이력 (JSON 데이터 동기화용)
+  const [lastSyncTime, setLastSyncTime] = useState(null) // 마지막 동기화 시간
+  const { t } = useLanguage()
 
   // 선택된 소스들 가져오기
   const selectedSources = sources.filter(s => selectedSourceIds.includes(s.id))
@@ -44,8 +45,10 @@ function AppContent() {
 
   const handlePageNavigate = (pageNumber) => {
     // 우측 패널을 PDF 뷰어 모드로 전환
+    console.log('[App.jsx] 인용 배지 클릭 감지! 페이지 이동 시작:', pageNumber)
+    console.log('[App.jsx] 현재 rightPanelState:', rightPanelState)
     setRightPanelState({ mode: 'pdf', pdfPage: pageNumber })
-    console.log('[페이지 이동] 우측 패널 PDF 뷰어 활성화 - 페이지:', pageNumber)
+    console.log('[App.jsx] rightPanelState 업데이트 완료 → DataPreview가 감지할 예정')
   }
 
   const handleClosePDFViewer = () => {
@@ -84,24 +87,26 @@ function AppContent() {
     console.log('[App] 소스 이름 업데이트:', sourceId, newName)
   }
 
+  // 채팅 이력 업데이트 및 동기화 (ChatInterface → DataPreview)
+  const handleChatUpdate = (messages) => {
+    const formattedHistory = messages.map(msg => ({
+      role: msg.type === 'user' ? 'user' : 'assistant',
+      content: msg.content,
+      timestamp: msg.timestamp
+    }))
+    setChatHistory(formattedHistory)
+    setLastSyncTime(new Date().toISOString())
+    console.log('[App] 대화 이력 동기화:', formattedHistory.length, '개 메시지')
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top Header */}
-      <div className="px-6 py-3 bg-white border-b border-gray-200 flex items-center justify-between">
+      <div className="px-6 py-3 bg-white border-b border-gray-200">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">{t('app.title')}</h1>
           <p className="text-sm text-gray-500">{t('app.subtitle')}</p>
         </div>
-        <button
-          onClick={toggleLanguage}
-          className="flex items-center space-x-2 px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
-          title={t('language.switch')}
-        >
-          <Globe className="w-4 h-4 text-gray-600" />
-          <span className="text-sm font-medium text-gray-700">
-            {language === 'ko' ? '한국어' : 'English'}
-          </span>
-        </button>
       </div>
 
       {/* Main Content - 3 Column Layout (16% | 42% | 42%) - 채팅과 PDF 뷰어 1:1 대칭 */}
@@ -125,6 +130,7 @@ function AppContent() {
             onModelChange={setSelectedModel}
             onPageNavigate={handlePageNavigate}
             systemPromptOverrides={systemPromptOverrides}
+            onChatUpdate={handleChatUpdate}
           />
         </div>
 
@@ -137,6 +143,9 @@ function AppContent() {
             onUpdateData={handleUpdateSourceData}
             onUpdateName={handleUpdateSourceName}
             onSystemPromptUpdate={setSystemPromptOverrides}
+            chatHistory={chatHistory}
+            lastSyncTime={lastSyncTime}
+            systemPromptOverrides={systemPromptOverrides}
           />
         </div>
       </div>

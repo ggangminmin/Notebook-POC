@@ -14,9 +14,13 @@ const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage }) => {
   const handleClick = (e) => {
     e.preventDefault()
     e.stopPropagation()
+    const targetPage = isRange ? startPage : pageNumber
+    console.log('[CitationBadge 클릭] 페이지 이동 요청:', targetPage, isRange ? `(범위: ${startPage}-${endPage})` : '(단일 페이지)')
     if (onPageClick) {
       // 범위 인용일 경우 시작 페이지로 이동
-      onPageClick(isRange ? startPage : pageNumber)
+      onPageClick(targetPage)
+    } else {
+      console.warn('[CitationBadge] onPageClick 핸들러가 연결되지 않았습니다!')
     }
   }
 
