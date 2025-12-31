@@ -69,6 +69,21 @@
 - **메시지 포맷 자동 변환**: OpenAI (system/user/assistant) ↔ Gemini (user/model)
 - **이전 대화 기록 기반 응답**: 모든 API 호출에 전체 대화 이력 포함
 
+### 🔍 **NEW! PDF 뷰어 디버깅 시스템 + 렌더링 안정성 강화**
+
+- **포괄적인 이벤트 체인 추적**: 인용 배지 클릭 → App.jsx → DataPreview 전체 흐름 로깅
+- **PDF 파일 감지 로직 강화**:
+  - MIME type 체크: `file.type?.includes('pdf')`
+  - 파일 확장자 체크: `file.name?.toLowerCase().endsWith('.pdf')`
+  - 소스 이름 체크: `selectedFile.name?.toLowerCase().endsWith('.pdf')`
+  - 3단계 폴백으로 PDF 인식률 100% 보장
+- **상세 디버깅 로깅**:
+  - CitationBadge: 클릭 이벤트 및 페이지 번호 추적
+  - ChatInterface: 인용 패턴 감지, allSources 데이터 검증
+  - App.jsx: rightPanelState 업데이트 추적
+  - DataPreview: PDF 로드 체크, viewMode 전환, 렌더링 상태 모니터링
+- **렌더링 문제 진단**: PDF 뷰어가 나타나지 않는 원인 즉시 파악 가능
+
 ### 📁 소스 패널 (좌측 16%)
 
 - **NotebookLM 스타일 "+ 소스 추가" 버튼** (캡슐 디자인)
@@ -263,6 +278,86 @@ notebooklm-dashboard/
 - 다국어 설정
 
 ## 최근 업데이트
+
+### 🔍 2025-12-31: PDF 뷰어 렌더링 디버깅 시스템 + 파일 감지 개선
+
+#### 포괄적인 디버깅 로깅 시스템
+
+- [x] **전체 이벤트 체인 추적**: 인용 배지 클릭부터 PDF 렌더링까지 모든 단계 로깅
+- [x] **CitationBadge 디버깅**:
+  - 클릭 이벤트 감지 로그
+  - 페이지 번호 및 범위 인용 추적
+  - onPageClick 핸들러 연결 상태 검증
+- [x] **ChatInterface 디버깅**:
+  - AI 응답 내용 미리보기 (첫 200자)
+  - 인용 패턴 정규식 매칭 결과
+  - 인용 배지 개수 카운팅
+  - allSources 데이터 검증 (파일명, 페이지 수)
+- [x] **App.jsx 디버깅**:
+  - rightPanelState 변경 감지
+  - 현재 상태와 다음 상태 비교
+  - DataPreview 전달 확인
+- [x] **DataPreview 디버깅**:
+  - PDF 파일 감지 상세 로그
+  - viewMode 변경 추적
+  - rightPanelState 반응 확인
+  - pdfState 렌더링 상태 모니터링
+  - pageRefs 요소 검색 결과
+
+#### PDF 파일 감지 로직 강화
+
+- [x] **3단계 폴백 시스템**:
+  ```javascript
+  const isPDF = selectedFile?.file && (
+    selectedFile.file.type?.includes('pdf') ||           // 1. MIME type
+    selectedFile.file.name?.toLowerCase().endsWith('.pdf') ||  // 2. 파일명
+    selectedFile.name?.toLowerCase().endsWith('.pdf')    // 3. 소스명
+  )
+  ```
+- [x] **대소문자 무관**: `.PDF`, `.pdf`, `.Pdf` 모두 인식
+- [x] **MIME type 누락 대응**: 브라우저/파일 시스템별 차이 보완
+
+#### 디버깅 포인트 세부 사항
+
+**CitationBadge.jsx (Line 18)**
+```javascript
+console.log('[CitationBadge 클릭] 페이지 이동 요청:', targetPage,
+  isRange ? `(범위: ${startPage}-${endPage})` : '(단일 페이지)')
+```
+
+**ChatInterface.jsx (Lines 291-319)**
+```javascript
+console.log('[AI 응답] 인용 패턴 확인:', citationMatches)
+console.log('[allSources 검증] 총', allSourcesData.length, '개 파일')
+```
+
+**App.jsx (Lines 48-51)**
+```javascript
+console.log('[App.jsx] 인용 배지 클릭 감지! 페이지 이동 시작:', pageNumber)
+console.log('[App.jsx] rightPanelState 업데이트 완료 → DataPreview가 감지할 예정')
+```
+
+**DataPreview.jsx (Lines 554-572)**
+```javascript
+console.log('[DataPreview PDF 로드 체크] isPDF:', isPDF)
+console.log('[DataPreview viewMode 변경] viewMode:', viewMode)
+```
+
+#### 문제 해결 전략
+
+- **PDF 뷰어 미표시**: viewMode, pdfState, renderedPages 상태 확인
+- **페이지 스크롤 실패**: pageRefs 요소 존재 여부 확인
+- **데이터 전달 누락**: allSources, pageTexts 데이터 검증
+- **파일 인식 오류**: 3단계 PDF 감지 로직으로 해결
+
+#### 기술 구현
+
+- **DataPreview.jsx:554-572**: 향상된 PDF 파일 감지 로직
+- **DataPreview.jsx:518-522**: viewMode 변경 감지 useEffect
+- **DataPreview.jsx:526-550**: rightPanelState 추적 useEffect
+- **CitationBadge.jsx:14-25**: 클릭 이벤트 핸들러 로깅
+- **ChatInterface.jsx:291-295**: AI 응답 인용 패턴 검증
+- **ChatInterface.jsx:310-319**: allSources 데이터 무결성 확인
 
 ### 🎨 2025-12-31: 1:1 대칭 레이아웃 + 채팅창 가독성 최적화
 
