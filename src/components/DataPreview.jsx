@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List, ChevronLeft, X } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
 import * as pdfjsLib from 'pdfjs-dist'
@@ -111,6 +111,46 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
   const scrollContainerRef = useRef(null)
   const pageRefs = useRef({})
   const { language } = useLanguage()
+
+  // 편집 상태 관리
+  const [isEditing, setIsEditing] = useState(null) // 'summary', 'keyPoints', 'keywords', null
+  const [editedContent, setEditedContent] = useState({
+    summary: '',
+    keyPoints: [],
+    keywords: []
+  })
+
+  // 편집 모드 시작
+  const handleStartEdit = (field) => {
+    setIsEditing(field)
+    if (naturalSummary) {
+      setEditedContent({
+        summary: naturalSummary.summary || '',
+        keyPoints: naturalSummary.keyPoints || [],
+        keywords: naturalSummary.keywords || []
+      })
+    }
+  }
+
+  // 편집 저장
+  const handleSaveEdit = () => {
+    setNaturalSummary({
+      ...naturalSummary,
+      ...editedContent
+    })
+    setIsEditing(null)
+    console.log('[DataPreview] 편집 내용 저장:', editedContent)
+  }
+
+  // 편집 취소
+  const handleCancelEdit = () => {
+    setIsEditing(null)
+    setEditedContent({
+      summary: naturalSummary?.summary || '',
+      keyPoints: naturalSummary?.keyPoints || [],
+      keywords: naturalSummary?.keywords || []
+    })
+  }
 
   // 우측 패널 상태 변경 감지 및 스크롤 이동
   useEffect(() => {
@@ -645,59 +685,196 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange }) => {
               </div>
             ) : naturalSummary ? (
               <>
-                {/* NotebookLM 스타일 핵심 요약 */}
+                {/* NotebookLM 스타일 핵심 요약 - 편집 기능 */}
                 <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-6 shadow-sm border border-indigo-200">
-                  <div className="flex items-start space-x-3 mb-4">
-                    <div className="flex-shrink-0 w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                      <Lightbulb className="w-5 h-5 text-white" />
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="flex items-start space-x-3 flex-1">
+                      <div className="flex-shrink-0 w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
+                        <Lightbulb className="w-5 h-5 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-2">
+                          {language === 'ko' ? '핵심 요약' : 'Core Summary'}
+                        </h3>
+                        {isEditing === 'summary' ? (
+                          <textarea
+                            value={editedContent.summary}
+                            onChange={(e) => setEditedContent({ ...editedContent, summary: e.target.value })}
+                            className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-800 leading-relaxed font-medium resize-none"
+                            rows={3}
+                            autoFocus
+                          />
+                        ) : (
+                          <p className="text-sm text-gray-800 leading-relaxed font-medium">
+                            {naturalSummary.summary}
+                          </p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-2">
-                        {language === 'ko' ? '핵심 요약' : 'Core Summary'}
-                      </h3>
-                      <p className="text-sm text-gray-800 leading-relaxed font-medium">
-                        {naturalSummary.summary}
-                      </p>
+                    <div className="flex items-center space-x-1 ml-2">
+                      {isEditing === 'summary' ? (
+                        <>
+                          <button
+                            onClick={handleSaveEdit}
+                            className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                            title={language === 'ko' ? '저장' : 'Save'}
+                          >
+                            <Save className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title={language === 'ko' ? '취소' : 'Cancel'}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleStartEdit('summary')}
+                          className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
+                          title={language === 'ko' ? '편집' : 'Edit'}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                {/* NotebookLM 스타일 주요 내용 리스트 */}
+                {/* NotebookLM 스타일 주요 내용 리스트 - 편집 기능 */}
                 <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <div className="flex items-center space-x-2 mb-4">
-                    <List className="w-4 h-4 text-gray-600" />
-                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                      {language === 'ko' ? '주요 내용' : 'Key Points'}
-                    </h3>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center space-x-2">
+                      <List className="w-4 h-4 text-gray-600" />
+                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                        {language === 'ko' ? '주요 내용' : 'Key Points'}
+                      </h3>
+                    </div>
+                    <div className="flex items-center space-x-1">
+                      {isEditing === 'keyPoints' ? (
+                        <>
+                          <button
+                            onClick={handleSaveEdit}
+                            className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                            title={language === 'ko' ? '저장' : 'Save'}
+                          >
+                            <Save className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title={language === 'ko' ? '취소' : 'Cancel'}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleStartEdit('keyPoints')}
+                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          title={language === 'ko' ? '편집' : 'Edit'}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-3">
-                    {naturalSummary.keyPoints && naturalSummary.keyPoints.map((point, index) => (
-                      <div key={index} className="flex items-start space-x-3 group">
-                        <div className="flex-shrink-0 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
-                          {index + 1}
+                    {isEditing === 'keyPoints' ? (
+                      editedContent.keyPoints.map((point, index) => (
+                        <div key={index} className="flex items-start space-x-3">
+                          <div className="flex-shrink-0 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">
+                            {index + 1}
+                          </div>
+                          <input
+                            type="text"
+                            value={point}
+                            onChange={(e) => {
+                              const newKeyPoints = [...editedContent.keyPoints]
+                              newKeyPoints[index] = e.target.value
+                              setEditedContent({ ...editedContent, keyPoints: newKeyPoints })
+                            }}
+                            className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                          />
                         </div>
-                        <p className="flex-1 text-sm text-gray-700 leading-relaxed pt-0.5">
-                          {point}
-                        </p>
-                      </div>
-                    ))}
+                      ))
+                    ) : (
+                      naturalSummary.keyPoints && naturalSummary.keyPoints.map((point, index) => (
+                        <div key={index} className="flex items-start space-x-3 group">
+                          <div className="flex-shrink-0 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
+                            {index + 1}
+                          </div>
+                          <p className="flex-1 text-sm text-gray-700 leading-relaxed pt-0.5">
+                            {point}
+                          </p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </div>
 
-                {/* 핵심 키워드 태그 */}
+                {/* 핵심 키워드 태그 - 편집 기능 */}
                 <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-                  <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-3">
-                    {language === 'ko' ? '핵심 키워드' : 'Keywords'}
-                  </h3>
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
+                      {language === 'ko' ? '핵심 키워드' : 'Keywords'}
+                    </h3>
+                    <div className="flex items-center space-x-1">
+                      {isEditing === 'keywords' ? (
+                        <>
+                          <button
+                            onClick={handleSaveEdit}
+                            className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
+                            title={language === 'ko' ? '저장' : 'Save'}
+                          >
+                            <Save className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                            title={language === 'ko' ? '취소' : 'Cancel'}
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => handleStartEdit('keywords')}
+                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                          title={language === 'ko' ? '편집' : 'Edit'}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
                   <div className="flex flex-wrap gap-2">
-                    {naturalSummary.keywords && naturalSummary.keywords.map((keyword, index) => (
-                      <span
-                        key={index}
-                        className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all cursor-default"
-                      >
-                        {keyword}
-                      </span>
-                    ))}
+                    {isEditing === 'keywords' ? (
+                      editedContent.keywords.map((keyword, index) => (
+                        <input
+                          key={index}
+                          type="text"
+                          value={keyword}
+                          onChange={(e) => {
+                            const newKeywords = [...editedContent.keywords]
+                            newKeywords[index] = e.target.value
+                            setEditedContent({ ...editedContent, keywords: newKeywords })
+                          }}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border-2 border-blue-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          style={{ width: `${Math.max(keyword.length * 8 + 30, 60)}px` }}
+                        />
+                      ))
+                    ) : (
+                      naturalSummary.keywords && naturalSummary.keywords.map((keyword, index) => (
+                        <span
+                          key={index}
+                          className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all cursor-default"
+                        >
+                          {keyword}
+                        </span>
+                      ))
+                    )}
                   </div>
                 </div>
 
