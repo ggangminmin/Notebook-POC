@@ -84,6 +84,24 @@
   - DataPreview: PDF 로드 체크, viewMode 전환, 렌더링 상태 모니터링
 - **렌더링 문제 진단**: PDF 뷰어가 나타나지 않는 원인 즉시 파악 가능
 
+### ⚡ **NEW! 인용 배지 클릭 이벤트 안정화 (React Event Handler Memoization)**
+
+- **useCallback 메모이제이션**: 이벤트 핸들러 함수 참조를 리렌더링 시에도 안정적으로 유지
+- **Event Bus 패턴**: 전역 `pdfViewerController` 싱글톤으로 인용 클릭 → PDF 뷰어 연동 중앙 관리
+- **문제 해결**: React Virtual DOM에서 동적 생성된 CitationBadge 컴포넌트의 onClick 이벤트가 발생하지 않던 문제 수정
+- **이벤트 흐름 통합**:
+  1. CitationBadge 클릭 감지 (onClick)
+  2. ChatInterface의 메모이제이션된 handlePageClick 호출
+  3. App.jsx → pdfViewerController.handleCitationClick()
+  4. Event Bus → modeChange 이벤트 발생
+  5. DataPreview → PDF 뷰어 모드 전환 + 페이지 스크롤 이동
+- **ALWAYS CITATION 시스템 강화**: 5단계 폴백 전략으로 인용 배지 생성 보장
+  1. 직접 매칭 (페이지 마커 검색)
+  2. 키워드 유사도 분석
+  3. 의미적 유사도 추정
+  4. 문서 구조 비율 계산
+  5. 최종 폴백 (문서 3등분 추정)
+
 ### 📁 소스 패널 (좌측 16%)
 
 - **NotebookLM 스타일 "+ 소스 추가" 버튼** (캡슐 디자인)
