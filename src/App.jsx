@@ -64,15 +64,7 @@ function AppContent() {
     setSelectedSourceIds(prev => prev.filter(id => id !== sourceId))
   }
 
-  const handlePageNavigate = (pageNumber) => {
-    // 전역 PDF 뷰어 컨트롤러로 이벤트 전달 (Event Bus 패턴)
-    console.log('[App.jsx] ========== 인용 배지 클릭 감지 (진입점) ==========')
-    console.log('[App.jsx] 요청 페이지:', pageNumber)
-    console.log('[App.jsx] 전역 컨트롤러로 이벤트 위임...')
-
-    // 전역 컨트롤러가 모든 로직을 처리 (모드 전환, 페이지 이동, 하이라이트)
-    pdfViewerController.handleCitationClick(pageNumber)
-  }
+  // 인용 배지 기능 제거됨
 
   const handleClosePDFViewer = () => {
     setPdfViewerState({ isOpen: false, file: null, page: 1 })
@@ -151,7 +143,6 @@ function AppContent() {
             selectedSources={selectedSources}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
-            onPageNavigate={handlePageNavigate}
             systemPromptOverrides={systemPromptOverrides}
             onChatUpdate={handleChatUpdate}
           />

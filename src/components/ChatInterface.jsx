@@ -1,12 +1,11 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
-import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onPageNavigate, onChatUpdate }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
@@ -29,160 +28,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
   }, [messages, onChatUpdate])
 
-  // 페이지 이동 핸들러 (useCallback으로 메모이제이션하여 React가 이벤트 핸들러를 안정적으로 추적)
-  const handlePageClick = useCallback((pageNumber) => {
-    console.log('[ChatInterface] ========== 인용 배지 클릭 감지! ========== ')
-    console.log('[ChatInterface] 클릭된 페이지:', pageNumber)
-    console.log('[ChatInterface] onPageNavigate 존재:', !!onPageNavigate)
-    console.log('[ChatInterface] App.jsx로 페이지 이동 요청 전달...')
-
-    if (onPageNavigate) {
-      onPageNavigate(pageNumber)
-      console.log('[ChatInterface] ✅ onPageNavigate 호출 완료')
-    } else {
-      console.error('[ChatInterface] ❌ CRITICAL: onPageNavigate 핸들러가 연결되지 않았습니다!')
-      alert('디버그: onPageNavigate 핸들러가 ChatInterface에 전달되지 않았습니다.')
-    }
-  }, [onPageNavigate])
-
-  // 텍스트에서 인용 태그를 찾아 CitationBadge로 변환 (다중 파일 지원 + 모든 인용 형식 지원)
-  // useCallback으로 메모이제이션하여 React가 컴포넌트를 안정적으로 추적
-  const processTextWithCitations = useCallback((children, sourceData, allSources) => {
-    if (!children) return children
-
-    const processNode = (node) => {
-      if (typeof node === 'string') {
-        // ✅ 개선: 모든 인용 형식 지원
-        // 1. <cite page="N">text</cite>
-        // 2. [N-M] 범위 인용
-        // 3. [N, M, O] 다중 인용
-        // 4. [N-M, O] 복합 인용
-        // 5. [N] 단일 인용
-        const citationRegex = /<cite page="(\d+)">(.*?)<\/cite>|\[(\d+(?:-\d+)?(?:,\s*\d+(?:-\d+)?)*)\]|\[(\d+)-(\d+)\]|\[(\d+)\]/g
-        const parts = []
-        let lastIndex = 0
-        let match
-        let citationCount = 0
-
-        while ((match = citationRegex.exec(node)) !== null) {
-          citationCount++
-          // 인용 태그 이전 텍스트
-          if (match.index > lastIndex) {
-            parts.push(node.substring(lastIndex, match.index))
-          }
-
-          console.log('[인용 파싱] 매칭된 패턴:', match[0], '전체 매치:', match)
-
-          // 페이지 번호 추출 - 모든 형식 지원
-          let pageNumber, startPage, endPage, isRange, displayText
-
-          if (match[1]) {
-            // <cite page="N">text</cite>
-            pageNumber = parseInt(match[1])
-            displayText = match[2] || pageNumber
-          } else if (match[3]) {
-            // [N, M, O] 또는 [N-M, O] 형식 (다중/복합 인용)
-            const citation = match[3]
-            displayText = citation
-            // 첫 번째 숫자 또는 범위만 사용
-            const firstPart = citation.split(',')[0].trim()
-            if (firstPart.includes('-')) {
-              const [start, end] = firstPart.split('-').map(n => parseInt(n.trim()))
-              startPage = start
-              endPage = end
-              pageNumber = start
-              isRange = true
-            } else {
-              pageNumber = parseInt(firstPart)
-            }
-          } else if (match[4] && match[5]) {
-            // [N-M] 범위 인용 (하위 호환성)
-            startPage = parseInt(match[4])
-            endPage = parseInt(match[5])
-            pageNumber = startPage
-            isRange = true
-            displayText = `${startPage}-${endPage}`
-          } else if (match[6]) {
-            // [N] 단일 인용 (하위 호환성)
-            pageNumber = parseInt(match[6])
-            displayText = pageNumber
-          }
-
-          console.log('[인용 파싱] 추출된 페이지 정보:', { pageNumber, startPage, endPage, isRange, displayText })
-
-          // 다중 파일 지원: 모든 소스에서 페이지 검색
-          let pageData = null
-          let fileName = '문서'
-          let fileId = null
-
-          if (allSources && allSources.length > 0) {
-            // 모든 파일을 순회하며 해당 페이지 찾기
-            for (const source of allSources) {
-              const foundPage = source.pageTexts?.find(p => p.pageNumber === pageNumber)
-              if (foundPage) {
-                pageData = foundPage
-                fileName = source.fileName || source.name
-                fileId = source.id
-                break // 첫 번째 매칭 파일 사용
-              }
-            }
-          }
-
-          // Fallback: sourceData에서 찾기 (하위 호환성)
-          if (!pageData && sourceData) {
-            pageData = sourceData.pageTexts?.find(p => p.pageNumber === pageNumber)
-            fileName = sourceData.fileName || sourceData.name || '문서'
-          }
-
-          const pageText = pageData?.text || displayText || ''
-          const thumbnail = pageData?.thumbnail // 썸네일 이미지 (Base64)
-
-          console.log('[인용 배지 생성] 페이지:', pageNumber, '핸들러:', !!handlePageClick, '파일:', fileName)
-
-          parts.push(
-            <CitationBadge
-              key={`cite-${fileId || 'default'}-${pageNumber}-${isRange ? `${startPage}-${endPage}` : ''}-${match.index}`}
-              pageNumber={pageNumber}
-              text={pageText}
-              thumbnail={thumbnail}
-              fileName={fileName}
-              onPageClick={handlePageClick}
-              startPage={isRange ? startPage : undefined}
-              endPage={isRange ? endPage : undefined}
-            />
-          )
-
-          lastIndex = match.index + match[0].length
-        }
-
-        // 마지막 남은 텍스트
-        if (lastIndex < node.length) {
-          parts.push(node.substring(lastIndex))
-        }
-
-        // 디버깅: 인용 감지 로그
-        if (citationCount > 0) {
-          console.log(`[인용 감지] ${citationCount}개 인용 발견, allSources:`, allSources?.length || 0, 'sourceData:', !!sourceData)
-        }
-
-        return parts.length > 0 ? parts : node
-      } else if (Array.isArray(node)) {
-        return node.map((child, idx) => <span key={idx}>{processNode(child)}</span>)
-      } else if (node?.props?.children) {
-        return {
-          ...node,
-          props: {
-            ...node.props,
-            children: processNode(node.props.children)
-          }
-        }
-      }
-
-      return node
-    }
-
-    return processNode(children)
-  }, [handlePageClick])
+  // 인용 배지 기능 제거됨
 
   // 소스 선택이 변경되면 자동 요약 및 추천 질문 생성
   useEffect(() => {
@@ -560,7 +406,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                         ol: ({node, ...props}) => <ol className="list-decimal list-inside my-1.5 space-y-0.5" {...props} />,
                         li: ({node, children, ...props}) => (
                           <li className="ml-2" {...props}>
-                            <span className="inline">{processTextWithCitations(children, message.sourceData, message.allSources)}</span>
+                            <span className="inline">{children}</span>
                           </li>
                         ),
                         p: ({node, children, ...props}) => {
@@ -568,16 +414,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                           const isInsideList = node?.position?.start?.line &&
                                                message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
 
-                          // 인용 태그 처리 (다중 파일 지원)
-                          const processedChildren = processTextWithCitations(children, message.sourceData, message.allSources)
-
                           return isInsideList ?
-                            <span {...props}>{processedChildren}</span> :
-                            <p className="my-1" {...props}>{processedChildren}</p>
-                        },
-                        // 텍스트 노드에서도 인용 태그 처리
-                        text: ({children}) => {
-                          return <>{processTextWithCitations(children, message.sourceData, message.allSources)}</>
+                            <span {...props}>{children}</span> :
+                            <p className="my-1" {...props}>{children}</p>
                         },
                       }}
                     >

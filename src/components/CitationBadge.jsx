@@ -40,19 +40,20 @@ const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage }) => {
 
   return (
     <span className="relative inline-block align-middle" style={{ zIndex: 10 }}>
-      {/* NotebookLM 스타일 동그란 회색 숫자 배지 (강화된 UI/UX 피드백) */}
+      {/* NotebookLM 스타일 동그란 회색 숫자 배지 (🎯 클릭 가능성 극대화 UI/UX) */}
       <button
         type="button"
         onClick={handleClick}
         onMouseDown={(e) => {
           console.log('[CitationBadge] 🖱️ mouseDown 이벤트:', pageNumber)
         }}
-        className={`inline-flex items-center justify-center mx-0.5 bg-gray-200 hover:bg-blue-500 text-gray-700 hover:text-white rounded-full text-xs font-semibold transition-all duration-200 cursor-pointer hover:shadow-xl hover:scale-125 active:scale-95 active:bg-blue-600 relative group ${
+        className={`inline-flex items-center justify-center mx-0.5 bg-blue-100 hover:bg-blue-600 text-blue-700 hover:text-white rounded-full text-xs font-bold transition-colors duration-200 cursor-pointer hover:shadow-lg relative group border border-blue-300 hover:border-blue-600 ${
           isRange ? 'px-2 h-5 min-w-[32px]' : 'w-5 h-5'
         }`}
-        title={isRange ? `페이지 ${startPage}-${endPage}로 이동` : `페이지 ${pageNumber}로 이동`}
+        title={isRange ? `🖱️ 클릭하여 페이지 ${startPage}-${endPage}로 이동` : `🖱️ 클릭하여 페이지 ${pageNumber}로 이동`}
+        aria-label={isRange ? `페이지 ${startPage}부터 ${endPage}까지 보기` : `페이지 ${pageNumber} 보기`}
         style={{
-          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+          boxShadow: '0 2px 4px rgba(59, 130, 246, 0.3)',
           zIndex: 100,
           pointerEvents: 'auto',
           position: 'relative'

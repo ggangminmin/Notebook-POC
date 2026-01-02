@@ -191,4 +191,11 @@ class PDFViewerController {
 // 싱글톤 인스턴스 생성
 const pdfViewerController = new PDFViewerController()
 
+// 🌐 전역 window 객체에 노출 (디버깅 및 직접 호출 가능)
+if (typeof window !== 'undefined') {
+  window.citationController = pdfViewerController
+  console.log('[PDFViewerController] 전역 window.citationController로 노출됨')
+  console.log('[사용법] window.citationController.handleCitationClick(5) → 페이지 5로 이동')
+}
+
 export default pdfViewerController

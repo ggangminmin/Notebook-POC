@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
@@ -522,12 +522,8 @@ Set field to "invalid" if the request cannot be fulfilled.`
     console.log('[DataPreview viewMode 변경] selectedFile:', selectedFile?.name)
   }, [viewMode, pdfState.renderedPages.length])
 
-  // 전역 PDF 뷰어 컨트롤러 이벤트 리스너 등록 (Event Bus 패턴)
-  useEffect(() => {
-    console.log('[DataPreview] PDF 뷰어 컨트롤러 리스너 등록')
-
-    // 페이지 이동 이벤트 리스너
-    const handlePageNavigate = ({ pageNumber }) => {
+  // 페이지 이동 핸들러 (useCallback으로 메모이제이션 - 함수 참조 안정화)
+  const handlePageNavigate = useCallback(({ pageNumber }) => {
       console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷')
       console.log('[DataPreview] 페이지 이동 이벤트 수신!')
       console.log('[DataPreview] 목표 페이지:', pageNumber)
@@ -541,13 +537,13 @@ Set field to "invalid" if the request cannot be fulfilled.`
       console.log('[DataPreview] 사용 가능한 pageRefs:', Object.keys(pageRefs.current).join(', '))
       console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷')
 
-      // ✅ 강제 PDF 뷰어 모드로 전환
+      // ✅ 강제 PDF 뷰어 모드로 전환 (이미 pdf 모드여도 상관없음)
       console.log('[DataPreview] ⚙️ 강제 PDF 뷰어 모드 전환...')
       setViewMode('pdf')
 
-      // DOM 렌더링 완료 대기 후 스크롤 이동 (700ms - 충분한 여유)
+      // DOM 렌더링 완료 대기 후 스크롤 이동 (300ms로 단축 - 더 빠른 응답)
       setTimeout(() => {
-        console.log('[DataPreview] ⏱️ 스크롤 이동 시작 (700ms 대기 완료)')
+        console.log('[DataPreview] ⏱️ 스크롤 이동 시작 (300ms 대기 완료)')
 
         const pageKey = `page-${pageNumber}`
         const pageElement = pageRefs.current[pageKey]
@@ -558,12 +554,10 @@ Set field to "invalid" if the request cannot be fulfilled.`
           // 80% 줌 스케일 보정 적용
           const elementTop = pageElement.offsetTop
           const containerScrollTop = scrollContainerRef.current.scrollTop
-          const adjustedScroll = pdfViewerController.calculateScaleAdjustedScroll(elementTop)
 
           console.log('[DataPreview] 📏 스크롤 위치 계산:')
           console.log('  - 요소 offsetTop:', elementTop, 'px')
           console.log('  - 컨테이너 현재 스크롤:', containerScrollTop, 'px')
-          console.log('  - 80% 스케일 보정값:', adjustedScroll, 'px')
 
           // 강제 스크롤 이동 (Smooth)
           scrollContainerRef.current.scrollTo({
@@ -578,21 +572,20 @@ Set field to "invalid" if the request cannot be fulfilled.`
           console.error('[PDF 뷰어] pageElement 존재:', !!pageElement)
           console.error('[PDF 뷰어] scrollContainerRef 존재:', !!scrollContainerRef.current)
           console.error('[PDF 뷰어] 사용 가능한 페이지:', Object.keys(pageRefs.current))
-
-          // 사용자에게 경고
-          if (typeof window !== 'undefined') {
-            alert(`페이지 ${pageNumber}를 찾을 수 없습니다. PDF가 완전히 로드되지 않았을 수 있습니다.`)
-          }
         }
-      }, 700)
-    }
+      }, 300) // 700ms → 300ms로 단축하여 반응 속도 개선
+  }, [viewMode, pdfState.pdf, pdfState.numPages, pdfState.renderedPages.length])
 
-    // 페이지 하이라이트 이벤트 리스너
-    const handlePageHighlight = ({ pageNumber, duration }) => {
-      console.log('[DataPreview] 페이지 하이라이트 효과:', pageNumber, '지속 시간:', duration)
-      setHighlightedPage(pageNumber)
-      setTimeout(() => setHighlightedPage(null), duration)
-    }
+  // 페이지 하이라이트 핸들러 (useCallback으로 메모이제이션)
+  const handlePageHighlight = useCallback(({ pageNumber, duration }) => {
+    console.log('[DataPreview] 페이지 하이라이트 효과:', pageNumber, '지속 시간:', duration)
+    setHighlightedPage(pageNumber)
+    setTimeout(() => setHighlightedPage(null), duration)
+  }, [])
+
+  // 전역 PDF 뷰어 컨트롤러 이벤트 리스너 등록 (Event Bus 패턴)
+  useEffect(() => {
+    console.log('[DataPreview] PDF 뷰어 컨트롤러 리스너 등록')
 
     // 리스너 등록
     pdfViewerController.on('pageNavigate', handlePageNavigate)
@@ -604,7 +597,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
       pdfViewerController.off('pageNavigate', handlePageNavigate)
       pdfViewerController.off('pageHighlight', handlePageHighlight)
     }
-  }, [pdfState.numPages, pdfState.renderedPages.length])
+  }, [handlePageNavigate, handlePageHighlight])
 
   // 우측 패널 상태 변경 감지 (모드 전환)
   useEffect(() => {
