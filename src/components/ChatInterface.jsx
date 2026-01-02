@@ -15,28 +15,176 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
 
+  // 텍스트 블록에서 대괄호 없는 페이지 패턴을 처리하는 헬퍼 함수
+  const processBarePagePatterns = (textBlock, pageTexts, pageClickHandler, keyPrefix) => {
+    if (!textBlock || typeof textBlock !== 'string') return [textBlock]
+    
+    let processedText = textBlock
+    const badges = []
+    let badgeCounter = 0
+    
+    // 플레이스홀더로 교체하기 위해 역순으로 처리 (인덱스 유지)
+    const replacements = []
+    
+    // 1단계: "페이지 15", "페이지 15 17" 패턴 처리
+    const pagePrefixPattern = /페이지\s+((?:\d+(?:\s+\d+)*))/g
+    let pageMatch
+    while ((pageMatch = pagePrefixPattern.exec(textBlock)) !== null) {
+      const numbers = pageMatch[1].trim().split(/\s+/).filter(n => /^\d+$/.test(n))
+      const placeholder = `__PAGE_BADGE_${keyPrefix}_${badgeCounter++}__`
+      
+      replacements.push({
+        original: pageMatch[0],
+        placeholder: placeholder,
+        numbers: numbers,
+        type: 'page-prefix',
+        index: pageMatch.index
+      })
+    }
+    
+    // 2단계: 범위 패턴 처리 (예: 15-18)
+    const rangePattern = /\b(\d+)\s*-\s*(\d+)\b/g
+    let rangeMatch
+    while ((rangeMatch = rangePattern.exec(textBlock)) !== null) {
+      // 이미 처리된 "페이지" 패턴과 겹치지 않는지 확인
+      const isOverlapping = replacements.some(r => 
+        rangeMatch.index >= r.index && 
+        rangeMatch.index + rangeMatch[0].length <= r.index + r.original.length
+      )
+      
+      if (!isOverlapping) {
+        const placeholder = `__RANGE_BADGE_${keyPrefix}_${badgeCounter++}__`
+        replacements.push({
+          original: rangeMatch[0],
+          placeholder: placeholder,
+          startPage: parseInt(rangeMatch[1]),
+          endPage: parseInt(rangeMatch[2]),
+          type: 'range',
+          index: rangeMatch.index
+        })
+      }
+    }
+    
+    // 3단계: 연속된 숫자 패턴 처리 (예: 15 17, 22 27) - 범위나 페이지 패턴과 겹치지 않는 것만
+    const numberSequencePattern = /\b(\d+(?:\s+\d+)+)\b/g
+    let numSeqMatch
+    while ((numSeqMatch = numberSequencePattern.exec(textBlock)) !== null) {
+      const isOverlapping = replacements.some(r => 
+        numSeqMatch.index >= r.index && 
+        numSeqMatch.index + numSeqMatch[0].length <= r.index + r.original.length
+      )
+      
+      if (!isOverlapping) {
+        const numbers = numSeqMatch[1].trim().split(/\s+/).filter(n => /^\d+$/.test(n))
+        // 범위 패턴이 아닌 경우만 (예: "15 17"은 포함, "15-17"은 제외)
+        if (!/\d+\s*-\s*\d+/.test(numSeqMatch[0])) {
+          const placeholder = `__NUM_SEQ_BADGE_${keyPrefix}_${badgeCounter++}__`
+          replacements.push({
+            original: numSeqMatch[0],
+            placeholder: placeholder,
+            numbers: numbers,
+            type: 'number-sequence',
+            index: numSeqMatch.index
+          })
+        }
+      }
+    }
+    
+    // 역순으로 정렬하여 뒤에서부터 교체 (인덱스 유지)
+    replacements.sort((a, b) => b.index - a.index)
+    
+    // 텍스트에 플레이스홀더 삽입
+    replacements.forEach(rep => {
+      processedText = processedText.substring(0, rep.index) + 
+                     rep.placeholder + 
+                     processedText.substring(rep.index + rep.original.length)
+    })
+    
+    // replacement를 맵으로 변환 (플레이스홀더로 쉽게 찾기 위해)
+    const replacementMap = new Map()
+    replacements.forEach((rep, idx) => {
+      replacementMap.set(rep.placeholder, rep)
+    })
+    
+    // 플레이스홀더를 배지 컴포넌트로 교체
+    const parts = []
+    let currentIndex = 0
+    const placeholderPattern = /__(PAGE|RANGE|NUM_SEQ)_BADGE_[^_]+_\d+__/g
+    let placeholderMatch
+    
+    while ((placeholderMatch = placeholderPattern.exec(processedText)) !== null) {
+      // 플레이스홀더 이전 텍스트
+      if (placeholderMatch.index > currentIndex) {
+        parts.push(processedText.substring(currentIndex, placeholderMatch.index))
+      }
+      
+      // 해당하는 replacement 찾기
+      const placeholder = placeholderMatch[0]
+      const replacement = replacementMap.get(placeholder)
+      
+      if (replacement) {
+        if (replacement.type === 'range') {
+          const pageContent = pageTexts[replacement.startPage - 1]?.text || `Page ${replacement.startPage}-${replacement.endPage} content preview`
+          parts.push(
+            <CitationBadge
+              key={`${keyPrefix}-range-${replacement.startPage}`}
+              pageNumber={replacement.startPage}
+              startPage={replacement.startPage}
+              endPage={replacement.endPage}
+              pageContent={pageContent}
+              onPageClick={pageClickHandler}
+            />
+          )
+        } else if (replacement.numbers) {
+          // 여러 숫자를 개별 배지로
+          replacement.numbers.forEach((num, idx) => {
+            const pageNum = parseInt(num)
+            const pageContent = pageTexts[pageNum - 1]?.text || `Page ${pageNum} content preview`
+            parts.push(
+              <CitationBadge
+                key={`${keyPrefix}-${replacement.type}-${idx}-${pageNum}`}
+                pageNumber={pageNum}
+                pageContent={pageContent}
+                onPageClick={pageClickHandler}
+              />
+            )
+          })
+        }
+      }
+      
+      currentIndex = placeholderMatch.index + placeholderMatch[0].length
+    }
+    
+    // 남은 텍스트
+    if (currentIndex < processedText.length) {
+      parts.push(processedText.substring(currentIndex))
+    }
+    
+    return parts.length > 0 ? parts : [textBlock]
+  }
+
   // [숫자] 패턴을 CitationBadge로 변환하는 함수 (NotebookLM 스타일 강화)
   // 복합 인용구 지원: [35, 38, 문서 맥락 기반 추론]
+  // 대괄호 없는 패턴도 지원: 페이지 15, 15 17, 15-18, 2-14
   const renderTextWithCitations = (text, pageTexts = [], pageClickHandler = onPageClick) => {
     if (!text || typeof text !== 'string') return text
 
-    // 🎯 개선된 정규식: 대괄호 안의 모든 내용을 캡처 (숫자, 한글, 공백, 콤마 등)
-    // 예: [35, 38, 문서 맥락 기반 추론], [5-8], [15], [3, 맥락 추론]
     const citationPattern = /\[([^\]]+)\]/g
     const parts = []
     let lastIndex = 0
     let match
 
+    // 먼저 대괄호가 있는 패턴 처리
     while ((match = citationPattern.exec(text)) !== null) {
-      // 매칭 이전 텍스트 추가
+      // 매칭 이전 텍스트 처리 (대괄호 없는 패턴 포함)
       if (match.index > lastIndex) {
-        parts.push(text.substring(lastIndex, match.index))
+        const textBefore = text.substring(lastIndex, match.index)
+        const processedBefore = processBarePagePatterns(textBefore, pageTexts, pageClickHandler, `citation-before-${match.index}`)
+        parts.push(...processedBefore)
       }
 
       // 대괄호 안의 내용 추출
       const citationContent = match[1]
-
-      // 콤마로 분리하여 각 항목 처리
       const items = citationContent.split(',').map(item => item.trim())
 
       // 각 항목을 순회하며 배지 생성
@@ -45,7 +193,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         const rangeMatch = item.match(/^(\d+)\s*-\s*(\d+)$/)
 
         if (rangeMatch) {
-          // 범위 인용: [5-8]
           const startPage = parseInt(rangeMatch[1])
           const endPage = parseInt(rangeMatch[2])
           const pageContent = pageTexts[startPage - 1]?.text || `Page ${startPage}-${endPage} content preview`
@@ -93,9 +240,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       lastIndex = match.index + match[0].length
     }
 
-    // 남은 텍스트 추가
+    // 남은 텍스트 처리 (대괄호 없는 패턴 포함)
     if (lastIndex < text.length) {
-      parts.push(text.substring(lastIndex))
+      const remainingText = text.substring(lastIndex)
+      const processedRemaining = processBarePagePatterns(remainingText, pageTexts, pageClickHandler, 'citation-remaining')
+      parts.push(...processedRemaining)
     }
 
     // 배열을 반환하되, React Fragment로 감싸서 반환
