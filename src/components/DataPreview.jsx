@@ -107,7 +107,7 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
   // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
-  const [viewMode, setViewMode] = useState('pdf') // 🎯 NotebookLM 스타일: 항상 PDF 뷰어 모드로 시작
+  const [viewMode, setViewMode] = useState('natural') // 🎯 초기 모드: 자연어 분석 모드 (인용 배지 클릭 시 PDF 모드로 전환)
   const [naturalSummary, setNaturalSummary] = useState(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [pdfState, setPdfState] = useState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [] })
@@ -1286,27 +1286,27 @@ Set field to "invalid" if the request cannot be fulfilled.`
               </div>
             ) : naturalSummary ? (
               <>
-                {/* NotebookLM 스타일 핵심 요약 - 편집 기능 */}
-                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-6 shadow-sm border border-indigo-200">
-                  <div className="flex items-start justify-between mb-4">
-                    <div className="flex items-start space-x-3 flex-1">
-                      <div className="flex-shrink-0 w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-                        <Lightbulb className="w-5 h-5 text-white" />
+                {/* NotebookLM 스타일 핵심 요약 - 편집 기능 (컴팩트) */}
+                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-4 shadow-sm border border-indigo-200">
+                  <div className="flex items-start justify-between mb-2">
+                    <div className="flex items-start space-x-2 flex-1">
+                      <div className="flex-shrink-0 w-6 h-6 bg-indigo-600 rounded-lg flex items-center justify-center">
+                        <Lightbulb className="w-4 h-4 text-white" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-2">
+                        <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-1.5">
                           {language === 'ko' ? '핵심 요약' : 'Core Summary'}
                         </h3>
                         {isEditing === 'summary' ? (
                           <textarea
                             value={editedContent.summary}
                             onChange={(e) => setEditedContent({ ...editedContent, summary: e.target.value })}
-                            className="w-full px-3 py-2 text-sm border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-800 leading-relaxed font-medium resize-none"
-                            rows={3}
+                            className="w-full px-2 py-1.5 text-xs border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-800 leading-relaxed font-medium resize-none"
+                            rows={2}
                             autoFocus
                           />
                         ) : (
-                          <p className="text-sm text-gray-800 leading-relaxed font-medium">
+                          <p className="text-sm text-gray-800 leading-relaxed font-medium line-clamp-3">
                             {naturalSummary.summary}
                           </p>
                         )}
@@ -1344,8 +1344,8 @@ Set field to "invalid" if the request cannot be fulfilled.`
                 </div>
 
                 {/* NotebookLM 스타일 주요 내용 리스트 - 편집 기능 */}
-                <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between mb-4">
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center space-x-2">
                       <List className="w-4 h-4 text-gray-600" />
                       <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
@@ -1381,11 +1381,11 @@ Set field to "invalid" if the request cannot be fulfilled.`
                       )}
                     </div>
                   </div>
-                  <div className="space-y-3">
+                  <div className="space-y-2">
                     {isEditing === 'keyPoints' ? (
                       editedContent.keyPoints.map((point, index) => (
-                        <div key={index} className="flex items-start space-x-3">
-                          <div className="flex-shrink-0 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600">
+                        <div key={index} className="flex items-start space-x-2">
+                          <div className="flex-shrink-0 w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600">
                             {index + 1}
                           </div>
                           <input
@@ -1396,14 +1396,14 @@ Set field to "invalid" if the request cannot be fulfilled.`
                               newKeyPoints[index] = e.target.value
                               setEditedContent({ ...editedContent, keyPoints: newKeyPoints })
                             }}
-                            className="flex-1 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
+                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
                           />
                         </div>
                       ))
                     ) : (
                       naturalSummary.keyPoints && naturalSummary.keyPoints.map((point, index) => (
-                        <div key={index} className="flex items-start space-x-3 group">
-                          <div className="flex-shrink-0 w-6 h-6 bg-gray-100 rounded-full flex items-center justify-center text-xs font-bold text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
+                        <div key={index} className="flex items-start space-x-2 group">
+                          <div className="flex-shrink-0 w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
                             {index + 1}
                           </div>
                           <p className="flex-1 text-sm text-gray-700 leading-relaxed pt-0.5">
@@ -1416,8 +1416,8 @@ Set field to "invalid" if the request cannot be fulfilled.`
                 </div>
 
                 {/* 핵심 키워드 태그 - 편집 기능 */}
-                <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
                     <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
                       {language === 'ko' ? '핵심 키워드' : 'Keywords'}
                     </h3>
@@ -1476,40 +1476,6 @@ Set field to "invalid" if the request cannot be fulfilled.`
                         </span>
                       ))
                     )}
-                  </div>
-                </div>
-
-                {/* 문서 메타데이터 */}
-                <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                  <div className="grid grid-cols-2 gap-3 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-500">{language === 'ko' ? '파일명' : 'File'}</span>
-                      <span className="text-gray-900 font-medium truncate max-w-[100px]" title={selectedFile.name}>
-                        {selectedFile.name}
-                      </span>
-                    </div>
-                    {selectedFile.parsedData?.pageCount && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500">{language === 'ko' ? '페이지' : 'Pages'}</span>
-                        <span className="text-gray-900 font-medium">
-                          {selectedFile.parsedData.pageCount}
-                        </span>
-                      </div>
-                    )}
-                    {selectedFile.parsedData?.extractedText && (
-                      <div className="flex items-center justify-between">
-                        <span className="text-gray-500">{language === 'ko' ? '문자 수' : 'Characters'}</span>
-                        <span className="text-gray-900 font-medium">
-                          {selectedFile.parsedData.extractedText.length.toLocaleString()}
-                        </span>
-                      </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                      <span className="text-gray-500">{language === 'ko' ? '타입' : 'Type'}</span>
-                      <span className="text-gray-900 font-medium uppercase">
-                        {selectedFile.type}
-                      </span>
-                    </div>
                   </div>
                 </div>
 

@@ -17,7 +17,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
   // [숫자] 패턴을 CitationBadge로 변환하는 함수 (NotebookLM 스타일 강화)
   // 복합 인용구 지원: [35, 38, 문서 맥락 기반 추론]
-  const renderTextWithCitations = (text, pageTexts = []) => {
+  const renderTextWithCitations = (text, pageTexts = [], pageClickHandler = onPageClick) => {
     if (!text || typeof text !== 'string') return text
 
     // 🎯 개선된 정규식: 대괄호 안의 모든 내용을 캡처 (숫자, 한글, 공백, 콤마 등)
@@ -57,7 +57,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               startPage={startPage}
               endPage={endPage}
               pageContent={pageContent}
-              onPageClick={onPageClick}
+              onPageClick={pageClickHandler}
             />
           )
         }
@@ -71,7 +71,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               key={`citation-${match.index}-${idx}-page-${pageNum}`}
               pageNumber={pageNum}
               pageContent={pageContent}
-              onPageClick={onPageClick}
+              onPageClick={pageClickHandler}
             />
           )
         }
@@ -98,7 +98,13 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       parts.push(text.substring(lastIndex))
     }
 
-    return parts.length > 0 ? parts : text
+    // 배열을 반환하되, React Fragment로 감싸서 반환
+    if (parts.length > 1) {
+      return <React.Fragment>{parts}</React.Fragment>
+    } else if (parts.length === 1) {
+      return parts[0]
+    }
+    return text
   }
 
   const scrollToBottom = () => {
@@ -114,7 +120,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     if (onChatUpdate && messages.length > 0) {
       onChatUpdate(messages)
     }
-  }, [messages, onChatUpdate])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [messages]) // onChatUpdate는 useCallback으로 메모이제이션되어 있으므로 제외
 
   // 인용 배지 기능 제거됨
 
@@ -499,7 +506,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                               if (typeof child === 'string') {
                                 // 문자열이면 인용구 변환 함수 실행
                                 const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
-                                return renderTextWithCitations(child, pageTexts)
+                                return renderTextWithCitations(child, pageTexts, onPageClick)
                               }
                               if (React.isValidElement(child) && child.props.children) {
                                 // 다른 리액트 요소(예: strong, em)라면 그 내부를 다시 탐색 (재귀)
@@ -527,9 +534,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
                           // p 태그 내 텍스트에서 [숫자] 패턴을 CitationBadge로 변환
                           const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
-                          const processedChildren = typeof children === 'string'
-                            ? renderTextWithCitations(children, pageTexts)
-                            : children
+                          let processedChildren = children
+                          
+                          // 문자열일 때만 변환 (ReactMarkdown이 이미 처리했을 수 있음)
+                          if (typeof children === 'string') {
+                            processedChildren = renderTextWithCitations(children, pageTexts, onPageClick)
+                          } else if (Array.isArray(children)) {
+                            // 배열인 경우 각 요소를 확인하여 문자열만 변환
+                            processedChildren = children.map((child, idx) => {
+                              if (typeof child === 'string') {
+                                return <React.Fragment key={idx}>{renderTextWithCitations(child, pageTexts, onPageClick)}</React.Fragment>
+                              }
+                              return child
+                            })
+                          }
 
                           return isInsideList ?
                             <span {...props}>{processedChildren}</span> :
@@ -540,7 +558,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                           const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
                           const text = props.children
                           if (typeof text === 'string') {
-                            return renderTextWithCitations(text, pageTexts)
+                            return renderTextWithCitations(text, pageTexts, onPageClick)
                           }
                           return text
                         }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import SourcePanel from './components/SourcePanel'
 import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
@@ -9,7 +9,7 @@ import pdfViewerController from './utils/pdfViewerController'
 function AppContent() {
   const [sources, setSources] = useState([])
   const [selectedSourceIds, setSelectedSourceIds] = useState([])
-  const [selectedModel, setSelectedModel] = useState('thinking') // 'instant' or 'thinking'
+  const [selectedModel, setSelectedModel] = useState('instant') // 'instant' or 'thinking' (기본값: 빠름 모드)
   const [pdfViewerState, setPdfViewerState] = useState({ isOpen: false, file: null, page: 1 })
   const [rightPanelState, setRightPanelState] = useState({ mode: 'natural', pdfPage: null }) // 우측 패널 상태
   const [systemPromptOverrides, setSystemPromptOverrides] = useState([]) // AI 시스템 프롬프트 덮어쓰기
@@ -104,7 +104,7 @@ function AppContent() {
   }
 
   // 채팅 이력 업데이트 및 동기화 (ChatInterface → DataPreview)
-  const handleChatUpdate = (messages) => {
+  const handleChatUpdate = useCallback((messages) => {
     const formattedHistory = messages.map(msg => ({
       role: msg.type === 'user' ? 'user' : 'assistant',
       content: msg.content,
@@ -113,10 +113,10 @@ function AppContent() {
     setChatHistory(formattedHistory)
     setLastSyncTime(new Date().toISOString())
     console.log('[App] 대화 이력 동기화:', formattedHistory.length, '개 메시지')
-  }
+  }, [])
 
   // 인용 배지 클릭 시 페이지 이동 핸들러
-  const handlePageClick = (pageNumber) => {
+  const handlePageClick = useCallback((pageNumber) => {
     console.log('═══════════════════════════════════════════════════════')
     console.log('[App.jsx] 🔵 인용 배지 클릭 감지!')
     console.log('[App.jsx] 목표 페이지:', pageNumber)
@@ -136,7 +136,7 @@ function AppContent() {
       setTargetPage(null)
       console.log('[App.jsx] 🔄 targetPage 리셋 완료')
     }, 500)
-  }
+  }, [])
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
