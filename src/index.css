@@ -86,3 +86,24 @@ code {
 .markdown-content li > * {
   display: inline;
 }
+
+/* NotebookLM 스타일 애니메이션 */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.2s ease-out;
+}
+
+/* Citation Badge 호버 효과 강화 */
+.citation-badge-preview {
+  will-change: transform, opacity;
+}

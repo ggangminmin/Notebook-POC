@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check, Database, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
+import SystemPromptPanel from './SystemPromptPanel'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfViewerController from '../utils/pdfViewerController'
+import { analyzeDocumentForPersonas } from '../services/aiService'
 
 // PDF.js worker 설정
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -101,11 +103,11 @@ Respond in JSON format:
   }
 }
 
-const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [] }) => {
+const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null }) => {
   // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
-  const [viewMode, setViewMode] = useState('natural') // 'natural', 'json', 'pdf'
+  const [viewMode, setViewMode] = useState('pdf') // 🎯 NotebookLM 스타일: 항상 PDF 뷰어 모드로 시작
   const [naturalSummary, setNaturalSummary] = useState(null)
   const [isLoadingSummary, setIsLoadingSummary] = useState(false)
   const [pdfState, setPdfState] = useState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [] })
@@ -141,6 +143,9 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
     analysisGuidelines: '', // 분석 가이드라인
     systemPromptOverrides: [] // 시스템 프롬프트 덮어쓰기 지침들
   })
+
+  // 동적 페르소나 분석 결과 상태
+  const [personaAnalysis, setPersonaAnalysis] = useState(null) // { detectedEntity, documentType, suggestedPersonas }
 
   // 편집 이력 관리
   const [editHistory, setEditHistory] = useState([])
@@ -496,24 +501,6 @@ Set field to "invalid" if the request cannot be fulfilled.`
     }
   }
 
-  // 키보드 단축키: Ctrl+Shift+D로 JSON 뷰 토글 (관리자 전용 숨김 기능)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      // Ctrl+Shift+D (Windows/Linux) 또는 Cmd+Shift+D (Mac)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'D') {
-        e.preventDefault()
-        setViewMode((prev) => {
-          if (prev === 'pdf') return prev // PDF 모드에서는 토글 안 함
-          const newMode = prev === 'json' ? 'natural' : 'json'
-          console.log('[DataPreview] 키보드 단축키로 뷰 모드 전환:', prev, '->', newMode)
-          return newMode
-        })
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
 
   // viewMode 변경 감지 디버깅
   useEffect(() => {
@@ -522,59 +509,66 @@ Set field to "invalid" if the request cannot be fulfilled.`
     console.log('[DataPreview viewMode 변경] selectedFile:', selectedFile?.name)
   }, [viewMode, pdfState.renderedPages.length])
 
-  // 페이지 이동 핸들러 (useCallback으로 메모이제이션 - 함수 참조 안정화)
+  // 페이지 이동 핸들러 (NotebookLM 스타일 - useCallback으로 메모이제이션)
+  // 🚀 Retry 로직 추가: DOM이 준비될 때까지 최대 5번 재시도
   const handlePageNavigate = useCallback(({ pageNumber }) => {
-      console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷')
-      console.log('[DataPreview] 페이지 이동 이벤트 수신!')
-      console.log('[DataPreview] 목표 페이지:', pageNumber)
-      console.log('[DataPreview] 현재 viewMode:', viewMode)
-      console.log('[DataPreview] PDF 상태:', {
-        로드됨: !!pdfState.pdf,
-        전체페이지: pdfState.numPages,
-        렌더링된페이지: pdfState.renderedPages.length,
-        로딩중: pdfState.isLoading
-      })
-      console.log('[DataPreview] 사용 가능한 pageRefs:', Object.keys(pageRefs.current).join(', '))
-      console.log('🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷🔷')
+      console.log('═══════════════════════════════════════════════════════')
+      console.log('[DataPreview] 📖 페이지 이동 요청:', pageNumber)
+      console.log('[현재 상태] viewMode:', viewMode, '| 렌더링된 페이지:', pdfState.renderedPages.length)
+      console.log('═══════════════════════════════════════════════════════')
 
-      // ✅ 강제 PDF 뷰어 모드로 전환 (이미 pdf 모드여도 상관없음)
-      console.log('[DataPreview] ⚙️ 강제 PDF 뷰어 모드 전환...')
-      setViewMode('pdf')
+      // ✅ 강제 PDF 뷰어 모드로 전환
+      if (viewMode !== 'pdf') {
+        console.log('[DataPreview] ⚙️ PDF 뷰어 모드로 전환 중...')
+        setViewMode('pdf')
+      }
 
-      // DOM 렌더링 완료 대기 후 스크롤 이동 (300ms로 단축 - 더 빠른 응답)
-      setTimeout(() => {
-        console.log('[DataPreview] ⏱️ 스크롤 이동 시작 (300ms 대기 완료)')
-
+      // 🎯 Retry 스크롤 함수: DOM이 그려질 때까지 재시도
+      const tryScroll = (attempt = 1, maxAttempts = 5) => {
         const pageKey = `page-${pageNumber}`
         const pageElement = pageRefs.current[pageKey]
+        const scrollContainer = scrollContainerRef.current
 
-        console.log('[DataPreview] 페이지 요소 검색:', pageKey, pageElement ? '✅ 찾음' : '❌ 없음')
+        console.log(`[DataPreview Scroll] 시도 ${attempt}/${maxAttempts} - 페이지 ${pageNumber}`)
 
-        if (pageElement && scrollContainerRef.current) {
-          // 80% 줌 스케일 보정 적용
+        if (pageElement && scrollContainer) {
+          // ✅ 성공: 페이지 요소 발견
           const elementTop = pageElement.offsetTop
-          const containerScrollTop = scrollContainerRef.current.scrollTop
+          const offset = 20
 
-          console.log('[DataPreview] 📏 스크롤 위치 계산:')
-          console.log('  - 요소 offsetTop:', elementTop, 'px')
-          console.log('  - 컨테이너 현재 스크롤:', containerScrollTop, 'px')
+          console.log(`[DataPreview Scroll] ✨ 페이지 ${pageNumber} 발견! 스크롤 시작 (offset: ${offset}px)`)
 
-          // 강제 스크롤 이동 (Smooth)
-          scrollContainerRef.current.scrollTo({
-            top: elementTop,
+          // Smooth scroll 실행
+          scrollContainer.scrollTo({
+            top: elementTop - offset,
             behavior: 'smooth'
           })
 
-          console.log('✅✅✅ [PDF 뷰어] 페이지 이동 완료:', pageNumber)
+          console.log('✅ [DataPreview] 페이지 이동 완료:', pageNumber)
         } else {
-          console.error('❌❌❌ [PDF 뷰어] 페이지 요소를 찾을 수 없음!')
-          console.error('[PDF 뷰어] 검색한 키:', pageKey)
-          console.error('[PDF 뷰어] pageElement 존재:', !!pageElement)
-          console.error('[PDF 뷰어] scrollContainerRef 존재:', !!scrollContainerRef.current)
-          console.error('[PDF 뷰어] 사용 가능한 페이지:', Object.keys(pageRefs.current))
+          // ⚠️ 실패: 페이지 요소 아직 없음
+          if (attempt < maxAttempts) {
+            console.warn(`⚠️ [DataPreview] 페이지 ${pageKey} 아직 없음. ${100 * attempt}ms 후 재시도...`)
+
+            // 재귀 호출: 점진적 지연 (100ms, 200ms, 300ms, ...)
+            setTimeout(() => {
+              tryScroll(attempt + 1, maxAttempts)
+            }, 100 * attempt)
+          } else {
+            // ❌ 최종 실패
+            console.error('❌ [DataPreview] 최대 재시도 횟수 초과! 페이지를 찾을 수 없습니다:', pageKey)
+            console.error('사용 가능한 페이지 refs:', Object.keys(pageRefs.current))
+            console.error('viewMode:', viewMode)
+            console.error('렌더링된 페이지 수:', pdfState.renderedPages.length)
+          }
         }
-      }, 300) // 700ms → 300ms로 단축하여 반응 속도 개선
-  }, [viewMode, pdfState.pdf, pdfState.numPages, pdfState.renderedPages.length])
+      }
+
+      // 초기 지연 후 스크롤 시작 (모드 전환 시간 고려)
+      setTimeout(() => {
+        tryScroll()
+      }, viewMode === 'pdf' ? 50 : 200) // PDF 모드면 빠르게, 아니면 여유 있게
+  }, [viewMode, pdfState.renderedPages.length])
 
   // 페이지 하이라이트 핸들러 (useCallback으로 메모이제이션)
   const handlePageHighlight = useCallback(({ pageNumber, duration }) => {
@@ -582,6 +576,16 @@ Set field to "invalid" if the request cannot be fulfilled.`
     setHighlightedPage(pageNumber)
     setTimeout(() => setHighlightedPage(null), duration)
   }, [])
+
+  // targetPage prop 변경 시 페이지 이동
+  useEffect(() => {
+    if (targetPage && targetPage > 0) {
+      console.log('[DataPreview] targetPage prop 변경 감지:', targetPage)
+      handlePageNavigate({ pageNumber: targetPage })
+      // 하이라이트 효과 추가
+      handlePageHighlight({ pageNumber: targetPage, duration: 3000 })
+    }
+  }, [targetPage, handlePageNavigate, handlePageHighlight])
 
   // 전역 PDF 뷰어 컨트롤러 이벤트 리스너 등록 (Event Bus 패턴)
   useEffect(() => {
@@ -602,13 +606,50 @@ Set field to "invalid" if the request cannot be fulfilled.`
   // 우측 패널 상태 변경 감지 (모드 전환)
   useEffect(() => {
     if (rightPanelState?.mode) {
-      console.log('[DataPreview] rightPanelState 모드 변경:', rightPanelState.mode)
-      if (rightPanelState.mode !== 'pdf') {
-        // PDF 모드가 아니면 해당 모드로 전환
-        setViewMode(rightPanelState.mode)
+      console.log('[DataPreview] 🔄 rightPanelState 모드 변경 감지:', rightPanelState.mode)
+
+      // 🚀 즉시 모드 전환 (PDF 포함)
+      setViewMode(rightPanelState.mode)
+      console.log('[DataPreview] ✅ viewMode 전환 완료 →', rightPanelState.mode)
+
+      // PDF 모드 + pdfPage가 있으면 해당 페이지로 스크롤
+      if (rightPanelState.mode === 'pdf' && rightPanelState.pdfPage) {
+        console.log('[DataPreview] 📖 PDF 페이지 스크롤 요청:', rightPanelState.pdfPage)
+        // 약간의 지연 후 스크롤 (DOM 렌더링 대기)
+        setTimeout(() => {
+          handlePageNavigate({ pageNumber: rightPanelState.pdfPage })
+          handlePageHighlight({ pageNumber: rightPanelState.pdfPage, duration: 3000 })
+        }, 100)
       }
     }
-  }, [rightPanelState?.mode])
+  }, [rightPanelState?.mode, rightPanelState?.pdfPage, handlePageNavigate, handlePageHighlight])
+
+  // Mock PDF 페이지 데이터 생성 (테스트용 - 1~30 페이지)
+  const generateMockPages = () => {
+    const mockPages = []
+    for (let i = 1; i <= 30; i++) {
+      mockPages.push({
+        pageNumber: i,
+        imageData: null, // Mock에서는 이미지 대신 텍스트 표시
+        mockContent: `Page ${i} content: This demonstrates the NotebookLM citation system. Key information on this page includes data point #${i}, research finding ${i * 2}, and analysis result ${i * 3}. You can reference this page using citations like [${i}] in your answers.`
+      })
+    }
+    return mockPages
+  }
+
+  // 🎯 컴포넌트 마운트 시 Mock 페이지 즉시 로드
+  useEffect(() => {
+    console.log('[DataPreview] 📖 NotebookLM 모드: Mock PDF 페이지 초기화 (1-30)')
+    const mockPages = generateMockPages()
+    setPdfState({
+      pdf: null,
+      currentPage: 1,
+      numPages: 30,
+      isLoading: false,
+      renderedPages: mockPages,
+      isMockMode: true
+    })
+  }, []) // 빈 배열: 컴포넌트 마운트 시 1회만 실행
 
   // PDF 파일 로드 및 전체 페이지 렌더링
   useEffect(() => {
@@ -626,10 +667,25 @@ Set field to "invalid" if the request cannot be fulfilled.`
 
     console.log('[DataPreview PDF 로드 체크] isPDF:', isPDF)
 
-    if (!selectedFile?.file || !isPDF) {
-      console.log('[DataPreview PDF 로드 체크] PDF 아님 또는 파일 없음 → PDF 상태 초기화')
-      setPdfState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [] })
-      pdfViewerController.reset() // 전역 컨트롤러 리셋
+    // 🎯 Mock 모드: PDF 없을 때 테스트용 페이지 생성
+    if (!selectedFile || !isPDF) {
+      console.log('[DataPreview PDF 로드 체크] Mock 모드 활성화 - 테스트용 30페이지 생성')
+      const mockPages = generateMockPages()
+      setPdfState({
+        pdf: null,
+        currentPage: 1,
+        numPages: 30,
+        isLoading: false,
+        renderedPages: mockPages,
+        isMockMode: true
+      })
+      return
+    }
+
+    // 실제 PDF가 있을 때
+    if (!selectedFile?.file) {
+      setPdfState({ pdf: null, currentPage: 1, numPages: 0, isLoading: false, renderedPages: [], isMockMode: false })
+      pdfViewerController.reset()
       return
     }
 
@@ -726,6 +782,49 @@ Set field to "invalid" if the request cannot be fulfilled.`
     loadAndRenderAllPages()
   }, [selectedFile?.file])
 
+  // 파일 변경 시 페르소나 분석 및 기존 지침 초기화
+  useEffect(() => {
+    if (!selectedFile) {
+      setPersonaAnalysis(null)
+      return
+    }
+
+    const analyzePersonas = async () => {
+      console.log('[DataPreview] 파일 변경 감지 - 페르소나 분석 시작:', selectedFile.name)
+      
+      // 기존 행동 지침 초기화
+      setAiGuidelines(prev => ({
+        ...prev,
+        systemPromptOverrides: []
+      }))
+      if (onSystemPromptUpdate) {
+        onSystemPromptUpdate([])
+      }
+      console.log('[DataPreview] 기존 행동 지침 초기화 완료')
+
+      // 페르소나 분석 실행
+      try {
+        const analysis = await analyzeDocumentForPersonas(
+          { name: selectedFile.name, parsedData: selectedFile.parsedData },
+          language
+        )
+        
+        if (analysis) {
+          setPersonaAnalysis(analysis)
+          console.log('[DataPreview] 페르소나 분석 완료:', analysis)
+        } else {
+          setPersonaAnalysis(null)
+          console.log('[DataPreview] 페르소나 분석 실패 또는 결과 없음')
+        }
+      } catch (error) {
+        console.error('[DataPreview] 페르소나 분석 오류:', error)
+        setPersonaAnalysis(null)
+      }
+    }
+
+    analyzePersonas()
+  }, [selectedFile?.id, language]) // 파일 ID 변경 시에만 실행
+
   // 파일 선택 시 자동으로 요약 생성 (Auto-Summary Trigger)
   useEffect(() => {
     const loadSummary = async () => {
@@ -816,15 +915,6 @@ Set field to "invalid" if the request cannot be fulfilled.`
     }
   }
 
-  // 모드 전환 시 이벤트 전파 차단
-  const handleToggleViewMode = (e) => {
-    e.stopPropagation()
-    const nextMode = viewMode === 'natural' ? 'json' : 'natural'
-    setViewMode(nextMode)
-    if (onPanelModeChange) {
-      onPanelModeChange(nextMode)
-    }
-  }
 
   // 요약 보기로 돌아가기
   const handleBackToSummary = () => {
@@ -979,50 +1069,6 @@ Set field to "invalid" if the request cannot be fulfilled.`
               </>
             )}
           </div>
-          {selectedFile && viewMode !== 'pdf' && (
-            <div className="flex items-center space-x-2">
-              {/* 데이터 보기 토글 버튼 */}
-              <Tooltip
-                content={language === 'ko' ? 'JSON 데이터 보기' : 'View JSON data'}
-                position="bottom"
-              >
-                <button
-                  onClick={handleToggleViewMode}
-                  className={`p-2 rounded-lg text-xs font-medium transition-all ${
-                    viewMode === 'json'
-                      ? 'bg-indigo-100 text-indigo-700 shadow-sm'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                  }`}
-                >
-                  <Database className="w-4 h-4" />
-                </button>
-              </Tooltip>
-
-              {/* 복사 버튼 (JSON 모드일 때만 표시) */}
-              {viewMode === 'json' && (
-                <button
-                  onClick={handleCopyToClipboard}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                    isCopied
-                      ? 'bg-green-500 text-white shadow-sm'
-                      : 'bg-gray-100 hover:bg-gray-200 text-gray-700'
-                  }`}
-                >
-                  {isCopied ? (
-                    <>
-                      <Check className="w-3.5 h-3.5" />
-                      <span>{language === 'ko' ? '복사됨' : 'Copied'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>{language === 'ko' ? '복사' : 'Copy'}</span>
-                    </>
-                  )}
-                </button>
-              )}
-            </div>
-          )}
           {viewMode === 'pdf' && pdfState.numPages > 0 && (
             <div className="flex items-center space-x-2">
               <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-1 rounded">
@@ -1137,7 +1183,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
                           {pageData.pageNumber} / {pdfState.numPages}
                         </span>
                       </div>
-                      {/* 페이지 이미지 - 가로 100% 꽉 채우기, aspect ratio 유지, 하단 공백 제거 */}
+                      {/* 페이지 이미지 또는 Mock 콘텐츠 */}
                       {pageData.imageData ? (
                         <div className="w-full overflow-hidden">
                           <img
@@ -1151,6 +1197,33 @@ Set field to "invalid" if the request cannot be fulfilled.`
                               height: 'auto'
                             }}
                           />
+                        </div>
+                      ) : pageData.mockContent ? (
+                        /* Mock 페이지 콘텐츠 (테스트용) */
+                        <div className="p-8 bg-white min-h-[500px] flex flex-col items-center justify-center">
+                          <div className="text-center mb-6">
+                            <div className="text-6xl font-bold text-blue-500 mb-2">
+                              {pageData.pageNumber}
+                            </div>
+                            <div className="text-sm text-gray-500 uppercase tracking-wide">
+                              Mock Page
+                            </div>
+                          </div>
+                          <div className="max-w-md text-sm text-gray-700 leading-relaxed text-center px-6">
+                            <p className="mb-4">
+                              {pageData.mockContent}
+                            </p>
+                            <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-left">
+                              <p className="font-semibold text-blue-800 mb-2">
+                                💡 Test Citation Examples:
+                              </p>
+                              <ul className="list-disc list-inside space-y-1 text-blue-700">
+                                <li>Single page: <code className="bg-white px-1 py-0.5 rounded">[{pageData.pageNumber}]</code></li>
+                                <li>Range: <code className="bg-white px-1 py-0.5 rounded">[{pageData.pageNumber}-{Math.min(pageData.pageNumber + 2, 30)}]</code></li>
+                                <li>Multiple: <code className="bg-white px-1 py-0.5 rounded">[{pageData.pageNumber}, {Math.min(pageData.pageNumber + 3, 30)}]</code></li>
+                              </ul>
+                            </div>
+                          </div>
                         </div>
                       ) : (
                         <div className="flex items-center justify-center h-64 bg-gray-50">
@@ -1439,6 +1512,15 @@ Set field to "invalid" if the request cannot be fulfilled.`
                     </div>
                   </div>
                 </div>
+
+                {/* AI 행동 지침 설정 패널 (우측 하단) */}
+                <SystemPromptPanel
+                  language={language}
+                  onSystemPromptUpdate={onSystemPromptUpdate}
+                  suggestedPersonas={personaAnalysis?.suggestedPersonas || null}
+                  detectedEntity={personaAnalysis?.detectedEntity || null}
+                  documentType={personaAnalysis?.documentType || null}
+                />
               </>
             ) : (
               <div className="flex items-center justify-center h-64">

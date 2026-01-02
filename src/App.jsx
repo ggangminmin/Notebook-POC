@@ -15,6 +15,7 @@ function AppContent() {
   const [systemPromptOverrides, setSystemPromptOverrides] = useState([]) // AI 시스템 프롬프트 덮어쓰기
   const [chatHistory, setChatHistory] = useState([]) // 실시간 대화 이력 (JSON 데이터 동기화용)
   const [lastSyncTime, setLastSyncTime] = useState(null) // 마지막 동기화 시간
+  const [targetPage, setTargetPage] = useState(null) // PDF 뷰어 페이지 이동 타겟
   const { t } = useLanguage()
 
   // 전역 PDF 뷰어 컨트롤러 초기화 (Event Bus 패턴)
@@ -114,6 +115,29 @@ function AppContent() {
     console.log('[App] 대화 이력 동기화:', formattedHistory.length, '개 메시지')
   }
 
+  // 인용 배지 클릭 시 페이지 이동 핸들러
+  const handlePageClick = (pageNumber) => {
+    console.log('═══════════════════════════════════════════════════════')
+    console.log('[App.jsx] 🔵 인용 배지 클릭 감지!')
+    console.log('[App.jsx] 목표 페이지:', pageNumber)
+    console.log('[App.jsx] 현재 우측 패널 모드:', rightPanelState.mode)
+    console.log('═══════════════════════════════════════════════════════')
+
+    // 1️⃣ 즉시 PDF 뷰어 모드로 전환 (강제)
+    setRightPanelState({ mode: 'pdf', pdfPage: pageNumber })
+    console.log('[App.jsx] ✅ 우측 패널 모드 → PDF 뷰어로 전환')
+
+    // 2️⃣ targetPage 설정 (DataPreview가 감지하여 스크롤 실행)
+    setTargetPage(pageNumber)
+    console.log('[App.jsx] ✅ targetPage 설정:', pageNumber)
+
+    // 3️⃣ targetPage 리셋 (다음 클릭을 위해)
+    setTimeout(() => {
+      setTargetPage(null)
+      console.log('[App.jsx] 🔄 targetPage 리셋 완료')
+    }, 500)
+  }
+
   return (
     <div className="flex flex-col h-screen bg-gray-50">
       {/* Top Header */}
@@ -124,10 +148,10 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Main Content - 3 Column Layout (16% | 42% | 42%) - 채팅과 PDF 뷰어 1:1 대칭 */}
+      {/* Main Content - 3 Column Layout (15% | 40% | 45%) - NotebookLM 스타일 */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Sources (16%) */}
-        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '16%' }}>
+        {/* Left Panel - Sources (15%) - 파일 업로드 패널 */}
+        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '15%' }}>
           <SourcePanel
             sources={sources}
             onAddSources={handleAddSources}
@@ -137,19 +161,20 @@ function AppContent() {
           />
         </div>
 
-        {/* Center Panel - Chat Interface (42%) - PDF 뷰어와 1:1 대칭 */}
-        <div className="bg-white overflow-hidden" style={{ width: '42%' }}>
+        {/* Center Panel - Chat Interface (40%) */}
+        <div className="bg-white overflow-hidden border-r border-gray-200" style={{ width: '40%' }}>
           <ChatInterface
             selectedSources={selectedSources}
             selectedModel={selectedModel}
             onModelChange={setSelectedModel}
             systemPromptOverrides={systemPromptOverrides}
             onChatUpdate={handleChatUpdate}
+            onPageClick={handlePageClick}
           />
         </div>
 
-        {/* Right Panel - Studio/PDF Viewer (42%) - 채팅창과 1:1 대칭 */}
-        <div className="border-l border-gray-200 bg-gray-50 overflow-hidden" style={{ width: '42%' }}>
+        {/* Right Panel - PDF Document Viewer (45%) */}
+        <div className="bg-gradient-to-b from-gray-50 to-gray-100 overflow-hidden" style={{ width: '45%' }}>
           <DataPreview
             selectedFile={selectedSources[0]}
             rightPanelState={rightPanelState}
@@ -160,6 +185,7 @@ function AppContent() {
             chatHistory={chatHistory}
             lastSyncTime={lastSyncTime}
             systemPromptOverrides={systemPromptOverrides}
+            targetPage={targetPage}
           />
         </div>
       </div>

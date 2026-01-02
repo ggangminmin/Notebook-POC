@@ -1,17 +1,105 @@
 import { useState, useRef, useEffect } from 'react'
+import React from 'react'
 import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
+import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick }) => {
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
+
+  // [숫자] 패턴을 CitationBadge로 변환하는 함수 (NotebookLM 스타일 강화)
+  // 복합 인용구 지원: [35, 38, 문서 맥락 기반 추론]
+  const renderTextWithCitations = (text, pageTexts = []) => {
+    if (!text || typeof text !== 'string') return text
+
+    // 🎯 개선된 정규식: 대괄호 안의 모든 내용을 캡처 (숫자, 한글, 공백, 콤마 등)
+    // 예: [35, 38, 문서 맥락 기반 추론], [5-8], [15], [3, 맥락 추론]
+    const citationPattern = /\[([^\]]+)\]/g
+    const parts = []
+    let lastIndex = 0
+    let match
+
+    while ((match = citationPattern.exec(text)) !== null) {
+      // 매칭 이전 텍스트 추가
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index))
+      }
+
+      // 대괄호 안의 내용 추출
+      const citationContent = match[1]
+
+      // 콤마로 분리하여 각 항목 처리
+      const items = citationContent.split(',').map(item => item.trim())
+
+      // 각 항목을 순회하며 배지 생성
+      items.forEach((item, idx) => {
+        // 1. 범위 인용 체크 (예: "5-8")
+        const rangeMatch = item.match(/^(\d+)\s*-\s*(\d+)$/)
+
+        if (rangeMatch) {
+          // 범위 인용: [5-8]
+          const startPage = parseInt(rangeMatch[1])
+          const endPage = parseInt(rangeMatch[2])
+          const pageContent = pageTexts[startPage - 1]?.text || `Page ${startPage}-${endPage} content preview`
+
+          parts.push(
+            <CitationBadge
+              key={`citation-${match.index}-${idx}-range-${startPage}`}
+              pageNumber={startPage}
+              startPage={startPage}
+              endPage={endPage}
+              pageContent={pageContent}
+              onPageClick={onPageClick}
+            />
+          )
+        }
+        // 2. 단일 숫자 체크 (예: "35", "38")
+        else if (/^\d+$/.test(item)) {
+          const pageNum = parseInt(item)
+          const pageContent = pageTexts[pageNum - 1]?.text || `Page ${pageNum} content preview`
+
+          parts.push(
+            <CitationBadge
+              key={`citation-${match.index}-${idx}-page-${pageNum}`}
+              pageNumber={pageNum}
+              pageContent={pageContent}
+              onPageClick={onPageClick}
+            />
+          )
+        }
+        // 3. 텍스트 (추론 표시) - 예: "문서 맥락 기반 추론", "AI 인사이트"
+        else if (item.length > 0) {
+          parts.push(
+            <span
+              key={`citation-${match.index}-${idx}-text-${item.substring(0, 10)}`}
+              className="inline-flex items-center mx-0.5 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-semibold border border-purple-200 cursor-default"
+              title={item}
+            >
+              <Lightbulb className="w-2.5 h-2.5 mr-1" />
+              <span className="max-w-[120px] truncate">{item}</span>
+            </span>
+          )
+        }
+      })
+
+      lastIndex = match.index + match[0].length
+    }
+
+    // 남은 텍스트 추가
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex))
+    }
+
+    return parts.length > 0 ? parts : text
+  }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -404,20 +492,58 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                         h3: ({node, ...props}) => <h3 className="text-[13.5px] font-semibold mt-2 mb-1.5" {...props} />,
                         ul: ({node, ...props}) => <ul className="list-disc list-inside my-1.5 space-y-0.5" {...props} />,
                         ol: ({node, ...props}) => <ol className="list-decimal list-inside my-1.5 space-y-0.5" {...props} />,
-                        li: ({node, children, ...props}) => (
-                          <li className="ml-2" {...props}>
-                            <span className="inline">{children}</span>
-                          </li>
-                        ),
+                        li: ({node, children, ...props}) => {
+                          // 헬퍼 함수: 자식 요소들을 순회하며 문자열만 골라내서 배지로 변환
+                          const processNodes = (nodes) => {
+                            return React.Children.map(nodes, (child) => {
+                              if (typeof child === 'string') {
+                                // 문자열이면 인용구 변환 함수 실행
+                                const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
+                                return renderTextWithCitations(child, pageTexts)
+                              }
+                              if (React.isValidElement(child) && child.props.children) {
+                                // 다른 리액트 요소(예: strong, em)라면 그 내부를 다시 탐색 (재귀)
+                                return React.cloneElement(child, {
+                                  ...child.props,
+                                  children: processNodes(child.props.children)
+                                })
+                              }
+                              return child
+                            })
+                          }
+
+                          return (
+                            <li className="ml-2" {...props}>
+                              <span className="inline">
+                                {processNodes(children)}
+                              </span>
+                            </li>
+                          )
+                        },
                         p: ({node, children, ...props}) => {
                           // li 안의 p 태그는 inline으로 처리
                           const isInsideList = node?.position?.start?.line &&
                                                message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
 
+                          // p 태그 내 텍스트에서 [숫자] 패턴을 CitationBadge로 변환
+                          const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
+                          const processedChildren = typeof children === 'string'
+                            ? renderTextWithCitations(children, pageTexts)
+                            : children
+
                           return isInsideList ?
-                            <span {...props}>{children}</span> :
-                            <p className="my-1" {...props}>{children}</p>
+                            <span {...props}>{processedChildren}</span> :
+                            <p className="my-1" {...props}>{processedChildren}</p>
                         },
+                        // 텍스트 노드에서도 인용 처리
+                        text: ({node, ...props}) => {
+                          const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
+                          const text = props.children
+                          if (typeof text === 'string') {
+                            return renderTextWithCitations(text, pageTexts)
+                          }
+                          return text
+                        }
                       }}
                     >
                       {message.content}

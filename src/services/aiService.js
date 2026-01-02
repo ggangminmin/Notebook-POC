@@ -212,6 +212,125 @@ ${documentText.substring(0, 3000)}
   }
 }
 
+// 문서 기반 동적 페르소나 분석 (조직/회사명, 문서 유형, 추천 페르소나 추출)
+export const analyzeDocumentForPersonas = async (documentContext, language = 'ko') => {
+  try {
+    if (!documentContext || !documentContext.parsedData) {
+      return null
+    }
+
+    const documentText = extractTextFromParsedData(documentContext.parsedData)
+    const fileName = documentContext.name || '문서'
+
+    // 문서가 너무 짧으면 스킵
+    if (!documentText || documentText.length < 100) {
+      return null
+    }
+
+    const personaPrompt = language === 'ko'
+      ? `다음 문서를 분석하여 조직/회사명, 문서 유형, 그리고 이 문서에 적합한 AI 페르소나 3개를 추출해주세요.
+
+**문서 제목:** ${fileName}
+
+**문서 내용:**
+${documentText.substring(0, 4000)}
+
+**분석 요구사항:**
+1. **detectedEntity**: 문서에서 언급된 주요 조직/회사명 (예: "에이비딩", "삼성전자", "네이버")
+2. **documentType**: 문서의 성격/유형 (예: "서비스 소개서", "제품 카탈로그", "연구 보고서", "마케팅 자료", "기술 문서")
+3. **suggestedPersonas**: 이 문서에 맞는 AI 페르소나 3개를 배열로 생성
+   - 각 페르소나는 { label: "페르소나 이름", prompt: "상세 시스템 프롬프트" } 형식
+   - 예: [
+       {
+         "label": "에이비딩 운영자",
+         "prompt": "당신은 에이비딩 서비스의 수석 운영자입니다. 문서를 기반으로 고객의 문의에 친절하고 전문적으로 응대하고, 우리 서비스의 장점을 부각하여 답변하세요."
+       },
+       {
+         "label": "도입 검토 중인 마케터",
+         "prompt": "당신은 에이비딩 서비스를 도입 검토 중인 마케팅 담당자입니다. 문서를 분석하여 서비스의 실용성, ROI, 도입 시 고려사항을 중립적 관점에서 평가하세요."
+       },
+       {
+         "label": "경쟁사 분석가",
+         "prompt": "당신은 경쟁사 분석 전문가입니다. 이 문서를 분석하여 해당 서비스/제품의 강점과 약점, 시장 포지셔닝, 경쟁 우위 요소를 객관적으로 평가하세요."
+       }
+     ]
+
+**JSON 형식으로만 응답:**
+{
+  "detectedEntity": "조직/회사명",
+  "documentType": "문서 유형",
+  "suggestedPersonas": [
+    {
+      "label": "페르소나 이름",
+      "prompt": "상세 시스템 프롬프트"
+    }
+  ]
+}`
+      : `Analyze the following document to extract organization/company name, document type, and 3 suitable AI personas.
+
+**Document Title:** ${fileName}
+
+**Document Content:**
+${documentText.substring(0, 4000)}
+
+**Analysis Requirements:**
+1. **detectedEntity**: Main organization/company name mentioned (e.g., "ABiding", "Samsung", "Naver")
+2. **documentType**: Document nature/type (e.g., "Service Introduction", "Product Catalog", "Research Report", "Marketing Material", "Technical Document")
+3. **suggestedPersonas**: Generate 3 AI personas suitable for this document as an array
+   - Each persona format: { label: "Persona Name", prompt: "Detailed System Prompt" }
+   - Example: [
+       {
+         "label": "ABiding Operator",
+         "prompt": "You are the chief operator of ABiding service. Based on the document, respond to customer inquiries in a friendly and professional manner, highlighting our service advantages."
+       },
+       {
+         "label": "Marketing Manager Considering Adoption",
+         "prompt": "You are a marketing manager considering adopting ABiding service. Analyze the document to evaluate the service's practicality, ROI, and adoption considerations from a neutral perspective."
+       },
+       {
+         "label": "Competitor Analyst",
+         "prompt": "You are a competitor analysis expert. Analyze this document to objectively evaluate the service/product's strengths, weaknesses, market positioning, and competitive advantages."
+       }
+     ]
+
+**Respond only in JSON format:**
+{
+  "detectedEntity": "Organization/Company Name",
+  "documentType": "Document Type",
+  "suggestedPersonas": [
+    {
+      "label": "Persona Name",
+      "prompt": "Detailed System Prompt"
+    }
+  ]
+}`
+
+    const messages = [
+      { role: 'system', content: 'You are an expert document analyzer. Always respond with valid JSON only, no additional text.' },
+      { role: 'user', content: personaPrompt }
+    ]
+
+    const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.1)
+
+    // JSON 파싱
+    try {
+      const jsonMatch = response.match(/```json\s*([\s\S]*?)\s*```/) || response.match(/\{[\s\S]*\}/)
+      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : response
+      const parsed = JSON.parse(jsonStr)
+
+      console.log('[페르소나 분석] 결과:', parsed)
+      return parsed
+    } catch (e) {
+      console.error('[페르소나 분석] JSON 파싱 실패:', e)
+      console.error('[페르소나 분석] 원본 응답:', response)
+      return null
+    }
+  } catch (error) {
+    console.error('페르소나 분석 오류:', error)
+    return null
+  }
+}
+
 // 추천 질문 생성 (Instant 모델 사용 - 빠른 생성)
 export const generateSuggestedQuestions = async (documentContext, language = 'ko') => {
   try {
