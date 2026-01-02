@@ -8,12 +8,27 @@ import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, gen
 import CitationBadge from './CitationBadge'
 
 const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick }) => {
+  // 초기 상태는 빈 배열로 시작 (localStorage 자동 복원 비활성화)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
+
+  // localStorage 자동 저장 비활성화 (필요시 수동 저장 기능으로 대체 가능)
+  // useEffect(() => {
+  //   try {
+  //     const messagesToSave = messages.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+  //     if (messagesToSave.length > 0) {
+  //       localStorage.setItem('chat_messages', JSON.stringify(messagesToSave))
+  //     } else {
+  //       localStorage.removeItem('chat_messages')
+  //     }
+  //   } catch (error) {
+  //     console.error('[ChatInterface] localStorage 저장 오류:', error)
+  //   }
+  // }, [messages])
 
   // 텍스트 블록에서 대괄호 없는 페이지 패턴을 처리하는 헬퍼 함수
   const processBarePagePatterns = (textBlock, pageTexts, pageClickHandler, keyPrefix) => {
@@ -225,14 +240,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         // 3. 텍스트 (추론 표시) - 예: "문서 맥락 기반 추론", "AI 인사이트"
         else if (item.length > 0) {
           parts.push(
-            <span
+            <button
               key={`citation-${match.index}-${idx}-text-${item.substring(0, 10)}`}
-              className="inline-flex items-center mx-0.5 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-semibold border border-purple-200 cursor-default"
-              title={item}
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                alert(`💡 추론 배지 클릭됨\n\n내용: ${item}\n\n이 배지는 AI가 문서의 맥락을 기반으로 추론한 내용을 표시합니다.\n전체 문서를 참고하여 생성된 인사이트입니다.`)
+              }}
+              className="inline-flex items-center mx-0.5 px-2 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-700 hover:text-purple-900 rounded-full text-[10px] font-semibold border border-purple-200 hover:border-purple-300 cursor-pointer transition-all duration-150 active:scale-95"
+              title={`${item} (클릭하여 상세 보기)`}
             >
               <Lightbulb className="w-2.5 h-2.5 mr-1" />
               <span className="max-w-[120px] truncate">{item}</span>
-            </span>
+            </button>
           )
         }
       })
@@ -278,12 +299,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   useEffect(() => {
     const analyzeDocument = async () => {
       if (selectedSources.length > 0) {
-        setMessages([])
+        // 기존 대화 기록 유지 (초기화하지 않음)
+        // 단, 분석 중 메시지나 환영 메시지는 제거
+        setMessages(prev => prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome))
         setSuggestedQuestions([])
 
         const sourceNames = selectedSources.map(s => s.name).join(', ')
 
-        // 1. 분석 중 메시지
+        // 1. 분석 중 메시지 (임시 메시지, 저장하지 않음)
         const analyzingMessage = {
           id: Date.now(),
           type: 'assistant',
@@ -293,7 +316,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           timestamp: new Date().toISOString(),
           isAnalyzing: true
         }
-        setMessages([analyzingMessage])
+        setMessages(prev => [...prev, analyzingMessage])
 
         try {
           // 문서 컨텍스트 검증
@@ -337,7 +360,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             isSummary: true,
             hasSuggestedQuestions: hasQuestions
           }
-          setMessages([summaryMessage])
+          // 기존 메시지 유지하고 요약 메시지만 추가
+          setMessages(prev => {
+            const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+            return [...filtered, summaryMessage]
+          })
 
           console.log('[ChatInterface] summaryMessage 설정 완료:', summaryMessage)
 
@@ -370,7 +397,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 pageCount: s.parsedData?.pageCount || 0
               }))
             }
-            setMessages([fallbackMessage])
+            setMessages(prev => {
+              const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+              return [...filtered, fallbackMessage]
+            })
           } else {
             const errorMessage = {
               id: Date.now() + 1,
@@ -380,20 +410,30 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 : `An error occurred during analysis. However, you can still ask questions about the document.`,
               timestamp: new Date().toISOString()
             }
-            setMessages([errorMessage])
+            setMessages(prev => {
+              const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+              return [...filtered, errorMessage]
+            })
           }
         }
       } else {
-        // 파일이 없으면 환영 메시지 표시
-        setMessages([{
-          id: Date.now(),
-          type: 'assistant',
-          content: language === 'ko'
-            ? `안녕하세요! 저는 NotebookLM 스타일의 문서 분석 AI입니다.\n\n문서를 업로드하시면 그 내용을 바탕으로 대화를 시작할 수 있습니다. 왼쪽의 "+ 소스 추가" 버튼을 눌러 파일을 업로드하거나 웹 URL을 추가해주세요.\n\n물론 간단한 인사나 질문도 환영합니다!`
-            : `Hello! I'm a NotebookLM-style document analysis AI.\n\nOnce you upload a document, I can start a conversation based on its content. Please click the "+ Add Source" button on the left to upload a file or add a web URL.\n\nOf course, simple greetings or questions are welcome too!`,
-          timestamp: new Date().toISOString(),
-          isWelcome: true
-        }])
+        // 파일이 없어도 기존 대화 기록 유지 (환영 메시지는 추가하지 않음)
+        // 단, 메시지가 없는 경우에만 환영 메시지 표시
+        setMessages(prev => {
+          const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+          if (filtered.length === 0) {
+            return [{
+              id: Date.now(),
+              type: 'assistant',
+              content: language === 'ko'
+                ? `안녕하세요! 저는 NotebookLM 스타일의 문서 분석 AI입니다.\n\n문서를 업로드하시면 그 내용을 바탕으로 대화를 시작할 수 있습니다. 왼쪽의 "+ 소스 추가" 버튼을 눌러 파일을 업로드하거나 웹 URL을 추가해주세요.\n\n물론 간단한 인사나 질문도 환영합니다!`
+                : `Hello! I'm a NotebookLM-style document analysis AI.\n\nOnce you upload a document, I can start a conversation based on its content. Please click the "+ Add Source" button on the left to upload a file or add a web URL.\n\nOf course, simple greetings or questions are welcome too!`,
+              timestamp: new Date().toISOString(),
+              isWelcome: true
+            }]
+          }
+          return filtered
+        })
         setSuggestedQuestions([])
       }
     }
