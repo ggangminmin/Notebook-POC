@@ -1,4 +1,6 @@
 import * as pdfjsLib from 'pdfjs-dist'
+import mammoth from 'mammoth'
+import * as XLSX from 'xlsx'
 
 // PDF.js worker 설정 - 로컬 워커 사용
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -36,6 +38,113 @@ const renderPDFPageToImage = async (page, scale = 0.6) => {
   } catch (error) {
     console.error('[PDF 이미지 변환] 오류:', error)
     return null
+  }
+}
+
+// Word 파일에서 텍스트 추출
+const extractWordText = async (file) => {
+  try {
+    console.log('[Word 추출] 시작:', file.name, 'Size:', file.size)
+    const arrayBuffer = await file.arrayBuffer()
+    const result = await mammoth.extractRawText({ arrayBuffer })
+    const text = result.value
+
+    // Word 파일을 페이지 단위로 나누기 (500단어당 1페이지로 가정)
+    const wordsPerPage = 500
+    const words = text.split(/\s+/)
+    const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage))
+    const pageTexts = []
+
+    for (let i = 0; i < totalPages; i++) {
+      const startIdx = i * wordsPerPage
+      const endIdx = Math.min((i + 1) * wordsPerPage, words.length)
+      const pageContent = words.slice(startIdx, endIdx).join(' ')
+
+      pageTexts.push({
+        pageNumber: i + 1,
+        text: pageContent,
+        wordCount: endIdx - startIdx,
+        thumbnail: null // Word 파일은 썸네일 없음
+      })
+    }
+
+    console.log('[Word 추출] 완료 - 총 길이:', text.length, '페이지:', totalPages)
+
+    return {
+      text: text,
+      pageCount: totalPages,
+      pageTexts: pageTexts,
+      pageImages: []
+    }
+  } catch (error) {
+    console.error('[Word 추출] 오류:', error)
+    throw new Error('Word 파일을 읽을 수 없습니다.')
+  }
+}
+
+// Excel 파일에서 텍스트 추출
+const extractExcelText = async (file) => {
+  try {
+    console.log('[Excel 추출] 시작:', file.name, 'Size:', file.size)
+    const arrayBuffer = await file.arrayBuffer()
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' })
+
+    let fullText = ''
+    const sheets = {}
+    const pageTexts = []
+    let pageNumber = 1
+
+    workbook.SheetNames.forEach((sheetName) => {
+      const worksheet = workbook.Sheets[sheetName]
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' })
+
+      // 시트 데이터를 텍스트로 변환
+      let sheetText = `[시트: ${sheetName}]\n\n`
+
+      jsonData.forEach((row, rowIndex) => {
+        if (row.some(cell => cell !== '')) { // 빈 행 제외
+          const rowText = row.map((cell, colIndex) => {
+            return cell !== '' ? `${cell}` : ''
+          }).filter(cell => cell !== '').join(' | ')
+
+          if (rowText) {
+            sheetText += rowText + '\n'
+          }
+        }
+      })
+
+      fullText += sheetText + '\n\n'
+
+      // 시트별 페이지 생성 (각 시트를 별도 페이지로)
+      pageTexts.push({
+        pageNumber: pageNumber++,
+        text: sheetText,
+        wordCount: sheetText.split(/\s+/).length,
+        thumbnail: null,
+        sheetName: sheetName
+      })
+
+      sheets[sheetName] = {
+        name: sheetName,
+        data: jsonData,
+        rowCount: jsonData.length,
+        columnCount: jsonData[0]?.length || 0
+      }
+    })
+
+    console.log('[Excel 추출] 완료 - 총 시트:', workbook.SheetNames.length)
+
+    return {
+      text: fullText,
+      pageCount: workbook.SheetNames.length,
+      pageTexts: pageTexts,
+      pageImages: [],
+      sheets: sheets,
+      sheetNames: workbook.SheetNames
+    }
+  } catch (error) {
+    console.error('[Excel 추출] 오류:', error)
+    throw new Error('Excel 파일을 읽을 수 없습니다.')
   }
 }
 
@@ -211,35 +320,70 @@ export const parseFileContent = async (file) => {
         })
 
         resolve(parsedData)
-      } else if (file.type.includes('word') || file.name.endsWith('.docx')) {
-        // Word 파일 - 현재는 파싱 미지원, 안내 메시지
+      } else if (file.type.includes('word') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+        // Word 파일 - 실제 내용 추출
+        console.log('[파일 파싱] Word 파일 감지:', file.name)
+        const wordData = await extractWordText(file)
+
+        console.log('[파일 파싱] Word 추출 완료 - 텍스트 길이:', wordData.text.length)
+
         parsedData = {
           fileType: 'word',
           fileName: file.name,
           fileSize: file.size,
-          content: 'Word 문서가 업로드되었습니다.',
-          extractedText: `이 파일은 Word 문서(${file.name})입니다.\n\n현재 Word 파일의 전체 내용 파싱은 지원되지 않습니다. 대신 PDF로 변환하여 업로드하시면 내용을 분석할 수 있습니다.\n\n또는 텍스트 파일(.txt)로 저장하여 업로드해주세요.`,
+          content: wordData.text.substring(0, 500) + '...', // 미리보기용
+          extractedText: wordData.text, // 실제 전체 내용
+          pageTexts: wordData.pageTexts, // 페이지별 텍스트
+          pageImages: wordData.pageImages,
+          pageCount: wordData.pageCount, // 전체 페이지 수
           metadata: {
+            pages: wordData.pageCount,
             author: 'Unknown',
-            lastModified: new Date().toISOString(),
-            pages: 0
+            lastModified: new Date().toISOString()
           }
         }
+
+        console.log('[파일 파싱] Word parsedData 생성 완료:', {
+          fileType: parsedData.fileType,
+          fileName: parsedData.fileName,
+          extractedTextLength: parsedData.extractedText.length,
+          pageTextsCount: parsedData.pageTexts.length
+        })
+
         resolve(parsedData)
-      } else if (file.type.includes('sheet') || file.type.includes('excel')) {
-        // Excel 파일 - 현재는 파싱 미지원, 안내 메시지
+      } else if (file.type.includes('sheet') || file.type.includes('excel') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        // Excel 파일 - 실제 내용 추출
+        console.log('[파일 파싱] Excel 파일 감지:', file.name)
+        const excelData = await extractExcelText(file)
+
+        console.log('[파일 파싱] Excel 추출 완료 - 텍스트 길이:', excelData.text.length)
+
         parsedData = {
           fileType: 'excel',
           fileName: file.name,
           fileSize: file.size,
-          content: 'Excel 문서가 업로드되었습니다.',
-          extractedText: `이 파일은 Excel 문서(${file.name})입니다.\n\n현재 Excel 파일의 전체 내용 파싱은 지원되지 않습니다. 대신 CSV 파일이나 텍스트 파일(.txt)로 저장하여 업로드해주세요.`,
+          content: excelData.text.substring(0, 500) + '...', // 미리보기용
+          extractedText: excelData.text, // 실제 전체 내용
+          pageTexts: excelData.pageTexts, // 시트별 텍스트 (페이지로 취급)
+          pageImages: excelData.pageImages,
+          pageCount: excelData.pageCount, // 전체 시트 수
+          sheets: excelData.sheets, // 시트별 원본 데이터
+          sheetNames: excelData.sheetNames,
           metadata: {
-            sheets: [],
-            totalRows: 0,
-            totalColumns: 0
+            sheets: excelData.sheetNames,
+            totalSheets: excelData.pageCount,
+            totalRows: Object.values(excelData.sheets).reduce((sum, sheet) => sum + sheet.rowCount, 0),
+            totalColumns: Math.max(...Object.values(excelData.sheets).map(sheet => sheet.columnCount), 0)
           }
         }
+
+        console.log('[파일 파싱] Excel parsedData 생성 완료:', {
+          fileType: parsedData.fileType,
+          fileName: parsedData.fileName,
+          extractedTextLength: parsedData.extractedText.length,
+          sheetsCount: parsedData.sheetNames.length
+        })
+
         resolve(parsedData)
       } else {
         // 기타 파일 - 지원하지 않음

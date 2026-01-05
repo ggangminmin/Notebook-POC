@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight, FileSpreadsheet, File } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { parseFileContent, fetchWebMetadata } from '../utils/fileParser'
 import { performFastResearch, performDeepResearch } from '../services/webSearchService'
@@ -18,6 +18,58 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const [expandedSourceIds, setExpandedSourceIds] = useState(new Set()) // 펼쳐진 소스 ID 추적
   const fileInputRef = useRef(null)
   const { t, language } = useLanguage()
+
+  // 파일 타입별 아이콘 및 색상 반환
+  const getFileIconAndColor = (source) => {
+    const fileType = source.parsedData?.fileType
+
+    if (source.type === 'web') {
+      return {
+        icon: Globe,
+        bgColor: 'bg-blue-100',
+        iconColor: 'text-blue-600'
+      }
+    }
+
+    switch (fileType) {
+      case 'pdf':
+        return {
+          icon: FileText,
+          bgColor: 'bg-red-100',
+          iconColor: 'text-red-600'
+        }
+      case 'word':
+        return {
+          icon: FileText,
+          bgColor: 'bg-blue-100',
+          iconColor: 'text-blue-600'
+        }
+      case 'excel':
+        return {
+          icon: FileSpreadsheet,
+          bgColor: 'bg-green-100',
+          iconColor: 'text-green-600'
+        }
+      case 'text':
+        return {
+          icon: File,
+          bgColor: 'bg-gray-100',
+          iconColor: 'text-gray-600'
+        }
+      case 'json':
+        return {
+          icon: File,
+          bgColor: 'bg-purple-100',
+          iconColor: 'text-purple-600'
+        }
+      default:
+        return {
+          icon: FileText,
+          bgColor: 'bg-gray-100',
+          iconColor: 'text-gray-600'
+        }
+    }
+  }
 
   // 소스 펼치기/접기 토글
   const toggleExpand = (sourceId) => {
@@ -433,15 +485,14 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                           <div className="w-7 h-7 bg-purple-100 rounded flex items-center justify-center">
                             <BookOpen className="w-3.5 h-3.5 text-purple-600" />
                           </div>
-                        ) : source.type === 'web' ? (
-                          <div className="w-7 h-7 bg-blue-100 rounded flex items-center justify-center">
-                            <Globe className="w-3.5 h-3.5 text-blue-600" />
-                          </div>
-                        ) : (
-                          <div className="w-7 h-7 bg-red-100 rounded flex items-center justify-center">
-                            <FileText className="w-3.5 h-3.5 text-red-600" />
-                          </div>
-                        )}
+                        ) : (() => {
+                          const { icon: Icon, bgColor, iconColor } = getFileIconAndColor(source)
+                          return (
+                            <div className={`w-7 h-7 ${bgColor} rounded flex items-center justify-center`}>
+                              <Icon className={`w-3.5 h-3.5 ${iconColor}`} />
+                            </div>
+                          )
+                        })()}
                       </div>
 
                       <div

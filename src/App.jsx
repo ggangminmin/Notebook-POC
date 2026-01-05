@@ -121,7 +121,28 @@ function AppContent() {
     console.log('[App.jsx] 🔵 인용 배지 클릭 감지!')
     console.log('[App.jsx] 목표 페이지:', pageNumber)
     console.log('[App.jsx] 현재 우측 패널 모드:', rightPanelState.mode)
+
+    // 선택된 소스의 파일 타입 확인
+    const fileType = selectedSources[0]?.parsedData?.fileType
+    console.log('[App.jsx] 파일 타입:', fileType)
     console.log('═══════════════════════════════════════════════════════')
+
+    // PDF가 아닌 파일일 경우 클릭 무시 (Word, Excel, TXT, JSON 등)
+    if (fileType !== 'pdf') {
+      console.log('[App.jsx] ⚠️ PDF가 아닌 파일은 페이지 이동을 지원하지 않습니다. 파일 타입:', fileType)
+
+      const fileTypeNames = {
+        'word': 'Word',
+        'excel': 'Excel',
+        'text': 'TXT',
+        'json': 'JSON',
+        'web': '웹 페이지'
+      }
+      const fileTypeName = fileTypeNames[fileType] || fileType?.toUpperCase() || '이 파일'
+
+      alert(`💡 안내\n\n${fileTypeName} 파일은 시각적 페이지 렌더링을 지원하지 않습니다.\n\n인용 배지는 AI가 참조한 위치를 표시하지만, 페이지 이동은 PDF 파일에서만 가능합니다.`)
+      return
+    }
 
     // 1️⃣ 즉시 PDF 뷰어 모드로 전환 (강제)
     setRightPanelState({ mode: 'pdf', pdfPage: pageNumber })
@@ -136,7 +157,7 @@ function AppContent() {
       setTargetPage(null)
       console.log('[App.jsx] 🔄 targetPage 리셋 완료')
     }, 500)
-  }, [])
+  }, [selectedSources, rightPanelState.mode])
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
