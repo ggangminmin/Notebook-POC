@@ -407,13 +407,21 @@ ${documentText.substring(0, 3000)}
 // selectedModel: 'instant', 'thinking', 'gemini' 중 하나
 // documentContext: 단일 객체 또는 배열 모두 지원
 // conversationHistory: 이전 대화 기록 배열 (옵션)
-export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', selectedModel = 'thinking', conversationHistory = []) => {
+// systemPromptOverrides: 사용자 정의 AI 지침 배열 (옵션)
+export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', selectedModel = 'thinking', conversationHistory = [], systemPromptOverrides = []) => {
   try {
     // 1. 일상 대화 모드 - 문서 없이도 응답 가능
     if (isSmallTalk(query)) {
-      const casualPrompt = language === 'ko'
+      const baseCasualPrompt = language === 'ko'
         ? '당신은 친절한 AI 어시스턴트입니다. 사용자와 자연스럽고 따뜻하게 대화하세요. 간단명료하게 답변하되, 지나치게 길지 않게 해주세요.'
         : 'You are a friendly AI assistant. Have a natural and warm conversation with the user. Keep your responses concise and not too long.'
+
+      // 사용자 정의 지침 병합 (일상 대화 모드에서도 적용)
+      const customGuidelines = systemPromptOverrides.length > 0
+        ? systemPromptOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
+        : ''
+      
+      const casualPrompt = customGuidelines + baseCasualPrompt
 
       const messages = [
         { role: 'system', content: casualPrompt },
@@ -519,8 +527,13 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       day: 'numeric'
     })
 
+    // 사용자 정의 지침 병합 (systemPromptOverrides가 있으면 기본 프롬프트 앞에 추가)
+    const customGuidelines = systemPromptOverrides.length > 0
+      ? systemPromptOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
+      : ''
+
     // Universal Document Analyzer 시스템 프롬프트 (문서 종류 무관 맥락 기반 자율 분석)
-    const systemPrompt = language === 'ko'
+    const baseSystemPrompt = language === 'ko'
       ? `당신은 모든 문서의 구조를 꿰뚫어 보는 **Universal Document Analyzer**입니다. 문서의 종류(PDF, TXT, Web)에 상관없이 다음 규칙을 무조건 적용하세요.
 
 **🔍 맥락 기반 자율 분석 (No "No" Policy)**
@@ -699,6 +712,9 @@ Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table
 - No external knowledge: Only reason logically within the scope of **the provided document content (extractedText)**
 - Add "\n\n📄 **Source**: ${fileName} (Analyzed on ${today})" at the end of your response
 - Always tag reasoning sections with **[Context-Based Reasoning]** for transparency`
+
+    // 사용자 정의 지침을 기본 프롬프트 앞에 추가
+    const systemPrompt = customGuidelines + baseSystemPrompt
 
     const messages = [
       { role: 'system', content: systemPrompt },

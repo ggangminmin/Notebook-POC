@@ -7,7 +7,7 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [] }) => {
   // 초기 상태는 빈 배열로 시작 (localStorage 자동 복원 비활성화)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
@@ -476,7 +476,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         content: msg.content
       }))
 
-      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel, conversationHistory)
+      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel, conversationHistory, systemPromptOverrides)
 
       // 디버깅: AI 응답 내용 확인
       console.log('[AI 응답] 내용 미리보기:', response.answer.substring(0, 200))
