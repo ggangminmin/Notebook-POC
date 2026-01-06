@@ -46,9 +46,9 @@
 - **페이지 네비게이션**: 인용 배지 클릭 시 해당 페이지로 자동 이동
 
 ### 7. 다중 AI 모델 지원
-- **GPT-4o-mini (Instant 모드)**: 빠른 응답, 문서 요약, 추천 질문 생성
-- **GPT-4o (Thinking 모드)**: 심층 분석, 복잡한 문서 해석
-- **Gemini 3 Flash**: Google AI 기반 고품질 분석
+- **GPT-5.1 Chat (Instant 모드)**: 적응형 추론, 빠른 응답, 문서 요약, 추천 질문 생성
+- **GPT-5.1 (Thinking 모드)**: 고급 추론, 심층 분석, 복잡한 문서 해석
+- **Gemini 3 Flash Preview**: Google AI 기반 고품질 분석 (2025.12.17 출시)
 - **실시간 모델 전환**: 채팅 중에도 모델 변경 가능
 - **대화 맥락 유지**: 모델 전환 시에도 이전 대화 기록 보존
 
@@ -92,8 +92,8 @@
 - **mammoth.js** - Word 파일 텍스트 추출
 - **xlsx** - Excel 파일 데이터 추출
 - **react-markdown** + **remark-gfm** - Markdown 렌더링
-- **OpenAI API** - GPT-4o, GPT-4o-mini
-- **Google Gemini API** - Gemini 3 Flash
+- **OpenAI API** - GPT-5.1, GPT-5.1 Chat
+- **Google Gemini API** - Gemini 3 Flash Preview
 - **Context API** - 다국어 상태 관리
 
 ## 설치 및 실행
