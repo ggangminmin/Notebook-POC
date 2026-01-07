@@ -1,18 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
 import React from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [] }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel }) => {
   // 초기 상태는 빈 배열로 시작 (localStorage 자동 복원 비활성화)
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
+  const [copiedMessageId, setCopiedMessageId] = useState(null)
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
 
@@ -57,8 +58,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       })
     }
     
-    // 2단계: 범위 패턴 처리 (예: 15-18)
-    const rangePattern = /\b(\d+)\s*-\s*(\d+)\b/g
+    // 2단계: 범위 패턴 처리 (예: 15-18 또는 15–18 en dash 지원)
+    const rangePattern = /\b(\d+)\s*[-–]\s*(\d+)\b/g
     let rangeMatch
     while ((rangeMatch = rangePattern.exec(textBlock)) !== null) {
       // 이미 처리된 "페이지" 패턴과 겹치지 않는지 확인
@@ -80,19 +81,42 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       }
     }
     
-    // 3단계: 연속된 숫자 패턴 처리 (예: 15 17, 22 27) - 범위나 페이지 패턴과 겹치지 않는 것만
+    // 3단계: 콤마(,)로 구분된 숫자 패턴 처리 (예: 16, 18 또는 3, 7, 12)
+    const commaNumberPattern = /\b(\d+)(?:\s*,\s*(\d+))+\b/g
+    let commaMatch
+    while ((commaMatch = commaNumberPattern.exec(textBlock)) !== null) {
+      const isOverlapping = replacements.some(r =>
+        commaMatch.index >= r.index &&
+        commaMatch.index + commaMatch[0].length <= r.index + r.original.length
+      )
+
+      if (!isOverlapping) {
+        // 콤마로 구분된 모든 숫자 추출
+        const numbers = commaMatch[0].split(/\s*,\s*/).map(n => n.trim()).filter(n => /^\d+$/.test(n))
+        const placeholder = `__COMMA_NUM_BADGE_${keyPrefix}_${badgeCounter++}__`
+        replacements.push({
+          original: commaMatch[0],
+          placeholder: placeholder,
+          numbers: numbers,
+          type: 'comma-numbers',
+          index: commaMatch.index
+        })
+      }
+    }
+
+    // 4단계: 띄어쓰기로 구분된 숫자 패턴 처리 (예: 15 17, 22 27)
     const numberSequencePattern = /\b(\d+(?:\s+\d+)+)\b/g
     let numSeqMatch
     while ((numSeqMatch = numberSequencePattern.exec(textBlock)) !== null) {
-      const isOverlapping = replacements.some(r => 
-        numSeqMatch.index >= r.index && 
+      const isOverlapping = replacements.some(r =>
+        numSeqMatch.index >= r.index &&
         numSeqMatch.index + numSeqMatch[0].length <= r.index + r.original.length
       )
-      
+
       if (!isOverlapping) {
         const numbers = numSeqMatch[1].trim().split(/\s+/).filter(n => /^\d+$/.test(n))
-        // 범위 패턴이 아닌 경우만 (예: "15 17"은 포함, "15-17"은 제외)
-        if (!/\d+\s*-\s*\d+/.test(numSeqMatch[0])) {
+        // 범위 패턴이 아닌 경우만 (예: "15 17"은 포함, "15-17" 또는 "15–17"은 제외)
+        if (!/\d+\s*[-–]\s*\d+/.test(numSeqMatch[0])) {
           const placeholder = `__NUM_SEQ_BADGE_${keyPrefix}_${badgeCounter++}__`
           replacements.push({
             original: numSeqMatch[0],
@@ -124,9 +148,15 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     // 플레이스홀더를 배지 컴포넌트로 교체
     const parts = []
     let currentIndex = 0
-    const placeholderPattern = /__(PAGE|RANGE|NUM_SEQ)_BADGE_[^_]+_\d+__/g
+    const placeholderPattern = /__(PAGE|RANGE|NUM_SEQ|COMMA_NUM)_BADGE_.+?__/g
     let placeholderMatch
-    
+
+    // 디버깅: 처리된 텍스트와 플레이스홀더 확인
+    if (processedText.includes('__') && processedText.includes('BADGE')) {
+      console.log('[플레이스홀더 디버깅] 처리된 텍스트:', processedText.substring(0, 300))
+      console.log('[플레이스홀더 디버깅] replacementMap 크기:', replacementMap.size)
+    }
+
     while ((placeholderMatch = placeholderPattern.exec(processedText)) !== null) {
       // 플레이스홀더 이전 텍스트
       if (placeholderMatch.index > currentIndex) {
@@ -139,17 +169,31 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       
       if (replacement) {
         if (replacement.type === 'range') {
-          const pageContent = pageTexts[replacement.startPage - 1]?.text || `Page ${replacement.startPage}-${replacement.endPage} content preview`
+          // 범위를 개별 배지로 분리 (시작 페이지와 끝 페이지)
+          const startPageContent = pageTexts[replacement.startPage - 1]?.text || `Page ${replacement.startPage} content preview`
+          const endPageContent = pageTexts[replacement.endPage - 1]?.text || `Page ${replacement.endPage} content preview`
+
+          // 시작 페이지 배지
           parts.push(
             <CitationBadge
-              key={`${keyPrefix}-range-${replacement.startPage}`}
+              key={`${keyPrefix}-range-start-${replacement.startPage}`}
               pageNumber={replacement.startPage}
-              startPage={replacement.startPage}
-              endPage={replacement.endPage}
-              pageContent={pageContent}
+              pageContent={startPageContent}
               onPageClick={pageClickHandler}
             />
           )
+
+          // 끝 페이지 배지 (시작과 끝이 다를 경우에만)
+          if (replacement.startPage !== replacement.endPage) {
+            parts.push(
+              <CitationBadge
+                key={`${keyPrefix}-range-end-${replacement.endPage}`}
+                pageNumber={replacement.endPage}
+                pageContent={endPageContent}
+                onPageClick={pageClickHandler}
+              />
+            )
+          }
         } else if (replacement.numbers) {
           // 여러 숫자를 개별 배지로
           replacement.numbers.forEach((num, idx) => {
@@ -178,55 +222,136 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     return parts.length > 0 ? parts : [textBlock]
   }
 
+  // 페이지 번호로 해당 파일 찾기 (다중 파일 지원)
+  const findFileByPageNumber = (pageNumber, allSources) => {
+    console.log('[findFileByPageNumber] 🔍 페이지 검색 시작:', pageNumber)
+    console.log('[findFileByPageNumber] allSources 개수:', allSources?.length || 0)
+
+    if (!allSources || allSources.length === 0) return null
+
+    // 단일 파일인 경우
+    if (allSources.length === 1) {
+      console.log('[findFileByPageNumber] ✅ 단일 파일 모드:', allSources[0]?.name)
+      return {
+        file: allSources[0],
+        localPageNumber: pageNumber  // 파일 내 로컬 페이지 번호
+      }
+    }
+
+    // 다중 파일인 경우: 누적 페이지 범위로 찾기
+    console.log('[findFileByPageNumber] 📚 다중 파일 모드 - 파일 범위:')
+    allSources.forEach((file, idx) => {
+      console.log(`  ${idx + 1}. ${file.name}: 페이지 ${file.startPage}-${file.endPage} (${file.pageCount}페이지)`)
+    })
+
+    for (const file of allSources) {
+      if (pageNumber >= file.startPage && pageNumber <= file.endPage) {
+        const localPageNumber = pageNumber - file.startPage + 1
+        console.log(`[findFileByPageNumber] ✅ 파일 찾음: ${file.name}, 로컬 페이지: ${localPageNumber}`)
+        return {
+          file: file,
+          localPageNumber: localPageNumber
+        }
+      }
+    }
+
+    // 찾지 못한 경우 첫 번째 파일 기본값
+    console.warn('[findFileByPageNumber] ⚠️ 파일을 찾지 못함! 첫 번째 파일 사용')
+    return {
+      file: allSources[0],
+      localPageNumber: pageNumber
+    }
+  }
+
   // [숫자] 패턴을 CitationBadge로 변환하는 함수 (NotebookLM 스타일 강화)
-  // 복합 인용구 지원: [35, 38, 문서 맥락 기반 추론]
+  // 복합 인용구 지원: [35, 38, 문서 맥락 기반 추론] 또는 {35, 38}
   // 대괄호 없는 패턴도 지원: 페이지 15, 15 17, 15-18, 2-14
-  const renderTextWithCitations = (text, pageTexts = [], pageClickHandler = onPageClick) => {
+  const renderTextWithCitations = (text, allSources = [], pageClickHandler = onPageClick) => {
     if (!text || typeof text !== 'string') return text
 
-    const citationPattern = /\[([^\]]+)\]/g
+    // pageTexts 추출 (하위 호환성)
+    const pageTexts = allSources?.[0]?.pageTexts || []
+
+    // 대괄호 [] 또는 중괄호 {} 모두 지원
+    const citationPattern = /[\[\{]([^\]\}]+)[\]\}]/g
     const parts = []
     let lastIndex = 0
     let match
 
-    // 먼저 대괄호가 있는 패턴 처리
+    // 먼저 대괄호/중괄호가 있는 패턴 처리
     while ((match = citationPattern.exec(text)) !== null) {
-      // 매칭 이전 텍스트 처리 (대괄호 없는 패턴 포함)
+      // 매칭 이전 텍스트 추가 (대괄호 없는 패턴은 일단 비활성화)
       if (match.index > lastIndex) {
-        const textBefore = text.substring(lastIndex, match.index)
-        const processedBefore = processBarePagePatterns(textBefore, pageTexts, pageClickHandler, `citation-before-${match.index}`)
-        parts.push(...processedBefore)
+        parts.push(text.substring(lastIndex, match.index))
       }
 
-      // 대괄호 안의 내용 추출
+      // 대괄호/중괄호 안의 내용 추출
       const citationContent = match[1]
       const items = citationContent.split(',').map(item => item.trim())
 
-      // 각 항목을 순회하며 배지 생성
+      // 숫자만 있는지 확인 (순수 숫자 또는 범위만 배지로 변환)
+      const hasOnlyNumbers = items.every(item =>
+        /^\d+$/.test(item) || /^\d+\s*[-–]\s*\d+$/.test(item)
+      )
+
+      // 텍스트가 섞여 있으면 원본 그대로 표시
+      if (!hasOnlyNumbers) {
+        parts.push(match[0]) // 대괄호/중괄호 포함 원본 텍스트
+        return
+      }
+
+      // 각 항목을 순회하며 배지 생성 (숫자만 있는 경우)
       items.forEach((item, idx) => {
-        // 1. 범위 인용 체크 (예: "5-8")
-        const rangeMatch = item.match(/^(\d+)\s*-\s*(\d+)$/)
+        // 1. 범위 인용 체크 (예: "5-8" 또는 "5–8" en dash 지원)
+        const rangeMatch = item.match(/^(\d+)\s*[-–]\s*(\d+)$/)
 
         if (rangeMatch) {
           const startPage = parseInt(rangeMatch[1])
           const endPage = parseInt(rangeMatch[2])
-          const pageContent = pageTexts[startPage - 1]?.text || `Page ${startPage}-${endPage} content preview`
 
+          // 시작 페이지 파일 찾기
+          const startFileInfo = findFileByPageNumber(startPage, allSources)
+          const startFile = startFileInfo?.file || allSources[0]
+          const startLocalPage = startFileInfo?.localPageNumber || startPage
+          const startPageContent = startFile?.pageTexts?.[startLocalPage - 1]?.text || `Page ${startPage} content preview`
+
+          // 끝 페이지 파일 찾기
+          const endFileInfo = findFileByPageNumber(endPage, allSources)
+          const endFile = endFileInfo?.file || allSources[0]
+          const endLocalPage = endFileInfo?.localPageNumber || endPage
+          const endPageContent = endFile?.pageTexts?.[endLocalPage - 1]?.text || `Page ${endPage} content preview`
+
+          // 시작 페이지 배지
           parts.push(
             <CitationBadge
-              key={`citation-${match.index}-${idx}-range-${startPage}`}
+              key={`citation-${match.index}-${idx}-range-start-${startPage}`}
               pageNumber={startPage}
-              startPage={startPage}
-              endPage={endPage}
-              pageContent={pageContent}
+              pageContent={startPageContent}
               onPageClick={pageClickHandler}
             />
           )
+
+          // 끝 페이지 배지 (시작과 끝이 다를 경우에만)
+          if (startPage !== endPage) {
+            parts.push(
+              <CitationBadge
+                key={`citation-${match.index}-${idx}-range-end-${endPage}`}
+                pageNumber={endPage}
+                pageContent={endPageContent}
+                onPageClick={pageClickHandler}
+              />
+            )
+          }
         }
         // 2. 단일 숫자 체크 (예: "35", "38")
         else if (/^\d+$/.test(item)) {
           const pageNum = parseInt(item)
-          const pageContent = pageTexts[pageNum - 1]?.text || `Page ${pageNum} content preview`
+
+          // 다중 파일 지원: 페이지 번호로 해당 파일 찾기
+          const fileInfo = findFileByPageNumber(pageNum, allSources)
+          const targetFile = fileInfo?.file || allSources[0]
+          const localPage = fileInfo?.localPageNumber || pageNum
+          const pageContent = targetFile?.pageTexts?.[localPage - 1]?.text || `Page ${pageNum} content preview`
 
           parts.push(
             <CitationBadge
@@ -237,35 +362,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             />
           )
         }
-        // 3. 텍스트 (추론 표시) - 예: "문서 맥락 기반 추론", "AI 인사이트"
-        else if (item.length > 0) {
-          parts.push(
-            <button
-              key={`citation-${match.index}-${idx}-text-${item.substring(0, 10)}`}
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                alert(`💡 추론 배지 클릭됨\n\n내용: ${item}\n\n이 배지는 AI가 문서의 맥락을 기반으로 추론한 내용을 표시합니다.\n전체 문서를 참고하여 생성된 인사이트입니다.`)
-              }}
-              className="inline-flex items-center mx-0.5 px-2 py-0.5 bg-purple-100 hover:bg-purple-200 text-purple-700 hover:text-purple-900 rounded-full text-[10px] font-semibold border border-purple-200 hover:border-purple-300 cursor-pointer transition-all duration-150 active:scale-95"
-              title={`${item} (클릭하여 상세 보기)`}
-            >
-              <Lightbulb className="w-2.5 h-2.5 mr-1" />
-              <span className="max-w-[120px] truncate">{item}</span>
-            </button>
-          )
-        }
       })
 
       lastIndex = match.index + match[0].length
     }
 
-    // 남은 텍스트 처리 (대괄호 없는 패턴 포함)
+    // 남은 텍스트 추가 (대괄호 없는 패턴은 일단 비활성화)
     if (lastIndex < text.length) {
-      const remainingText = text.substring(lastIndex)
-      const processedRemaining = processBarePagePatterns(remainingText, pageTexts, pageClickHandler, 'citation-remaining')
-      parts.push(...processedRemaining)
+      parts.push(text.substring(lastIndex))
     }
 
     // 배열을 반환하되, React Fragment로 감싸서 반환
@@ -305,6 +409,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         setSuggestedQuestions([])
 
         const sourceNames = selectedSources.map(s => s.name).join(', ')
+        const isMultipleFiles = selectedSources.length > 1
 
         // 1. 분석 중 메시지 (임시 메시지, 저장하지 않음)
         const analyzingMessage = {
@@ -319,50 +424,87 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         setMessages(prev => [...prev, analyzingMessage])
 
         try {
-          // 문서 컨텍스트 검증
-          console.log('[ChatInterface] 선택된 소스 데이터 검증:')
-          console.log('- 파일명:', selectedSources[0].name)
-          console.log('- parsedData 존재:', !!selectedSources[0].parsedData)
-          console.log('- extractedText 길이:', selectedSources[0].parsedData?.extractedText?.length || 0)
-          console.log('- extractedText 첫 200자:', selectedSources[0].parsedData?.extractedText?.substring(0, 200))
+          let summary, questions
 
-          // 2. 자동 요약 생성
-          const summary = await generateDocumentSummary(
-            { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
-            language
-          )
+          if (isMultipleFiles) {
+            // 여러 파일 선택 시: 통합 요약 및 비교 질문 생성
+            console.log('[ChatInterface] 다중 파일 분석 모드')
 
-          console.log('[ChatInterface] 요약 생성 완료:', summary?.substring(0, 100))
+            // 첫 번째 파일 기준으로 요약 (향후 개선 가능)
+            summary = await generateDocumentSummary(
+              { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
+              language
+            )
 
-          // 3. 추천 질문 생성
-          console.log('[ChatInterface] 추천 질문 생성 시작...')
-          const questions = await generateSuggestedQuestions(
-            { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
-            language
-          )
+            // 다중 파일 비교 질문 생성
+            questions = language === 'ko' ? [
+              `${selectedSources[0].name}과 ${selectedSources[1].name}의 주요 차이점은?`,
+              `두 문서에서 공통적으로 다루는 내용은?`,
+              `전체 문서들의 핵심 내용 요약해줘`
+            ] : [
+              `What are the key differences between ${selectedSources[0].name} and ${selectedSources[1].name}?`,
+              `What topics are common across documents?`,
+              `Summarize the key points from all documents`
+            ]
 
-          console.log('[ChatInterface] 추천 질문 생성 완료:', questions)
-          console.log('[ChatInterface] 추천 질문 개수:', questions?.length || 0)
+            setSuggestedQuestions(questions)
+          } else {
+            // 단일 파일: 기존 로직
+            console.log('[ChatInterface] 단일 파일 분석 모드')
+            console.log('- 파일명:', selectedSources[0].name)
+            console.log('- parsedData 존재:', !!selectedSources[0].parsedData)
+            console.log('- extractedText 길이:', selectedSources[0].parsedData?.extractedText?.length || 0)
 
-          setSuggestedQuestions(questions || [])
+            // 2. 자동 요약 생성
+            summary = await generateDocumentSummary(
+              { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
+              language
+            )
 
-          // 4. 완료 메시지 (요약 포함)
+            console.log('[ChatInterface] 요약 생성 완료:', summary?.substring(0, 100))
+
+            // 3. 추천 질문 생성
+            console.log('[ChatInterface] 추천 질문 생성 시작...')
+            questions = await generateSuggestedQuestions(
+              { name: selectedSources[0].name, parsedData: selectedSources[0].parsedData },
+              language
+            )
+
+            console.log('[ChatInterface] 추천 질문 생성 완료:', questions)
+            console.log('[ChatInterface] 추천 질문 개수:', questions?.length || 0)
+
+            setSuggestedQuestions(questions || [])
+          }
+
+          // 4. 완료 메시지 (요약 포함) - 통합 모드
           const hasQuestions = questions && questions.length > 0
           console.log('[ChatInterface] hasSuggestedQuestions:', hasQuestions)
+
+          // 다중 파일 선택 시 통합 메시지 생성
+          let summaryContent
+          if (isMultipleFiles) {
+            summaryContent = language === 'ko'
+              ? `✅ **${selectedSources.length}개 문서 통합 분석 완료!**\n\n📄 **선택된 문서:**\n${selectedSources.map((s, i) => `${i + 1}. ${s.name}`).join('\n')}\n\n💡 아래 추천 질문을 클릭하거나, 문서들에 대해 자유롭게 질문해주세요!`
+              : `✅ **Analysis complete for ${selectedSources.length} documents!**\n\n📄 **Selected documents:**\n${selectedSources.map((s, i) => `${i + 1}. ${s.name}`).join('\n')}\n\n💡 Click suggested questions below or ask freely about the documents!`
+          } else {
+            summaryContent = summary || (language === 'ko'
+              ? `✅ 문서 분석 완료!\n\n${selectedSources.length}개의 문서가 준비되었습니다 (${sourceNames}).\n\n궁금하신 내용을 물어보세요!`
+              : `✅ Document analysis complete!\n\n${selectedSources.length} document(s) ready (${sourceNames}).\n\nFeel free to ask questions!`)
+          }
 
           const summaryMessage = {
             id: Date.now() + 1,
             type: 'assistant',
-            content: summary || (language === 'ko'
-              ? `✅ 문서 분석 완료!\n\n${selectedSources.length}개의 문서가 준비되었습니다 (${sourceNames}).\n\n궁금하신 내용을 물어보세요!`
-              : `✅ Document analysis complete!\n\n${selectedSources.length} document(s) ready (${sourceNames}).\n\nFeel free to ask questions!`),
+            content: summaryContent,
             timestamp: new Date().toISOString(),
             isSummary: true,
-            hasSuggestedQuestions: hasQuestions
+            hasSuggestedQuestions: hasQuestions,
+            isMultipleFiles: isMultipleFiles  // 다중 파일 플래그 추가
           }
-          // 기존 메시지 유지하고 요약 메시지만 추가
+
+          // 기존 메시지 유지하고 요약 메시지만 추가 (중복 제거)
           setMessages(prev => {
-            const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+            const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome && !msg.isSummary)
             return [...filtered, summaryMessage]
           })
 
@@ -457,6 +599,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     setInput('')
     setIsTyping(true)
 
+    // 입력창 높이 초기화
+    setTimeout(() => {
+      const textarea = document.querySelector('textarea')
+      if (textarea) {
+        textarea.style.height = 'auto'
+      }
+    }, 0)
+
     try {
       // 언어 감지
       const detectedLang = detectLanguage(userQuery)
@@ -481,7 +631,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       // 디버깅: AI 응답 내용 확인
       console.log('[AI 응답] 내용 미리보기:', response.answer.substring(0, 200))
       let processedAnswer = response.answer
-      const citationMatches = processedAnswer.match(/\[\d+\]|\[\d+-\d+\]|<cite page="\d+">/g)
+      const citationMatches = processedAnswer.match(/[\[\{]\d+[\]\}]|[\[\{]\d+[-–]\d+[\]\}]|<cite page="\d+">/g)
       console.log('[AI 응답] 인용 패턴 확인:', citationMatches)
       console.log('[AI 응답] 인용 개수:', citationMatches?.length || 0)
 
@@ -498,14 +648,26 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         // 1-2개 있으면 그대로 두고, 추가하지 않음 (자연스러움 우선)
       }
 
-      // allSources 데이터 검증
-      const allSourcesData = selectedSources.map(s => ({
-        id: s.id,
-        name: s.name,
-        fileName: s.parsedData?.fileName || s.name,
-        pageTexts: s.parsedData?.pageTexts || [],
-        pageCount: s.parsedData?.pageCount || 0
-      }))
+      // allSources 데이터 검증 + 페이지 범위 계산
+      let cumulativePageOffset = 0
+      const allSourcesData = selectedSources.map((s, index) => {
+        const pageCount = s.parsedData?.pageCount || s.parsedData?.pageTexts?.length || 0
+        const startPage = cumulativePageOffset + 1
+        const endPage = cumulativePageOffset + pageCount
+        cumulativePageOffset = endPage
+
+        return {
+          id: s.id,
+          name: s.name,
+          fileName: s.parsedData?.fileName || s.name,
+          pageTexts: s.parsedData?.pageTexts || [],
+          pageCount: pageCount,
+          fileType: s.parsedData?.fileType || 'unknown',
+          startPage: startPage,  // 이 파일의 시작 페이지 번호 (누적)
+          endPage: endPage,      // 이 파일의 끝 페이지 번호 (누적)
+          fileIndex: index       // 파일 인덱스
+        }
+      })
 
       console.log('[allSources 검증] 총', allSourcesData.length, '개 파일, 페이지 데이터:', allSourcesData.map(s => `${s.name}(${s.pageTexts.length}페이지)`).join(', '))
 
@@ -518,7 +680,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         foundInDocument: response.foundInDocument,
         matchedKeywords: response.matchedKeywords,
         isReasoningBased: response.isReasoningBased, // 추론 기반 답변 플래그
-        sourceData: selectedSources.length > 0 ? selectedSources[0].parsedData : null, // 인용 태그 처리용 (기본: 첫 번째 파일)
+        sourceData: null, // deprecated - allSources 사용
         allSources: allSourcesData // 다중 파일 지원 (파일ID + 이름 포함)
       }
 
@@ -556,6 +718,19 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }, 100)
   }
 
+  // 메시지 복사 핸들러
+  const handleCopyMessage = async (messageId, content) => {
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopiedMessageId(messageId)
+      setTimeout(() => {
+        setCopiedMessageId(null)
+      }, 2000) // 2초 후 체크 표시 사라짐
+    } catch (error) {
+      console.error('복사 실패:', error)
+    }
+  }
+
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Compact Header */}
@@ -563,8 +738,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-gray-800">{t('chat.title')}</h2>
 
-          {/* Model Selector - Compact (3 models) */}
-          <div className="flex bg-gray-100 rounded-md p-0.5">
+          <div className="flex items-center space-x-2">
+            {/* Model Selector - Compact (3 models) */}
+            <div className="flex bg-gray-100 rounded-md p-0.5">
             <button
               onClick={() => onModelChange('instant')}
               className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
@@ -599,6 +775,21 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               <span>{language === 'ko' ? 'Gemini' : 'Gemini'}</span>
             </button>
           </div>
+
+          {/* AI 행동 지침 설정 버튼 */}
+          <button
+            onClick={onToggleSettingsPanel}
+            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+              isSettingsPanelOpen
+                ? 'bg-purple-100 text-purple-700 ring-2 ring-purple-300'
+                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+            }`}
+            title={language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
+          >
+            <Settings className={`w-4 h-4 ${isSettingsPanelOpen ? 'animate-spin' : ''}`} />
+            <span>{language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}</span>
+          </button>
+        </div>
         </div>
 
         {/* Context Indicator - Compact */}
@@ -676,10 +867,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                       ? 'bg-blue-500 text-white'
                       : message.isError
                       ? 'bg-red-50 text-red-800 border border-red-200'
-                      : 'bg-white text-gray-800 border border-gray-200 shadow-sm'
+                      : 'bg-white text-gray-700 border border-gray-200 shadow-sm'
                   }`}
                 >
-                  <div className="text-[13px] leading-[1.55] prose prose-sm max-w-none markdown-content">
+                  <div className="text-[11.5px] leading-[1.65] prose prose-sm max-w-none markdown-content">
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
@@ -694,8 +885,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                             return React.Children.map(nodes, (child) => {
                               if (typeof child === 'string') {
                                 // 문자열이면 인용구 변환 함수 실행
-                                const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
-                                return renderTextWithCitations(child, pageTexts, onPageClick)
+                                const allSources = message.allSources || []
+                                return renderTextWithCitations(child, allSources, onPageClick)
                               }
                               if (React.isValidElement(child) && child.props.children) {
                                 // 다른 리액트 요소(예: strong, em)라면 그 내부를 다시 탐색 (재귀)
@@ -722,17 +913,17 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                                                message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
 
                           // p 태그 내 텍스트에서 [숫자] 패턴을 CitationBadge로 변환
-                          const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
+                          const allSources = message.allSources || []
                           let processedChildren = children
-                          
+
                           // 문자열일 때만 변환 (ReactMarkdown이 이미 처리했을 수 있음)
                           if (typeof children === 'string') {
-                            processedChildren = renderTextWithCitations(children, pageTexts, onPageClick)
+                            processedChildren = renderTextWithCitations(children, allSources, onPageClick)
                           } else if (Array.isArray(children)) {
                             // 배열인 경우 각 요소를 확인하여 문자열만 변환
                             processedChildren = children.map((child, idx) => {
                               if (typeof child === 'string') {
-                                return <React.Fragment key={idx}>{renderTextWithCitations(child, pageTexts, onPageClick)}</React.Fragment>
+                                return <React.Fragment key={idx}>{renderTextWithCitations(child, allSources, onPageClick)}</React.Fragment>
                               }
                               return child
                             })
@@ -744,10 +935,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                         },
                         // 텍스트 노드에서도 인용 처리
                         text: ({node, ...props}) => {
-                          const pageTexts = message.allSources?.[0]?.pageTexts || message.sourceData?.pageTexts || []
+                          const allSources = message.allSources || []
                           const text = props.children
                           if (typeof text === 'string') {
-                            return renderTextWithCitations(text, pageTexts, onPageClick)
+                            return renderTextWithCitations(text, allSources, onPageClick)
                           }
                           return text
                         }
@@ -825,9 +1016,38 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                     </div>
                   )}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-0.5 px-1">
-                  {new Date(message.timestamp).toLocaleTimeString()}
-                </p>
+
+                {/* 타임스탬프와 복사 버튼 */}
+                <div className="flex items-center justify-between mt-1 px-1">
+                  <p className="text-[10px] text-gray-400">
+                    {new Date(message.timestamp).toLocaleTimeString()}
+                  </p>
+
+                  {/* 복사 버튼 (AI 메시지에만 표시) */}
+                  {message.type === 'assistant' && (
+                    <button
+                      onClick={() => handleCopyMessage(message.id, message.content)}
+                      className="flex items-center space-x-1 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100"
+                      title={language === 'ko' ? '복사' : 'Copy'}
+                    >
+                      {copiedMessageId === message.id ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-green-500" />
+                          <span className="text-[10px] text-green-500">
+                            {language === 'ko' ? '복사됨' : 'Copied'}
+                          </span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span className="text-[10px]">
+                            {language === 'ko' ? '복사' : 'Copy'}
+                          </span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -857,18 +1077,23 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
       {/* Input Area - Compact */}
       <div className="px-4 py-2.5 border-t border-gray-200 bg-white">
-        <form onSubmit={handleSubmit} className="flex items-center space-x-2">
+        <form onSubmit={handleSubmit} className="flex items-end space-x-2">
           <div className="flex-1">
             <textarea
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => {
+                setInput(e.target.value)
+                // 자동 높이 조절
+                e.target.style.height = 'auto'
+                e.target.style.height = e.target.scrollHeight + 'px'
+              }}
               onKeyDown={handleKeyPress}
               placeholder={selectedSources.length === 0
                 ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
                 : t('chat.placeholder')}
-              className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto"
               rows="1"
-              style={{ minHeight: '36px', maxHeight: '100px' }}
+              style={{ minHeight: '40px', maxHeight: '200px' }}
             />
           </div>
           <button

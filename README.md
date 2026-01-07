@@ -46,9 +46,9 @@
 - **페이지 네비게이션**: 인용 배지 클릭 시 해당 페이지로 자동 이동
 
 ### 7. 다중 AI 모델 지원
-- **GPT-5.1 Chat (Instant 모드)**: 적응형 추론, 빠른 응답, 문서 요약, 추천 질문 생성
-- **GPT-5.1 (Thinking 모드)**: 고급 추론, 심층 분석, 복잡한 문서 해석
-- **Gemini 3 Flash Preview**: Google AI 기반 고품질 분석 (2025.12.17 출시)
+- **GPT-5.1 Chat Latest (Instant 모드)**: 적응형 추론, 빠른 응답, 문서 요약, 추천 질문 생성 (`gpt-5.1-chat-latest`)
+- **GPT-5.1 (Thinking 모드)**: 고급 추론, 심층 분석, 복잡한 문서 해석 (`gpt-5.1`)
+- **Gemini 3 Flash Preview**: Google AI 기반 고품질 분석 (2025.12.17 출시) (`gemini-3-flash-preview`)
 - **실시간 모델 전환**: 채팅 중에도 모델 변경 가능
 - **대화 맥락 유지**: 모델 전환 시에도 이전 대화 기록 보존
 
@@ -92,7 +92,7 @@
 - **mammoth.js** - Word 파일 텍스트 추출
 - **xlsx** - Excel 파일 데이터 추출
 - **react-markdown** + **remark-gfm** - Markdown 렌더링
-- **OpenAI API** - GPT-5.1, GPT-5.1 Chat
+- **OpenAI API** - GPT-5.1 (`gpt-5.1`), GPT-5.1 Chat Latest (`gpt-5.1-chat-latest`)
 - **Google Gemini API** - Gemini 3 Flash Preview
 - **Context API** - 다국어 상태 관리
 
@@ -162,6 +162,40 @@ notebooklm-dashboard/
 ```
 
 ## 최근 업데이트
+
+### 🐛 2026-01-07: 다중 파일 인용 시스템 완전 수정 + UI/UX 개선
+
+#### 🔧 다중 파일 인용 버그 수정
+- [x] **문제**: 2개 이상 파일 선택 시 모든 인용 배지가 첫 번째 파일로만 연결됨
+- [x] **해결**: 누적 페이지 번호 시스템 구현
+  - 파일 1 (30페이지): 전역 페이지 1-30
+  - 파일 2 (20페이지): 전역 페이지 31-50
+- [x] **페이지 매핑 로직**: 전역 페이지 번호 → (대상 파일, 로컬 페이지 번호) 자동 변환
+- [x] **findFileByPageNumber 헬퍼**: 페이지 번호로 정확한 소스 파일 찾기
+- [x] **정확한 파일 열기**: 인용 클릭 시 해당 파일의 정확한 페이지로 이동
+
+**기술 구현**:
+- [ChatInterface.jsx:547-564](src/components/ChatInterface.jsx#L547-L564) - allSourcesData 생성 (페이지 범위 계산)
+- [ChatInterface.jsx:225-263](src/components/ChatInterface.jsx#L225-L263) - findFileByPageNumber 헬퍼 함수
+- [App.jsx:146-174](src/App.jsx#L146-L174) - handlePageClick 수정 (파일 찾기 + 로컬 페이지 변환)
+- [App.jsx:274](src/App.jsx#L274) - DataPreview에 targetFile 전달
+
+#### 🎨 UI/UX 개선
+- [x] **소스 패널 너비 확대**: 15% → 20% (파일명 가독성 향상)
+- [x] **NotebookLM 스타일 폰트**: 11.5px, line-height 1.65, 회색 텍스트
+- [x] **자동 확장 textarea**: 입력 시 자동 높이 조절 (최소 40px, 최대 200px)
+- [x] **메시지 복사 버튼**: AI 응답에 Copy 아이콘 추가 (2초간 체크 표시)
+- [x] **동적 레이아웃**: 설정 패널 열림/닫힘에 따라 채팅창 너비 자동 조절 (80% ↔ 45%)
+
+**사용 예시**:
+```
+1. PDF(30페이지) + DOCX(20페이지) 업로드
+2. AI 응답: "PDF는 [5]에서, DOCX는 [35]에서 확인 가능"
+3. [5] 클릭 → PDF 파일의 5페이지 열림
+4. [35] 클릭 → DOCX 파일의 5페이지 열림 (전역 35 - 30 = 로컬 5)
+```
+
+---
 
 ### 📁 2026-01-05: Word/Excel 파일 완전 지원 + 파일 타입별 아이콘
 

@@ -16,7 +16,12 @@ function AppContent() {
   const [chatHistory, setChatHistory] = useState([]) // 실시간 대화 이력 (JSON 데이터 동기화용)
   const [lastSyncTime, setLastSyncTime] = useState(null) // 마지막 동기화 시간
   const [targetPage, setTargetPage] = useState(null) // PDF 뷰어 페이지 이동 타겟
+  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false) // AI 설정 패널 토글
+  const [previousSourceId, setPreviousSourceId] = useState(null) // 이전 선택 파일 ID (지침 초기화 감지용)
   const { t } = useLanguage()
+
+  // 선택된 소스들 가져오기
+  const selectedSources = sources.filter(s => selectedSourceIds.includes(s.id))
 
   // 전역 PDF 뷰어 컨트롤러 초기화 (Event Bus 패턴)
   useEffect(() => {
@@ -38,8 +43,23 @@ function AppContent() {
     }
   }, [])
 
-  // 선택된 소스들 가져오기
-  const selectedSources = sources.filter(s => selectedSourceIds.includes(s.id))
+  // 파일 전환 감지 및 AI 지침 초기화
+  useEffect(() => {
+    const currentSourceId = selectedSources[0]?.id || null
+
+    // 파일이 변경되었는지 확인 (처음 선택한 경우는 제외)
+    if (previousSourceId !== null && currentSourceId !== previousSourceId) {
+      console.log('[App.jsx] 🔄 파일 전환 감지! AI 지침 초기화')
+      console.log('[App.jsx] 이전 파일 ID:', previousSourceId)
+      console.log('[App.jsx] 새 파일 ID:', currentSourceId)
+
+      // AI 지침 초기화
+      setSystemPromptOverrides([])
+    }
+
+    // 현재 파일 ID 저장
+    setPreviousSourceId(currentSourceId)
+  }, [selectedSources[0]?.id])
 
   const handleAddSources = (newSources) => {
     setSources(prev => [...prev, ...newSources])
@@ -121,43 +141,88 @@ function AppContent() {
     console.log('[App.jsx] 🔵 인용 배지 클릭 감지!')
     console.log('[App.jsx] 목표 페이지:', pageNumber)
     console.log('[App.jsx] 현재 우측 패널 모드:', rightPanelState.mode)
+    console.log('[App.jsx] AI 설정 패널 열림 상태:', isSettingsPanelOpen)
 
-    // 선택된 소스의 파일 타입 확인
-    const fileType = selectedSources[0]?.parsedData?.fileType
+    // 다중 파일 지원: 페이지 번호로 해당 파일 찾기
+    let targetFile = selectedSources[0]
+    let localPageNumber = pageNumber
+
+    if (selectedSources.length > 1) {
+      // 페이지 범위 계산
+      let cumulativePageOffset = 0
+      for (const source of selectedSources) {
+        const pageCount = source.parsedData?.pageCount || source.parsedData?.pageTexts?.length || 0
+        const startPage = cumulativePageOffset + 1
+        const endPage = cumulativePageOffset + pageCount
+
+        if (pageNumber >= startPage && pageNumber <= endPage) {
+          targetFile = source
+          localPageNumber = pageNumber - cumulativePageOffset
+          console.log(`[App.jsx] ✅ 파일 찾음: ${source.name}, 로컬 페이지: ${localPageNumber}`)
+          break
+        }
+
+        cumulativePageOffset = endPage
+      }
+    }
+
+    // 선택된 파일의 파일 타입 확인
+    const fileType = targetFile?.parsedData?.fileType
     console.log('[App.jsx] 파일 타입:', fileType)
+    console.log('[App.jsx] 대상 파일:', targetFile?.name)
+    console.log('[App.jsx] 로컬 페이지 번호:', localPageNumber)
     console.log('═══════════════════════════════════════════════════════')
 
-    // PDF가 아닌 파일일 경우 클릭 무시 (Word, Excel, TXT, JSON 등)
+    // PDF가 아닌 파일일 경우 (Word, Excel, TXT, JSON 등) - 텍스트 미리보기 표시
     if (fileType !== 'pdf') {
-      console.log('[App.jsx] ⚠️ PDF가 아닌 파일은 페이지 이동을 지원하지 않습니다. 파일 타입:', fileType)
+      console.log('[App.jsx] 📄 텍스트 파일 인용 클릭 - 우측 패널에 텍스트 표시. 파일 타입:', fileType)
 
-      const fileTypeNames = {
-        'word': 'Word',
-        'excel': 'Excel',
-        'text': 'TXT',
-        'json': 'JSON',
-        'web': '웹 페이지'
+      // 우측 패널이 닫혀있으면 자동으로 열기
+      if (!isSettingsPanelOpen) {
+        console.log('[App.jsx] ✅ 우측 패널 자동 열기')
+        setIsSettingsPanelOpen(true)
       }
-      const fileTypeName = fileTypeNames[fileType] || fileType?.toUpperCase() || '이 파일'
 
-      alert(`💡 안내\n\n${fileTypeName} 파일은 시각적 페이지 렌더링을 지원하지 않습니다.\n\n인용 배지는 AI가 참조한 위치를 표시하지만, 페이지 이동은 PDF 파일에서만 가능합니다.`)
+      // 해당 "페이지 번호"를 섹션 인덱스로 간주
+      // 우측 패널을 텍스트 뷰어 모드로 전환 (전체 문서 표시 + 해당 섹션 하이라이트)
+      setRightPanelState({
+        mode: 'text-preview',
+        highlightSectionIndex: pageNumber // 하이라이트할 섹션
+      })
+
+      // targetPage 설정 (DataPreview가 감지하여 스크롤 실행)
+      setTargetPage(pageNumber)
+      console.log('[App.jsx] ✅ 우측 패널 → 텍스트 뷰어 모드, 섹션', pageNumber, '으로 스크롤')
+
+      // targetPage 리셋 (다음 클릭을 위해)
+      setTimeout(() => {
+        setTargetPage(null)
+        console.log('[App.jsx] 🔄 targetPage 리셋 완료')
+      }, 500)
+
       return
     }
 
-    // 1️⃣ 즉시 PDF 뷰어 모드로 전환 (강제)
-    setRightPanelState({ mode: 'pdf', pdfPage: pageNumber })
-    console.log('[App.jsx] ✅ 우측 패널 모드 → PDF 뷰어로 전환')
+    // 0️⃣ 설정 패널이 닫혀있으면 자동으로 열기
+    if (!isSettingsPanelOpen) {
+      console.log('[App.jsx] ✅ AI 설정 패널 자동 열기')
+      setIsSettingsPanelOpen(true)
+    }
 
-    // 2️⃣ targetPage 설정 (DataPreview가 감지하여 스크롤 실행)
-    setTargetPage(pageNumber)
-    console.log('[App.jsx] ✅ targetPage 설정:', pageNumber)
+    // 1️⃣ 즉시 PDF 뷰어 모드로 전환 (강제) - 로컬 페이지 번호 사용
+    setRightPanelState({ mode: 'pdf', pdfPage: localPageNumber, targetFile: targetFile })
+    console.log('[App.jsx] ✅ 우측 패널 모드 → PDF 뷰어로 전환 (로컬 페이지:', localPageNumber, ')')
+
+    // 2️⃣ targetPage 설정 (DataPreview가 감지하여 스크롤 실행) - 로컬 페이지 번호 사용
+    setTargetPage(localPageNumber)
+    console.log('[App.jsx] ✅ targetPage 설정:', localPageNumber)
 
     // 3️⃣ targetPage 리셋 (다음 클릭을 위해)
     setTimeout(() => {
       setTargetPage(null)
       console.log('[App.jsx] 🔄 targetPage 리셋 완료')
     }, 500)
-  }, [selectedSources, rightPanelState.mode])
+  }, [selectedSources, rightPanelState.mode, isSettingsPanelOpen])
 
   return (
     <div className="flex flex-col h-screen bg-gray-50">
@@ -169,10 +234,10 @@ function AppContent() {
         </div>
       </div>
 
-      {/* Main Content - 3 Column Layout (15% | 40% | 45%) - NotebookLM 스타일 */}
+      {/* Main Content - 반응형 레이아웃 (토글형 우측 패널) */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Sources (15%) - 파일 업로드 패널 */}
-        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '15%' }}>
+        {/* Left Panel - Sources (20%) - 파일 업로드 패널 */}
+        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '20%' }}>
           <SourcePanel
             sources={sources}
             onAddSources={handleAddSources}
@@ -182,8 +247,11 @@ function AppContent() {
           />
         </div>
 
-        {/* Center Panel - Chat Interface (40%) */}
-        <div className="bg-white overflow-hidden border-r border-gray-200" style={{ width: '40%' }}>
+        {/* Center Panel - Chat Interface (동적 너비: 80% or 45%) */}
+        <div
+          className="bg-white overflow-hidden border-r border-gray-200 transition-all duration-300 ease-in-out"
+          style={{ width: isSettingsPanelOpen ? '45%' : '80%' }}
+        >
           <ChatInterface
             selectedSources={selectedSources}
             selectedModel={selectedModel}
@@ -191,24 +259,32 @@ function AppContent() {
             systemPromptOverrides={systemPromptOverrides}
             onChatUpdate={handleChatUpdate}
             onPageClick={handlePageClick}
+            isSettingsPanelOpen={isSettingsPanelOpen}
+            onToggleSettingsPanel={() => setIsSettingsPanelOpen(!isSettingsPanelOpen)}
           />
         </div>
 
-        {/* Right Panel - PDF Document Viewer (45%) */}
-        <div className="bg-gradient-to-b from-gray-50 to-gray-100 overflow-hidden" style={{ width: '45%' }}>
-          <DataPreview
-            selectedFile={selectedSources[0]}
-            rightPanelState={rightPanelState}
-            onPanelModeChange={(mode) => setRightPanelState({ mode, pdfPage: null })}
-            onUpdateData={handleUpdateSourceData}
-            onUpdateName={handleUpdateSourceName}
-            onSystemPromptUpdate={setSystemPromptOverrides}
-            chatHistory={chatHistory}
-            lastSyncTime={lastSyncTime}
-            systemPromptOverrides={systemPromptOverrides}
-            targetPage={targetPage}
-          />
-        </div>
+        {/* Right Panel - AI 설정 패널 (토글형, 35%) */}
+        {isSettingsPanelOpen && (
+          <div
+            className="bg-gradient-to-b from-gray-50 to-gray-100 overflow-hidden transition-all duration-300 ease-in-out animate-slide-in"
+            style={{ width: '35%' }}
+          >
+            <DataPreview
+              selectedFile={rightPanelState.targetFile || selectedSources[0]}
+              rightPanelState={rightPanelState}
+              onPanelModeChange={(mode) => setRightPanelState({ mode, pdfPage: null })}
+              onUpdateData={handleUpdateSourceData}
+              onUpdateName={handleUpdateSourceName}
+              onSystemPromptUpdate={setSystemPromptOverrides}
+              chatHistory={chatHistory}
+              lastSyncTime={lastSyncTime}
+              systemPromptOverrides={systemPromptOverrides}
+              targetPage={targetPage}
+              onClose={() => setIsSettingsPanelOpen(false)}
+            />
+          </div>
+        )}
       </div>
 
       {/* PDF 뷰어 모달 */}
