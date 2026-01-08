@@ -163,6 +163,61 @@ notebooklm-dashboard/
 
 ## 최근 업데이트
 
+### 🎯 2026-01-08: 다중 파일 인용 시스템 완전 수정 + 자동 분석 최적화
+
+#### 🔧 다중 파일 인용 버그 수정 (4단계)
+
+**문제 1: PDF 전환 시 우측 패널 미업데이트**
+- [x] **증상**: 2개 이상 PDF 파일에서 인용 배지 클릭 시 첫 번째 PDF만 표시
+- [x] **원인**: DataPreview의 PDF 렌더링 useEffect가 파일 변경을 감지하지 못함
+- [x] **해결**: `selectedFile?.id`를 useEffect 의존성 배열에 추가
+- [x] **파일**: [DataPreview.jsx:818](src/components/DataPreview.jsx#L818)
+
+**문제 2: Word/Excel 인용이 첫 번째 PDF 열림**
+- [x] **증상**: Word/Excel 파일 인용 배지 클릭 시 첫 번째 PDF 파일 표시
+- [x] **원인**: App.jsx의 handlePageClick에서 Word/Excel 파일 처리 시 targetFile 미설정
+- [x] **해결**: rightPanelState에 targetFile 추가 (`mode: 'text-preview'` 블록)
+- [x] **파일**: [App.jsx:419-423](src/App.jsx#L419-L423)
+
+**문제 3: 저장된 노트북에서 인용이 첫 번째 파일로만 연결**
+- [x] **증상**: 노트북 재로드 시 모든 인용 배지가 첫 번째 파일로만 연결
+- [x] **원인**: 저장된 메시지의 allSources에 startPage/endPage 정보 누락
+- [x] **해결**: processInitialMessages 함수로 페이지 범위 재계산
+- [x] **파일**: [ChatInterface.jsx:13-46](src/components/ChatInterface.jsx#L13-L46)
+
+**문제 4: 반복 자동 분석 메시지**
+- [x] **증상**: 이미 분석한 파일을 포함한 노트북 재열기 시 자동 분석 메시지 재출력
+- [x] **원인**: 분석된 파일 추적 시스템 부재
+- [x] **해결**: analyzedSourceIds 트래킹 시스템 구현
+- [x] **파일**: [App.jsx](src/App.jsx), [ChatInterface.jsx](src/components/ChatInterface.jsx), [notebookManager.js](src/utils/notebookManager.js)
+
+#### 🚀 자동 분석 최적화 시스템
+
+**analyzedSourceIds 트래킹**
+- [x] **데이터 구조**: 노트북에 `analyzedSourceIds: Array<string>` 필드 추가
+- [x] **자동 초기화**: 메시지가 있는 노트북 로드 시 모든 소스를 분석됨으로 표시
+- [x] **중복 방지**: 이미 분석된 파일은 자동 분석에서 제외
+- [x] **실시간 업데이트**: 분석 완료 시 analyzedSourceIds 즉시 업데이트 및 저장
+
+**동작 방식**
+```javascript
+// 첫 파일 업로드 → 자동 분석 ✅
+// 동일 파일 재선택 → 건너뛰기 ✅
+// 새 파일 추가 → 새 파일만 분석 ✅
+// 기존 노트북 재열기 → 건너뛰기 ✅
+```
+
+**기술 구현**
+- [notebookManager.js:17](src/utils/notebookManager.js#L17) - analyzedSourceIds 필드 추가
+- [notebookManager.js:214-216](src/utils/notebookManager.js#L214-L216) - updateNotebookAnalyzedSources 함수
+- [App.jsx:36](src/App.jsx#L36) - analyzedSourceIds 상태 관리
+- [App.jsx:163-171](src/App.jsx#L163-L171) - 기존 메시지 존재 시 자동 표시
+- [App.jsx:328-339](src/App.jsx#L328-L339) - handleAnalyzedSourcesUpdate 콜백
+- [ChatInterface.jsx:401-413](src/components/ChatInterface.jsx#L401-L413) - 분석 여부 확인 로직
+- [ChatInterface.jsx:508-513](src/components/ChatInterface.jsx#L508-L513) - analyzedSourceIds 업데이트
+
+---
+
 ### 🐛 2026-01-07: 다중 파일 인용 시스템 완전 수정 + UI/UX 개선
 
 #### 🔧 다중 파일 인용 버그 수정

@@ -7,9 +7,45 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 import CitationBadge from './CitationBadge'
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel }) => {
-  // 초기 상태는 빈 배열로 시작 (localStorage 자동 복원 비활성화)
-  const [messages, setMessages] = useState([])
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate }) => {
+  // 초기 메시지 설정 (노트북에서 불러온 데이터 또는 빈 배열)
+  // initialMessages의 allSources 데이터가 누락된 경우를 대비하여 재계산
+  const processInitialMessages = () => {
+    if (!initialMessages || initialMessages.length === 0) return []
+
+    return initialMessages.map(msg => {
+      // AI 메시지이고 allSources가 있지만 startPage/endPage가 없는 경우
+      if (msg.type === 'assistant' && msg.allSources && msg.allSources.length > 0) {
+        const hasPageRanges = msg.allSources.every(s => s.startPage && s.endPage)
+
+        if (!hasPageRanges) {
+          // 페이지 범위 재계산
+          let cumulativePageOffset = 0
+          const updatedAllSources = msg.allSources.map((s) => {
+            const pageCount = s.pageCount || s.pageTexts?.length || 0
+            const startPage = cumulativePageOffset + 1
+            const endPage = cumulativePageOffset + pageCount
+            cumulativePageOffset = endPage
+
+            return {
+              ...s,
+              startPage,
+              endPage
+            }
+          })
+
+          return {
+            ...msg,
+            allSources: updatedAllSources
+          }
+        }
+      }
+
+      return msg
+    })
+  }
+
+  const [messages, setMessages] = useState(processInitialMessages())
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
@@ -17,19 +53,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   const messagesEndRef = useRef(null)
   const { t, language } = useLanguage()
 
-  // localStorage 자동 저장 비활성화 (필요시 수동 저장 기능으로 대체 가능)
-  // useEffect(() => {
-  //   try {
-  //     const messagesToSave = messages.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
-  //     if (messagesToSave.length > 0) {
-  //       localStorage.setItem('chat_messages', JSON.stringify(messagesToSave))
-  //     } else {
-  //       localStorage.removeItem('chat_messages')
-  //     }
-  //   } catch (error) {
-  //     console.error('[ChatInterface] localStorage 저장 오류:', error)
-  //   }
-  // }, [messages])
+  // 메시지가 변경될 때마다 부모 컴포넌트로 전달 (자동 저장)
+  useEffect(() => {
+    // 분석 중 메시지나 환영 메시지는 제외하고 전달
+    const permanentMessages = messages.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+    if (onChatUpdate) {
+      onChatUpdate(permanentMessages)
+    }
+  }, [messages, onChatUpdate])
 
   // 텍스트 블록에서 대괄호 없는 페이지 패턴을 처리하는 헬퍼 함수
   const processBarePagePatterns = (textBlock, pageTexts, pageClickHandler, keyPrefix) => {
@@ -403,6 +434,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   useEffect(() => {
     const analyzeDocument = async () => {
       if (selectedSources.length > 0) {
+        // 새로운 파일이 있는지 확인 (analyzedSourceIds에 없는 파일)
+        const currentSourceIds = selectedSources.map(s => s.id)
+        const newSourceIds = currentSourceIds.filter(id => !analyzedSourceIds.includes(id))
+
+        console.log('[ChatInterface] 현재 소스:', currentSourceIds)
+        console.log('[ChatInterface] 이미 분석된 소스:', analyzedSourceIds)
+        console.log('[ChatInterface] 새로운 소스:', newSourceIds)
+
+        // 새로운 파일이 없으면 자동 분석 건너뛰기
+        if (newSourceIds.length === 0) {
+          console.log('[ChatInterface] ✅ 모든 파일이 이미 분석됨 - 자동 분석 건너뛰기')
+          return
+        }
+
         // 기존 대화 기록 유지 (초기화하지 않음)
         // 단, 분석 중 메시지나 환영 메시지는 제거
         setMessages(prev => prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome))
@@ -510,6 +555,13 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
           console.log('[ChatInterface] summaryMessage 설정 완료:', summaryMessage)
 
+          // 분석 완료 후 analyzedSourceIds 업데이트
+          const updatedAnalyzedIds = [...new Set([...analyzedSourceIds, ...currentSourceIds])]
+          if (onAnalyzedSourcesUpdate) {
+            onAnalyzedSourcesUpdate(updatedAnalyzedIds)
+            console.log('[ChatInterface] ✅ analyzedSourceIds 업데이트:', updatedAnalyzedIds)
+          }
+
         } catch (error) {
           console.error('문서 분석 오류:', error)
 
@@ -581,7 +633,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     analyzeDocument()
-  }, [selectedSources.length, selectedSources.map(s => s.id).join(',')])
+  }, [selectedSources.length, selectedSources.map(s => s.id).join(','), analyzedSourceIds.join(',')])
 
   const handleSubmit = async (e) => {
     e.preventDefault()

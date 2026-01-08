@@ -3,10 +3,25 @@ import SourcePanel from './components/SourcePanel'
 import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
 import PDFViewer from './components/PDFViewer'
+import Dashboard from './components/Dashboard'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import pdfViewerController from './utils/pdfViewerController'
+import {
+  getNotebookById,
+  updateNotebookSources,
+  updateNotebookMessages,
+  updateNotebookModel,
+  updateNotebookSystemPrompt,
+  updateNotebookAnalyzedSources
+} from './utils/notebookManager'
+import { ArrowLeft } from 'lucide-react'
 
 function AppContent() {
+  // 라우팅 상태
+  const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' or 'chat'
+  const [currentNotebook, setCurrentNotebook] = useState(null) // 현재 선택된 노트북
+
+  // 채팅 UI 상태
   const [sources, setSources] = useState([])
   const [selectedSourceIds, setSelectedSourceIds] = useState([])
   const [selectedModel, setSelectedModel] = useState('instant') // 'instant' or 'thinking' (기본값: 빠름 모드)
@@ -18,10 +33,108 @@ function AppContent() {
   const [targetPage, setTargetPage] = useState(null) // PDF 뷰어 페이지 이동 타겟
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false) // AI 설정 패널 토글
   const [previousSourceId, setPreviousSourceId] = useState(null) // 이전 선택 파일 ID (지침 초기화 감지용)
+  const [analyzedSourceIds, setAnalyzedSourceIds] = useState([]) // 이미 분석한 파일 ID 목록
   const { t } = useLanguage()
 
   // 선택된 소스들 가져오기
   const selectedSources = sources.filter(s => selectedSourceIds.includes(s.id))
+
+  // 현재 노트북 데이터 저장 (IndexedDB)
+  const saveCurrentNotebookData = useCallback(async () => {
+    if (!currentNotebook) return
+
+    console.log('[App] 현재 노트북 데이터 저장:', currentNotebook.id)
+
+    try {
+      // sources 업데이트 (IndexedDB는 대용량 지원)
+      await updateNotebookSources(currentNotebook.id, sources)
+
+      // selectedModel 업데이트
+      await updateNotebookModel(currentNotebook.id, selectedModel)
+
+      // systemPromptOverrides 업데이트
+      await updateNotebookSystemPrompt(currentNotebook.id, systemPromptOverrides)
+
+      console.log('[App] 노트북 데이터 저장 완료 (소스:', sources.length, '개)')
+    } catch (error) {
+      console.error('[App] 저장 실패:', error)
+      alert('데이터 저장에 실패했습니다: ' + error.message)
+    }
+  }, [currentNotebook, sources, selectedModel, systemPromptOverrides])
+
+  // 브라우저 뒤로가기/앞으로가기 지원
+  useEffect(() => {
+    const handlePopState = async (event) => {
+      console.log('[App] popstate 이벤트:', event.state)
+
+      if (event.state?.view === 'dashboard') {
+        // 대시보드로 복귀
+        if (currentNotebook) {
+          await saveCurrentNotebookData()
+        }
+        setCurrentView('dashboard')
+        setCurrentNotebook(null)
+      } else if (event.state?.view === 'chat' && event.state?.notebookId) {
+        // 특정 노트북으로 이동
+        const savedNotebook = await getNotebookById(event.state.notebookId)
+        if (savedNotebook) {
+          setCurrentNotebook(savedNotebook)
+          setSources(savedNotebook.sources || [])
+          setSelectedSourceIds(savedNotebook.sources.map(s => s.id))
+          setSelectedModel(savedNotebook.selectedModel || 'thinking')
+          setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
+
+          // analyzedSourceIds 복원: 기존 메시지가 있으면 모든 소스를 분석됨으로 표시
+          let restoredAnalyzedIds = savedNotebook.analyzedSourceIds || []
+          if (savedNotebook.messages && savedNotebook.messages.length > 0 && savedNotebook.sources && savedNotebook.sources.length > 0) {
+            const allSourceIds = savedNotebook.sources.map(s => s.id)
+            restoredAnalyzedIds = [...new Set([...restoredAnalyzedIds, ...allSourceIds])]
+          }
+          setAnalyzedSourceIds(restoredAnalyzedIds)
+
+          setCurrentView('chat')
+        }
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+
+    // 초기 로드 시 URL 기반 라우팅
+    const initializeRoute = async () => {
+      const hash = window.location.hash
+      if (hash.startsWith('#chat/')) {
+        const notebookId = hash.replace('#chat/', '')
+        const savedNotebook = await getNotebookById(notebookId)
+        if (savedNotebook) {
+          setCurrentNotebook(savedNotebook)
+          setSources(savedNotebook.sources || [])
+          setSelectedSourceIds(savedNotebook.sources.map(s => s.id))
+          setSelectedModel(savedNotebook.selectedModel || 'thinking')
+          setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
+
+          // analyzedSourceIds 복원: 기존 메시지가 있으면 모든 소스를 분석됨으로 표시
+          let restoredAnalyzedIds = savedNotebook.analyzedSourceIds || []
+          if (savedNotebook.messages && savedNotebook.messages.length > 0 && savedNotebook.sources && savedNotebook.sources.length > 0) {
+            const allSourceIds = savedNotebook.sources.map(s => s.id)
+            restoredAnalyzedIds = [...new Set([...restoredAnalyzedIds, ...allSourceIds])]
+          }
+          setAnalyzedSourceIds(restoredAnalyzedIds)
+
+          setCurrentView('chat')
+        }
+      } else {
+        // 기본값: 대시보드
+        window.history.replaceState({ view: 'dashboard' }, '', '#dashboard')
+      }
+    }
+
+    initializeRoute()
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // 전역 PDF 뷰어 컨트롤러 초기화 (Event Bus 패턴)
   useEffect(() => {
@@ -42,6 +155,91 @@ function AppContent() {
       pdfViewerController.off('modeChange', handleModeChange)
     }
   }, [])
+
+  // 노트북 선택 핸들러 (Dashboard → Chat)
+  const handleNotebookSelect = async (notebook) => {
+    console.log('[App] 노트북 선택:', notebook.id, notebook.title)
+
+    // 노트북 데이터 불러오기
+    const savedNotebook = await getNotebookById(notebook.id)
+    if (!savedNotebook) {
+      console.error('[App] 노트북을 찾을 수 없음:', notebook.id)
+      return
+    }
+
+    // 현재 노트북 설정
+    setCurrentNotebook(savedNotebook)
+
+    // 저장된 데이터로 상태 복원
+    setSources(savedNotebook.sources || [])
+    setSelectedSourceIds(savedNotebook.sources.map(s => s.id))
+    setSelectedModel(savedNotebook.selectedModel || 'thinking')
+    setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
+
+    // analyzedSourceIds 복원: 기존에 메시지가 있으면 모든 소스를 이미 분석한 것으로 간주
+    let restoredAnalyzedIds = savedNotebook.analyzedSourceIds || []
+    if (savedNotebook.messages && savedNotebook.messages.length > 0 && savedNotebook.sources && savedNotebook.sources.length > 0) {
+      // 메시지가 있는 노트북이면 기존 파일들을 모두 분석됨으로 표시
+      const allSourceIds = savedNotebook.sources.map(s => s.id)
+      restoredAnalyzedIds = [...new Set([...restoredAnalyzedIds, ...allSourceIds])]
+      console.log('[App] 📝 기존 메시지 존재 - 모든 소스를 분석됨으로 표시:', restoredAnalyzedIds)
+    }
+    setAnalyzedSourceIds(restoredAnalyzedIds)
+
+    // 채팅 UI로 전환
+    setCurrentView('chat')
+
+    // 브라우저 히스토리에 상태 추가 (뒤로가기 지원)
+    window.history.pushState({ view: 'chat', notebookId: notebook.id }, '', `#chat/${notebook.id}`)
+
+    console.log('[App] 노트북 데이터 복원 완료')
+    console.log('- 소스 개수:', savedNotebook.sources.length)
+    console.log('- 메시지 개수:', savedNotebook.messages.length)
+    console.log('- 선택된 모델:', savedNotebook.selectedModel)
+    console.log('- 분석된 소스:', restoredAnalyzedIds.length)
+  }
+
+  // 대시보드로 돌아가기
+  const handleBackToDashboard = async () => {
+    console.log('[App] 대시보드로 복귀')
+
+    // 현재 노트북 데이터 저장 (떠나기 전)
+    if (currentNotebook) {
+      await saveCurrentNotebookData()
+    }
+
+    setCurrentView('dashboard')
+    setCurrentNotebook(null)
+
+    // 브라우저 히스토리 업데이트
+    window.history.pushState({ view: 'dashboard' }, '', '#dashboard')
+  }
+
+  // 소스 변경 시 자동 저장 (IndexedDB로 대용량 지원)
+  useEffect(() => {
+    if (currentNotebook && currentView === 'chat' && sources.length > 0) {
+      console.log('[App] 소스 변경 감지 - 자동 저장')
+      updateNotebookSources(currentNotebook.id, sources)
+        .then(() => console.log('[App] 소스 자동 저장 완료:', sources.length, '개'))
+        .catch(error => console.error('[App] 소스 저장 실패:', error))
+    }
+  }, [sources, currentNotebook, currentView])
+
+  // 모델 변경 시 자동 저장
+  useEffect(() => {
+    if (currentNotebook && currentView === 'chat') {
+      console.log('[App] 모델 변경 감지 - 자동 저장')
+      updateNotebookModel(currentNotebook.id, selectedModel)
+    }
+  }, [selectedModel, currentNotebook, currentView])
+
+  // 시스템 프롬프트 변경 시 자동 저장
+  useEffect(() => {
+    if (currentNotebook && currentView === 'chat') {
+      console.log('[App] 시스템 프롬프트 변경 감지 - 자동 저장')
+      updateNotebookSystemPrompt(currentNotebook.id, systemPromptOverrides)
+    }
+  }, [systemPromptOverrides, currentNotebook, currentView])
 
   // 파일 전환 감지 및 AI 지침 초기화
   useEffect(() => {
@@ -123,7 +321,7 @@ function AppContent() {
     console.log('[App] 소스 이름 업데이트:', sourceId, newName)
   }
 
-  // 채팅 이력 업데이트 및 동기화 (ChatInterface → DataPreview)
+  // 채팅 이력 업데이트 및 동기화 (ChatInterface → DataPreview + localStorage)
   const handleChatUpdate = useCallback((messages) => {
     const formattedHistory = messages.map(msg => ({
       role: msg.type === 'user' ? 'user' : 'assistant',
@@ -132,8 +330,41 @@ function AppContent() {
     }))
     setChatHistory(formattedHistory)
     setLastSyncTime(new Date().toISOString())
+
+    // 현재 노트북의 메시지 자동 저장 (용량 초과 시 경고)
+    if (currentNotebook) {
+      try {
+        updateNotebookMessages(currentNotebook.id, messages)
+        console.log('[App] 메시지 자동 저장:', messages.length, '개')
+      } catch (error) {
+        if (error.name === 'QuotaExceededError') {
+          console.error('[App] localStorage 용량 초과 - 메시지 저장 실패')
+          // 사용자에게 한 번만 알림 (중복 방지)
+          if (!window._quotaWarningShown) {
+            window._quotaWarningShown = true
+            alert('저장 공간이 부족하여 대화 내용을 저장할 수 없습니다.\n\n해결 방법:\n1. 브라우저 콘솔(F12)에서 localStorage.clear() 실행\n2. 오래된 노트북 삭제\n3. 대화 내용이 길면 새 노트북으로 시작')
+          }
+        } else {
+          console.error('[App] 메시지 저장 실패:', error)
+        }
+      }
+    }
+
     console.log('[App] 대화 이력 동기화:', formattedHistory.length, '개 메시지')
-  }, [])
+  }, [currentNotebook])
+
+  // 분석된 소스 ID 업데이트 (ChatInterface → IndexedDB)
+  const handleAnalyzedSourcesUpdate = useCallback((newAnalyzedIds) => {
+    console.log('[App] 분석된 소스 ID 업데이트:', newAnalyzedIds)
+    setAnalyzedSourceIds(newAnalyzedIds)
+
+    // IndexedDB에 자동 저장
+    if (currentNotebook) {
+      updateNotebookAnalyzedSources(currentNotebook.id, newAnalyzedIds)
+        .then(() => console.log('[App] 분석된 소스 ID 저장 완료'))
+        .catch(error => console.error('[App] 분석된 소스 ID 저장 실패:', error))
+    }
+  }, [currentNotebook])
 
   // 인용 배지 클릭 시 페이지 이동 핸들러
   const handlePageClick = useCallback((pageNumber) => {
@@ -187,7 +418,8 @@ function AppContent() {
       // 우측 패널을 텍스트 뷰어 모드로 전환 (전체 문서 표시 + 해당 섹션 하이라이트)
       setRightPanelState({
         mode: 'text-preview',
-        highlightSectionIndex: pageNumber // 하이라이트할 섹션
+        highlightSectionIndex: pageNumber, // 하이라이트할 섹션
+        targetFile: targetFile // 대상 파일 설정
       })
 
       // targetPage 설정 (DataPreview가 감지하여 스크롤 실행)
@@ -224,13 +456,36 @@ function AppContent() {
     }, 500)
   }, [selectedSources, rightPanelState.mode, isSettingsPanelOpen])
 
+  // 대시보드 뷰
+  if (currentView === 'dashboard') {
+    return <Dashboard onNotebookSelect={handleNotebookSelect} />
+  }
+
+  // 채팅 뷰
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Top Header */}
+      {/* Top Header - 뒤로가기 버튼 포함 */}
       <div className="px-6 py-3 bg-white border-b border-gray-200">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{t('app.title')}</h1>
-          <p className="text-sm text-gray-500">{t('app.subtitle')}</p>
+        <div className="flex items-center space-x-4">
+          {/* 뒤로가기 버튼 */}
+          <button
+            onClick={handleBackToDashboard}
+            className="flex items-center space-x-2 px-3 py-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+            title="대시보드로 돌아가기"
+          >
+            <ArrowLeft className="w-5 h-5" />
+            <span className="text-sm font-medium">대시보드</span>
+          </button>
+
+          {/* 현재 노트북 제목 */}
+          <div className="flex-1">
+            <h1 className="text-xl font-bold text-gray-900">
+              {currentNotebook?.emoji} {currentNotebook?.title || t('app.title')}
+            </h1>
+            <p className="text-xs text-gray-500">
+              {currentNotebook?.sources?.length || 0}개의 소스 · {selectedModel === 'instant' ? '빠름 모드' : selectedModel === 'thinking' ? '심층 모드' : 'Gemini'}
+            </p>
+          </div>
         </div>
       </div>
 
@@ -261,6 +516,9 @@ function AppContent() {
             onPageClick={handlePageClick}
             isSettingsPanelOpen={isSettingsPanelOpen}
             onToggleSettingsPanel={() => setIsSettingsPanelOpen(!isSettingsPanelOpen)}
+            initialMessages={currentNotebook?.messages || []}
+            analyzedSourceIds={analyzedSourceIds}
+            onAnalyzedSourcesUpdate={handleAnalyzedSourcesUpdate}
           />
         </div>
 

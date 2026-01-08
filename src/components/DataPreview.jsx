@@ -103,7 +103,7 @@ Respond in JSON format:
   }
 }
 
-const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null }) => {
+const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null, onClose }) => {
   // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
@@ -577,15 +577,33 @@ Set field to "invalid" if the request cannot be fulfilled.`
     setTimeout(() => setHighlightedPage(null), duration)
   }, [])
 
-  // targetPage prop 변경 시 페이지 이동
+  // targetPage prop 변경 시 페이지/섹션 이동
   useEffect(() => {
     if (targetPage && targetPage > 0) {
       console.log('[DataPreview] targetPage prop 변경 감지:', targetPage)
-      handlePageNavigate({ pageNumber: targetPage })
-      // 하이라이트 효과 추가
-      handlePageHighlight({ pageNumber: targetPage, duration: 3000 })
+
+      // 텍스트 뷰어 모드인 경우 섹션으로 스크롤
+      if (viewMode === 'text-preview') {
+        const sectionElement = document.getElementById(`section-${targetPage}`)
+        if (sectionElement && scrollContainerRef.current) {
+          console.log('[DataPreview] 텍스트 섹션으로 스크롤:', targetPage)
+          // 부모 스크롤 컨테이너 기준으로 스크롤
+          const container = scrollContainerRef.current
+          const offsetTop = sectionElement.offsetTop - container.offsetTop - 20 // 20px 여백
+          container.scrollTo({
+            top: offsetTop,
+            behavior: 'smooth'
+          })
+        }
+      }
+      // PDF 모드인 경우 기존 로직 실행
+      else {
+        handlePageNavigate({ pageNumber: targetPage })
+        // 하이라이트 효과 추가
+        handlePageHighlight({ pageNumber: targetPage, duration: 3000 })
+      }
     }
-  }, [targetPage, handlePageNavigate, handlePageHighlight])
+  }, [targetPage, viewMode, handlePageNavigate, handlePageHighlight])
 
   // 전역 PDF 뷰어 컨트롤러 이벤트 리스너 등록 (Event Bus 패턴)
   useEffect(() => {
@@ -757,20 +775,37 @@ Set field to "invalid" if the request cannot be fulfilled.`
 
         const viewport = page.getViewport({ scale, rotation: 0 })
         const canvas = document.createElement('canvas')
-        const context = canvas.getContext('2d')
+        const context = canvas.getContext('2d', {
+          alpha: false, // 투명도 비활성화 (성능 향상)
+          desynchronized: true, // 비동기 렌더링 활성화
+          willReadFrequently: false // 픽셀 읽기 최적화 비활성화 (성능 향상)
+        })
 
         // Canvas 크기를 뷰포트 크기로 설정 (aspect ratio 자동 유지)
         canvas.width = Math.floor(viewport.width)
         canvas.height = Math.floor(viewport.height)
 
+        // 고품질 렌더링 설정
+        context.imageSmoothingEnabled = true
+        context.imageSmoothingQuality = 'high'
+
         // 배경 흰색으로 초기화
         context.fillStyle = '#ffffff'
         context.fillRect(0, 0, canvas.width, canvas.height)
 
-        await page.render({
+        // PDF 렌더링 옵션 개선 (텍스트 렌더링 품질 향상)
+        const renderContext = {
           canvasContext: context,
-          viewport: viewport
-        }).promise
+          viewport: viewport,
+          // 텍스트 렌더링 활성화
+          enableWebGL: false,
+          // 고품질 렌더링 플래그
+          renderInteractiveForms: true,
+          // 배경 투명도 처리
+          background: 'white'
+        }
+
+        await page.render(renderContext).promise
 
         return canvas.toDataURL('image/png', 1.0)
       } catch (error) {
@@ -780,7 +815,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
     }
 
     loadAndRenderAllPages()
-  }, [selectedFile?.file])
+  }, [selectedFile?.id, selectedFile?.file]) // selectedFile.id 추가로 파일 전환 감지
 
   // 파일 변경 시 페르소나 분석 및 기존 지침 초기화
   useEffect(() => {
@@ -1042,7 +1077,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
       {/* Studio Header */}
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
         <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 flex-1">
             {viewMode === 'pdf' ? (
               <>
                 <button
@@ -1059,16 +1094,26 @@ Set field to "invalid" if the request cannot be fulfilled.`
             ) : (
               <>
                 <h2 className="text-sm font-bold text-gray-900">
-                  {language === 'ko' ? '스튜디오' : 'Studio'}
+                  {language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
                 </h2>
                 {viewMode === 'natural' && selectedFile && (
-                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">
-                    AI
+                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-semibold">
+                    설정
                   </span>
                 )}
               </>
             )}
           </div>
+          {/* 닫기 버튼 */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all"
+              title={language === 'ko' ? '닫기' : 'Close'}
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
           {viewMode === 'pdf' && pdfState.numPages > 0 && (
             <div className="flex items-center space-x-2">
               <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-1 rounded">
@@ -1269,234 +1314,71 @@ Set field to "invalid" if the request cannot be fulfilled.`
               </div>
             )}
           </div>
-        ) : viewMode === 'natural' ? (
-          /* 자연어 분석 모드 (기본) */
-          <div className="space-y-4">
-            {isLoadingSummary ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="text-center">
-                  <Loader2 className="w-8 h-8 mx-auto mb-3 text-blue-600 animate-spin" />
-                  <p className="text-sm font-medium text-gray-700">
-                    {language === 'ko' ? 'AI 분석 중...' : 'AI analyzing...'}
-                  </p>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {language === 'ko' ? 'GPT-5.1로 문서를 분석하고 있습니다' : 'Analyzing with GPT-5.1'}
-                  </p>
-                </div>
-              </div>
-            ) : naturalSummary ? (
-              <>
-                {/* NotebookLM 스타일 핵심 요약 - 편집 기능 (컴팩트) */}
-                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 rounded-xl p-4 shadow-sm border border-indigo-200">
-                  <div className="flex items-start justify-between mb-2">
-                    <div className="flex items-start space-x-2 flex-1">
-                      <div className="flex-shrink-0 w-6 h-6 bg-indigo-600 rounded-lg flex items-center justify-center">
-                        <Lightbulb className="w-4 h-4 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-xs font-bold text-indigo-900 uppercase tracking-wide mb-1.5">
-                          {language === 'ko' ? '핵심 요약' : 'Core Summary'}
-                        </h3>
-                        {isEditing === 'summary' ? (
-                          <textarea
-                            value={editedContent.summary}
-                            onChange={(e) => setEditedContent({ ...editedContent, summary: e.target.value })}
-                            className="w-full px-2 py-1.5 text-xs border border-indigo-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-800 leading-relaxed font-medium resize-none"
-                            rows={2}
-                            autoFocus
-                          />
-                        ) : (
-                          <p className="text-sm text-gray-800 leading-relaxed font-medium line-clamp-3">
-                            {naturalSummary.summary}
-                          </p>
+        ) : viewMode === 'text-preview' ? (
+          /* 텍스트 뷰어 모드 (Word/TXT/Excel 파일 - NotebookLM 스타일 전체 문서 표시) */
+          <div className="h-full flex flex-col">
+            <div
+              ref={scrollContainerRef}
+              className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50"
+              style={{ scrollBehavior: 'smooth' }}
+            >
+              <div className="py-4 px-3 space-y-4">
+                {/* 전체 페이지를 순회하며 표시 (텍스트만 추출됨 - 이미지/레이아웃 제외) */}
+                {selectedFile?.parsedData?.pageTexts?.map((section, index) => {
+                  const pageNumber = index + 1
+                  const isHighlighted = rightPanelState.highlightSectionIndex === pageNumber
+
+                  return (
+                    <div
+                      key={`section-${pageNumber}`}
+                      id={`section-${pageNumber}`}
+                      className={`bg-white mx-auto shadow-md rounded-lg overflow-hidden border transition-all duration-300 ${
+                        isHighlighted
+                          ? 'border-yellow-400 ring-4 ring-yellow-200 shadow-xl'
+                          : 'border-gray-200'
+                      }`}
+                      style={{ maxWidth: '800px' }}
+                    >
+                      {/* 페이지 헤더 */}
+                      <div className={`px-4 py-2 border-b flex items-center justify-between ${
+                        isHighlighted
+                          ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200'
+                          : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-gray-200'
+                      }`}>
+                        <span className={`text-xs font-semibold ${
+                          isHighlighted ? 'text-yellow-800' : 'text-blue-700'
+                        }`}>
+                          {language === 'ko' ? `페이지 ${pageNumber}` : `Page ${pageNumber}`}
+                        </span>
+                        {isHighlighted && (
+                          <span className="text-[10px] bg-yellow-200 text-yellow-900 px-2 py-0.5 rounded-full font-bold">
+                            {language === 'ko' ? '인용됨' : 'Cited'}
+                          </span>
                         )}
                       </div>
-                    </div>
-                    <div className="flex items-center space-x-1 ml-2">
-                      {isEditing === 'summary' ? (
-                        <>
-                          <button
-                            onClick={handleSaveEdit}
-                            className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-                            title={language === 'ko' ? '저장' : 'Save'}
-                          >
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                            title={language === 'ko' ? '취소' : 'Cancel'}
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleStartEdit('summary')}
-                          className="p-1.5 text-indigo-600 hover:bg-indigo-100 rounded-lg transition-colors"
-                          title={language === 'ko' ? '편집' : 'Edit'}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
 
-                {/* NotebookLM 스타일 주요 내용 리스트 - 편집 기능 */}
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center space-x-2">
-                      <List className="w-4 h-4 text-gray-600" />
-                      <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                        {language === 'ko' ? '주요 내용' : 'Key Points'}
-                      </h3>
+                      {/* 페이지 내용 (텍스트만) */}
+                      <div className="p-4">
+                        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                          {section.text}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex items-center space-x-1">
-                      {isEditing === 'keyPoints' ? (
-                        <>
-                          <button
-                            onClick={handleSaveEdit}
-                            className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-                            title={language === 'ko' ? '저장' : 'Save'}
-                          >
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                            title={language === 'ko' ? '취소' : 'Cancel'}
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleStartEdit('keyPoints')}
-                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                          title={language === 'ko' ? '편집' : 'Edit'}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    {isEditing === 'keyPoints' ? (
-                      editedContent.keyPoints.map((point, index) => (
-                        <div key={index} className="flex items-start space-x-2">
-                          <div className="flex-shrink-0 w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600">
-                            {index + 1}
-                          </div>
-                          <input
-                            type="text"
-                            value={point}
-                            onChange={(e) => {
-                              const newKeyPoints = [...editedContent.keyPoints]
-                              newKeyPoints[index] = e.target.value
-                              setEditedContent({ ...editedContent, keyPoints: newKeyPoints })
-                            }}
-                            className="flex-1 px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500 bg-white text-gray-700"
-                          />
-                        </div>
-                      ))
-                    ) : (
-                      naturalSummary.keyPoints && naturalSummary.keyPoints.map((point, index) => (
-                        <div key={index} className="flex items-start space-x-2 group">
-                          <div className="flex-shrink-0 w-5 h-5 bg-gray-100 rounded-full flex items-center justify-center text-[10px] font-bold text-gray-600 group-hover:bg-indigo-100 group-hover:text-indigo-700 transition-colors">
-                            {index + 1}
-                          </div>
-                          <p className="flex-1 text-sm text-gray-700 leading-relaxed pt-0.5">
-                            {point}
-                          </p>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* 핵심 키워드 태그 - 편집 기능 */}
-                <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">
-                      {language === 'ko' ? '핵심 키워드' : 'Keywords'}
-                    </h3>
-                    <div className="flex items-center space-x-1">
-                      {isEditing === 'keywords' ? (
-                        <>
-                          <button
-                            onClick={handleSaveEdit}
-                            className="p-1.5 text-green-600 hover:bg-green-100 rounded-lg transition-colors"
-                            title={language === 'ko' ? '저장' : 'Save'}
-                          >
-                            <Save className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={handleCancelEdit}
-                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                            title={language === 'ko' ? '취소' : 'Cancel'}
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => handleStartEdit('keywords')}
-                          className="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-                          title={language === 'ko' ? '편집' : 'Edit'}
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {isEditing === 'keywords' ? (
-                      editedContent.keywords.map((keyword, index) => (
-                        <input
-                          key={index}
-                          type="text"
-                          value={keyword}
-                          onChange={(e) => {
-                            const newKeywords = [...editedContent.keywords]
-                            newKeywords[index] = e.target.value
-                            setEditedContent({ ...editedContent, keywords: newKeywords })
-                          }}
-                          className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border-2 border-blue-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          style={{ width: `${Math.max(keyword.length * 8 + 30, 60)}px` }}
-                        />
-                      ))
-                    ) : (
-                      naturalSummary.keywords && naturalSummary.keywords.map((keyword, index) => (
-                        <span
-                          key={index}
-                          className="px-3 py-1.5 bg-blue-50 text-blue-700 rounded-full text-xs font-semibold border border-blue-200 hover:bg-blue-100 hover:border-blue-300 transition-all cursor-default"
-                        >
-                          {keyword}
-                        </span>
-                      ))
-                    )}
-                  </div>
-                </div>
-
-                {/* AI 행동 지침 설정 패널 (우측 하단) */}
-                <SystemPromptPanel
-                  language={language}
-                  onSystemPromptUpdate={onSystemPromptUpdate}
-                  suggestedPersonas={personaAnalysis?.suggestedPersonas || null}
-                  detectedEntity={personaAnalysis?.detectedEntity || null}
-                  documentType={personaAnalysis?.documentType || null}
-                />
-              </>
-            ) : (
-              <div className="flex items-center justify-center h-64">
-                <div className="text-center">
-                  <p className="text-sm text-gray-500">
-                    {language === 'ko' ? '문서 분석 정보를 생성할 수 없습니다.' : 'Cannot generate document analysis.'}
-                  </p>
-                </div>
+                  )
+                })}
               </div>
-            )}
+            </div>
+          </div>
+        ) : viewMode === 'natural' ? (
+          <div className="h-full">
+            {/* AI 행동 지침 설정 패널만 표시 */}
+            <SystemPromptPanel
+              language={language}
+              onSystemPromptUpdate={onSystemPromptUpdate}
+              suggestedPersonas={personaAnalysis?.suggestedPersonas || null}
+              detectedEntity={personaAnalysis?.detectedEntity || null}
+              documentType={personaAnalysis?.documentType || null}
+            />
           </div>
         ) : (
           /* 자연어 데이터 설명 모드 */
