@@ -17,14 +17,36 @@ const Dashboard = ({ onNotebookSelect }) => {
   const [viewMode, setViewMode] = useState('grid') // 'grid' or 'list'
   const { language } = useLanguage()
 
-  // 초기 로드: IndexedDB에서 노트북 불러오기
-  useEffect(() => {
+  // 초기 로드 및 리프레시: IndexedDB에서 노트북 불러오기
+  const loadNotebooks = async () => {
     console.log('[Dashboard] 노트북 데이터 불러오기 시작')
-    getAllNotebooks().then(loadedNotebooks => {
-      const sortedNotebooks = sortNotebooksByDate(loadedNotebooks)
-      setNotebooks(sortedNotebooks)
-      console.log('[Dashboard] 불러온 노트북 개수:', sortedNotebooks.length)
-    })
+    const loadedNotebooks = await getAllNotebooks()
+    const sortedNotebooks = sortNotebooksByDate(loadedNotebooks)
+    setNotebooks(sortedNotebooks)
+    console.log('[Dashboard] 불러온 노트북 개수:', sortedNotebooks.length)
+  }
+
+  useEffect(() => {
+    loadNotebooks()
+  }, [])
+
+  // 컴포넌트가 다시 보일 때마다 노트북 목록 새로고침
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        console.log('[Dashboard] 페이지 활성화 감지 - 노트북 목록 새로고침')
+        loadNotebooks()
+      }
+    }
+
+    // 포커스 이벤트로도 리프레시
+    window.addEventListener('focus', loadNotebooks)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', loadNotebooks)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [])
 
   // 새 노트북 생성 핸들러
@@ -75,50 +97,47 @@ const Dashboard = ({ onNotebookSelect }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
       {/* 헤더 */}
-      <header className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4">
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
+        <div className="px-6 py-4">
           <div className="flex items-center justify-between">
             {/* 로고 */}
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">N</span>
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 bg-sky-500 rounded-xl flex items-center justify-center shadow-sm">
+                <span className="text-white text-sm font-bold tracking-tight" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  Ag
+                </span>
               </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">
-                  {language === 'ko' ? 'NotebookLM 대시보드' : 'NotebookLM Dashboard'}
-                </h1>
-                <p className="text-xs text-gray-500">
-                  {language === 'ko' ? '문서 기반 AI 분석 도구' : 'AI-Powered Document Analysis Tool'}
-                </p>
-              </div>
+              <h1 className="text-lg font-semibold text-gray-900 tracking-tight" style={{ fontFamily: 'Inter, Pretendard, sans-serif' }}>
+                Agent Note
+              </h1>
             </div>
 
             {/* 검색창 */}
-            <div className="flex-1 max-w-xl mx-8">
+            <div className="flex-1 max-w-3xl mx-8">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={handleSearch}
-                  placeholder={language === 'ko' ? '노트북 검색...' : 'Search notebooks...'}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-100 border border-transparent rounded-full text-sm focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all"
+                  placeholder={language === 'ko' ? '노트 검색...' : 'Search notes...'}
+                  className="w-full pl-11 pr-4 py-2 bg-gray-50 border border-gray-100 rounded-full text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:bg-white focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all"
                 />
               </div>
             </div>
 
-            {/* 우측: 뷰 모드 + 프로필 */}
-            <div className="flex items-center space-x-3">
+            {/* 우측: 아이콘들 */}
+            <div className="flex items-center space-x-2">
               {/* 뷰 모드 토글 */}
-              <div className="flex items-center bg-gray-100 rounded-lg p-1">
+              <div className="flex items-center bg-gray-50 rounded-xl p-0.5">
                 <button
                   onClick={() => setViewMode('grid')}
-                  className={`p-1.5 rounded ${
+                  className={`p-2 rounded-lg transition-all ${
                     viewMode === 'grid'
                       ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-400 hover:text-gray-600'
                   }`}
                   title="그리드 뷰"
                 >
@@ -126,10 +145,10 @@ const Dashboard = ({ onNotebookSelect }) => {
                 </button>
                 <button
                   onClick={() => setViewMode('list')}
-                  className={`p-1.5 rounded ${
+                  className={`p-2 rounded-lg transition-all ${
                     viewMode === 'list'
                       ? 'bg-white text-blue-600 shadow-sm'
-                      : 'text-gray-500 hover:text-gray-700'
+                      : 'text-gray-400 hover:text-gray-600'
                   }`}
                   title="리스트 뷰"
                 >
@@ -137,14 +156,14 @@ const Dashboard = ({ onNotebookSelect }) => {
                 </button>
               </div>
 
-              {/* 프로필 아이콘 */}
-              <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <User className="w-5 h-5 text-gray-600" />
+              {/* 설정 아이콘 */}
+              <button className="p-2 hover:bg-gray-50 rounded-xl transition-colors">
+                <SettingsIcon className="w-4 h-4 text-gray-400" />
               </button>
 
-              {/* 설정 아이콘 */}
-              <button className="p-2 hover:bg-gray-100 rounded-full transition-colors">
-                <SettingsIcon className="w-5 h-5 text-gray-600" />
+              {/* 프로필 아이콘 */}
+              <button className="p-2 hover:bg-gray-50 rounded-xl transition-colors">
+                <User className="w-4 h-4 text-gray-400" />
               </button>
             </div>
           </div>
@@ -152,23 +171,14 @@ const Dashboard = ({ onNotebookSelect }) => {
       </header>
 
       {/* 메인 컨텐츠 */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* 탭 */}
-        <div className="mb-6 border-b border-gray-200">
-          <nav className="flex space-x-8">
-            <button className="pb-3 border-b-2 border-blue-600 text-blue-600 font-medium text-sm">
-              {language === 'ko' ? '전체' : 'All'}
-            </button>
-          </nav>
-        </div>
-
+      <main className="max-w-7xl mx-auto px-8 py-6">
         {/* 노트북 그리드 */}
-        <section className="mb-10">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">
-            {language === 'ko' ? '최근 노트북' : 'Recent Notebooks'}
+        <section>
+          <h2 className="text-sm font-semibold text-gray-800 mb-4">
+            {language === 'ko' ? '최근 노트' : 'Recent Notes'}
           </h2>
 
-          <div className={`grid gap-4 ${
+          <div className={`grid gap-3 ${
             viewMode === 'grid'
               ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4'
               : 'grid-cols-1'
@@ -176,12 +186,13 @@ const Dashboard = ({ onNotebookSelect }) => {
             {/* 새 노트 만들기 카드 */}
             <div
               onClick={handleCreateNotebook}
-              className="bg-white rounded-lg border-2 border-dashed border-gray-300 p-8 cursor-pointer transition-all duration-200 hover:border-blue-500 hover:bg-blue-50 flex flex-col items-center justify-center min-h-[200px] group"
+              className="bg-white rounded-2xl border border-dashed border-gray-200 shadow-sm p-6 cursor-pointer transition-all duration-200 hover:border-blue-600 hover:shadow-md flex flex-col items-center justify-center group"
+              style={{ aspectRatio: '1 / 0.85' }}
             >
-              <div className="w-12 h-12 bg-blue-100 group-hover:bg-blue-200 rounded-full flex items-center justify-center mb-3 transition-colors">
-                <Plus className="w-6 h-6 text-blue-600" />
+              <div className="w-11 h-11 bg-blue-50 group-hover:bg-blue-100 rounded-xl flex items-center justify-center mb-2.5 transition-colors">
+                <Plus className="w-5 h-5 text-blue-600" />
               </div>
-              <p className="text-sm font-medium text-gray-700 group-hover:text-blue-600 transition-colors">
+              <p className="text-xs font-medium text-gray-500 group-hover:text-blue-600 transition-colors">
                 {language === 'ko' ? '새 노트 만들기' : 'Create New Note'}
               </p>
             </div>

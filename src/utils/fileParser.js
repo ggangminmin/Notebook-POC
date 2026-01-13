@@ -181,15 +181,16 @@ const extractPDFText = async (file) => {
         .filter(str => str.trim().length > 0) // 빈 문자열 제거
         .join(' ')
 
-      // 페이지를 이미지로 렌더링 (고해상도 썸네일용 - 스케일 증가)
-      const thumbnail = await renderPDFPageToImage(page, 0.6) // 고해상도 썸네일
+      // 🔥 임시: IndexedDB 저장을 위해 썸네일 비활성화 (Base64 이미지가 너무 큼)
+      // const thumbnail = await renderPDFPageToImage(page, 0.6)
+      const thumbnail = null // 썸네일 비활성화
 
       // 페이지별 데이터 저장
       pageTexts.push({
         pageNumber: i,
         text: pageText,
         wordCount: pageText.split(/\s+/).length,
-        thumbnail: thumbnail // 썸네일 이미지 (Base64)
+        thumbnail: thumbnail // null로 저장
       })
 
       pageImages.push({

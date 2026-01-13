@@ -163,6 +163,28 @@ notebooklm-dashboard/
 
 ## 최근 업데이트
 
+### 💬 2026-01-13: 채팅 입력창 UI/UX 개선
+
+#### 🎨 입력창 및 전송 버튼 정렬 개선
+- [x] **안내 텍스트 제거**: 입력창 하단의 "문서 없이도 대화 가능 · Enter로 전송" 텍스트 제거
+- [x] **높이 완벽 정렬**: 입력창과 전송 버튼 높이를 44px로 통일
+- [x] **Flexbox 최적화**: `items-stretch` 레이아웃으로 자동 높이 동기화
+- [x] **Box-sizing 적용**: `box-border` 클래스로 padding/border 포함 높이 계산
+- [x] **반응형 버튼**: 입력창 확장 시 전송 버튼도 함께 늘어나도록 개선
+
+**기술 구현**:
+- [ChatInterface.jsx:1236](src/components/ChatInterface.jsx#L1236) - `items-end` → `items-stretch` 변경
+- [ChatInterface.jsx:1250](src/components/ChatInterface.jsx#L1250) - textarea에 `box-border`, `py-2.5`, `minHeight: 44px` 적용
+- [ChatInterface.jsx:1258](src/components/ChatInterface.jsx#L1258) - 버튼에 `box-border`, `py-2.5`, `minHeight: 44px` 적용
+- [ChatInterface.jsx:1264](src/components/ChatInterface.jsx#L1264) - 안내 텍스트 `<p>` 태그 완전 제거
+
+**시각적 개선**:
+- 입력창과 버튼이 완벽하게 수평 정렬
+- 여러 줄 입력 시에도 버튼이 자연스럽게 확장
+- 깔끔한 UI (불필요한 텍스트 제거)
+
+---
+
 ### 🎯 2026-01-08: 다중 파일 인용 시스템 완전 수정 + 자동 분석 최적화
 
 #### 🔧 다중 파일 인용 버그 수정 (4단계)

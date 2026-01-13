@@ -125,9 +125,9 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
   }
 
   return (
-    <div className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 rounded-xl p-5 shadow-sm border border-purple-200">
+    <div className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 rounded-xl p-5 shadow-sm border border-purple-200 flex flex-col h-full">
       {/* 헤더 */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-shrink-0">
         <div className="flex items-center space-x-2">
           <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center">
             <Settings className="w-4 h-4 text-white" />
@@ -140,7 +140,7 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
 
       {/* 동적 추천 페르소나 (문서 기반) */}
       {suggestedPersonas && suggestedPersonas.length > 0 && (
-        <div className="mb-3">
+        <div className="mb-3 flex-shrink-0">
           <div className="flex items-center justify-between mb-2">
             <p className="text-xs font-semibold text-purple-800">
               {language === 'ko' ? '✨ 추천 페르소나' : '✨ Recommended Personas'}
@@ -177,7 +177,7 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
       )}
 
       {/* 고정 프리셋 버튼 + 사용자 정의 지침 토글 버튼 */}
-      <div className="mb-3">
+      <div className="mb-3 flex-shrink-0">
         <p className="text-xs text-gray-600 mb-2">
           {language === 'ko' ? '기본 설정:' : 'Default Presets:'}
         </p>
@@ -224,9 +224,9 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
         </div>
       </div>
 
-      {/* 커스텀 지침 입력 (토글) */}
+      {/* 커스텀 지침 입력 (토글) - flex-grow로 남은 공간 채우기 */}
       {isCustomPromptOpen && (
-        <div className="mb-3 transition-all duration-200 ease-in-out">
+        <div className="mb-3 transition-all duration-200 ease-in-out flex flex-col flex-grow min-h-0">
           <textarea
             value={customPrompt}
             onChange={(e) => {
@@ -236,8 +236,8 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
             placeholder={language === 'ko'
               ? '여기에 원하는 AI의 역할이나 답변 스타일을 자유롭게 적어주세요...'
               : 'Enter the AI role or response style you want here...'}
-            className="w-full px-3 py-2.5 text-xs border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-800 leading-relaxed resize-none transition-all"
-            rows={6}
+            className="w-full px-3 py-2.5 text-xs border border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 bg-white text-gray-800 leading-relaxed resize-none transition-all flex-grow"
+            style={{ minHeight: '120px' }}
           />
           <p className="text-[10px] text-gray-500 mt-1">
             {language === 'ko'
@@ -247,8 +247,43 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
         </div>
       )}
 
+      {/* 작성 팁 섹션 (입력창이 닫혀있을 때만 표시) */}
+      {!isCustomPromptOpen && (
+        <div className="mb-3 flex-grow bg-white/60 rounded-lg p-3 border border-purple-200/50">
+          <p className="text-xs font-semibold text-purple-800 mb-2">
+            {language === 'ko' ? '✍️ 작성 팁' : '✍️ Writing Tips'}
+          </p>
+          <ul className="text-[10.5px] text-gray-600 space-y-1.5 leading-relaxed">
+            <li className="flex items-start">
+              <span className="text-purple-500 mr-1.5">•</span>
+              <span>{language === 'ko'
+                ? '답변 톤을 "격식 있게", "친절하게", "전문적으로" 등으로 지정해보세요'
+                : 'Specify tone as "formal", "friendly", "professional", etc.'}</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-purple-500 mr-1.5">•</span>
+              <span>{language === 'ko'
+                ? '전문가 역할을 부여하면 더 정확하고 깊이 있는 답변을 얻을 수 있습니다'
+                : 'Assigning expert roles yields more accurate, in-depth responses'}</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-purple-500 mr-1.5">•</span>
+              <span>{language === 'ko'
+                ? '특정 형식(리스트, 표, 단락)으로 답변을 요청할 수 있습니다'
+                : 'You can request responses in specific formats (lists, tables, paragraphs)'}</span>
+            </li>
+            <li className="flex items-start">
+              <span className="text-purple-500 mr-1.5">•</span>
+              <span>{language === 'ko'
+                ? '금지 사항(예: "추측하지 말 것")을 명시하면 응답 품질이 향상됩니다'
+                : 'Specifying restrictions (e.g., "don\'t speculate") improves quality'}</span>
+            </li>
+          </ul>
+        </div>
+      )}
+
       {/* 액션 버튼 */}
-      <div className="flex items-center space-x-2">
+      <div className="flex items-center space-x-2 flex-shrink-0">
         <button
           onClick={handleApply}
           disabled={!customPrompt.trim()}
@@ -264,6 +299,24 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
           <X className="w-3.5 h-3.5" />
           <span>{language === 'ko' ? '초기화' : 'Reset'}</span>
         </button>
+      </div>
+
+      {/* 하단 정보 표시 */}
+      <div className="mt-3 pt-3 border-t border-purple-200/50 flex-shrink-0">
+        <div className="flex items-center justify-between text-[10px] text-gray-400">
+          <span className="flex items-center space-x-1">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+            <span>{language === 'ko' ? 'AI 지침 시스템 활성화됨' : 'AI Guidelines Active'}</span>
+          </span>
+          <span>
+            {new Date().toLocaleString(language === 'ko' ? 'ko-KR' : 'en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })}
+          </span>
+        </div>
       </div>
 
     </div>

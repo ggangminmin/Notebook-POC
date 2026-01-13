@@ -153,7 +153,7 @@ export const createNotebook = async (title = '새 노트북', emoji = '📄') =>
     updatedAt: new Date().toISOString(),
     sources: [],
     messages: [],
-    selectedModel: 'thinking',
+    selectedModel: 'instant', // 기본값: GPT Instant (빠른 응답)
     systemPromptOverrides: [],
     analyzedSourceIds: []
   }

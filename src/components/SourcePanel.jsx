@@ -19,10 +19,9 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const fileInputRef = useRef(null)
   const { t, language } = useLanguage()
 
-  // 파일 타입별 아이콘 및 색상 반환
+  // 파일 타입별 아이콘 및 색상 반환 (확장자 기반)
   const getFileIconAndColor = (source) => {
-    const fileType = source.parsedData?.fileType
-
+    // 웹 소스
     if (source.type === 'web') {
       return {
         icon: Globe,
@@ -31,42 +30,49 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
       }
     }
 
-    switch (fileType) {
+    // 파일 확장자 추출
+    const fileName = source.name || ''
+    const extension = fileName.split('.').pop()?.toLowerCase()
+
+    // 확장자 기반 아이콘 매핑
+    switch (extension) {
       case 'pdf':
         return {
           icon: FileText,
-          bgColor: 'bg-red-100',
+          bgColor: 'bg-red-50',
           iconColor: 'text-red-600'
         }
-      case 'word':
+      case 'doc':
+      case 'docx':
         return {
           icon: FileText,
-          bgColor: 'bg-blue-100',
+          bgColor: 'bg-blue-50',
           iconColor: 'text-blue-600'
         }
-      case 'excel':
-        return {
-          icon: FileSpreadsheet,
-          bgColor: 'bg-green-100',
-          iconColor: 'text-green-600'
-        }
-      case 'text':
+      case 'txt':
         return {
           icon: File,
-          bgColor: 'bg-gray-100',
+          bgColor: 'bg-gray-50',
           iconColor: 'text-gray-600'
+        }
+      case 'xls':
+      case 'xlsx':
+        return {
+          icon: FileSpreadsheet,
+          bgColor: 'bg-green-50',
+          iconColor: 'text-green-600'
         }
       case 'json':
         return {
           icon: File,
-          bgColor: 'bg-purple-100',
+          bgColor: 'bg-purple-50',
           iconColor: 'text-purple-600'
         }
       default:
         return {
           icon: FileText,
-          bgColor: 'bg-gray-100',
-          iconColor: 'text-gray-600'
+          bgColor: 'bg-gray-50',
+          iconColor: 'text-gray-500'
         }
     }
   }
@@ -97,6 +103,9 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
             console.log('파일 파싱 완료:', file.name, parsedData)
             console.log('parsedData.extractedText 존재:', !!parsedData.extractedText)
             console.log('parsedData.extractedText 길이:', parsedData.extractedText?.length || 0)
+            // File 객체를 ArrayBuffer로 변환하여 IndexedDB에 저장 가능하도록 처리
+            const fileBuffer = await file.arrayBuffer()
+
             return {
               id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
               name: file.name,
@@ -105,18 +114,29 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               size: file.size,
               uploadedAt: new Date().toISOString(),
               parsedData: parsedData,
-              file: file // 원본 파일 객체 저장 (PDF 뷰어용)
+              fileBuffer: fileBuffer, // ArrayBuffer로 저장 (IndexedDB 호환)
+              fileMetadata: {
+                name: file.name,
+                type: file.type,
+                size: file.size,
+                lastModified: file.lastModified
+              }
             }
           } catch (error) {
-            console.error('파일 파싱 오류:', error)
+            console.error('❌ 파일 파싱 오류:', file.name, error)
+            console.error('❌ 에러 상세:', error.message, error.stack)
+            alert(`파일 "${file.name}" 파싱 실패: ${error.message}`)
             return null
           }
         })
       )
 
       const validSources = parsedSources.filter(s => s !== null)
-      console.log('유효한 소스:', validSources)
+      console.log('✅ 유효한 소스:', validSources)
+      console.log('✅ fileBuffer 존재 여부:', validSources.map(s => ({ name: s.name, hasBuffer: !!s.fileBuffer, bufferSize: s.fileBuffer?.byteLength })))
+      console.log('✅ onAddSources 호출 직전')
       onAddSources(validSources)
+      console.log('✅ onAddSources 호출 완료')
       setShowAddModal(false)
     }
     // input 초기화 - 같은 파일 재선택 가능하도록
@@ -617,13 +637,13 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.txt,.doc,.docx,.xls,.xlsx,.json"
+                    accept=".pdf,.txt,.doc,.docx"
                     onChange={handleFileSelect}
                     className="hidden"
                   />
 
                   <p className="text-xs text-gray-500 text-center">
-                    {t('sources.supportedFormats')}: PDF, Word, Excel, TXT, JSON
+                    {t('sources.supportedFormats')}: PDF, Word, TXT
                   </p>
                 </div>
               ) : (

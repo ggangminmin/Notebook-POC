@@ -7,6 +7,30 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { generateStrictRAGResponse, detectLanguage, generateDocumentSummary, generateSuggestedQuestions } from '../services/aiService'
 import CitationBadge from './CitationBadge'
 
+// ChatGPT 로고 SVG 컴포넌트
+const ChatGPTLogo = ({ className, isActive }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M22.2819 9.8211C23.5136 9.8211 24.5103 8.82445 24.5103 7.59277C24.5103 6.36109 23.5136 5.36445 22.2819 5.36445C21.0503 5.36445 20.0536 6.36109 20.0536 7.59277C20.0536 8.82445 21.0503 9.8211 22.2819 9.8211Z" fill={isActive ? "currentColor" : "#6B7280"}/>
+    <path d="M12 2C6.477 2 2 6.477 2 12C2 17.523 6.477 22 12 22C17.523 22 22 17.523 22 12C22 6.477 17.523 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill={isActive ? "currentColor" : "#6B7280"}/>
+    <circle cx="12" cy="12" r="6" fill={isActive ? "currentColor" : "#6B7280"}/>
+  </svg>
+)
+
+// Gemini 로고 SVG 컴포넌트 (다이아몬드 형태)
+const GeminiLogo = ({ className, isActive }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <linearGradient id="gemini-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stopColor="#4285F4" />
+        <stop offset="50%" stopColor="#9B72CB" />
+        <stop offset="100%" stopColor="#D96570" />
+      </linearGradient>
+    </defs>
+    <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill={isActive ? "url(#gemini-gradient)" : "#6B7280"} />
+    <path d="M12 8L8 10.5V15.5L12 18L16 15.5V10.5L12 8Z" fill="white" opacity="0.3"/>
+  </svg>
+)
+
 const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate }) => {
   // 초기 메시지 설정 (노트북에서 불러온 데이터 또는 빈 배열)
   // initialMessages의 allSources 데이터가 누락된 경우를 대비하여 재계산
@@ -14,14 +38,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     if (!initialMessages || initialMessages.length === 0) return []
 
     return initialMessages.map(msg => {
+      // Supabase에서 불러온 메시지는 role 필드를 type으로 변환
+      const normalizedMsg = {
+        ...msg,
+        type: msg.type || msg.role // role을 type으로 변환
+      }
+
       // AI 메시지이고 allSources가 있지만 startPage/endPage가 없는 경우
-      if (msg.type === 'assistant' && msg.allSources && msg.allSources.length > 0) {
-        const hasPageRanges = msg.allSources.every(s => s.startPage && s.endPage)
+      if (normalizedMsg.type === 'assistant' && normalizedMsg.allSources && normalizedMsg.allSources.length > 0) {
+        const hasPageRanges = normalizedMsg.allSources.every(s => s.startPage && s.endPage)
 
         if (!hasPageRanges) {
           // 페이지 범위 재계산
           let cumulativePageOffset = 0
-          const updatedAllSources = msg.allSources.map((s) => {
+          const updatedAllSources = normalizedMsg.allSources.map((s) => {
             const pageCount = s.pageCount || s.pageTexts?.length || 0
             const startPage = cumulativePageOffset + 1
             const endPage = cumulativePageOffset + pageCount
@@ -35,29 +65,59 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           })
 
           return {
-            ...msg,
+            ...normalizedMsg,
             allSources: updatedAllSources
           }
         }
       }
 
-      return msg
+      return normalizedMsg
     })
   }
 
-  const [messages, setMessages] = useState(processInitialMessages())
+  const [messages, setMessages] = useState([]) // 빈 배열로 시작
   const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const [copiedMessageId, setCopiedMessageId] = useState(null)
   const messagesEndRef = useRef(null)
+  const prevSourceIdsRef = useRef('') // 이전 소스 ID 추적 (무한 루프 방지)
+  const hasAnalyzedRef = useRef(false) // 분석 실행 여부 추적
+  const isInitialLoadRef = useRef(true) // 최초 로드 여부 추적
   const { t, language } = useLanguage()
+
+  // 🔥 초기 메시지 로드 (initialMessages가 변경될 때만 실행)
+  useEffect(() => {
+    if (initialMessages && initialMessages.length > 0) {
+      console.log('[ChatInterface] 초기 메시지 로드:', initialMessages.length, '개')
+
+      // 메시지 상태 완전 초기화 후 새 메시지 설정
+      const processedMessages = processInitialMessages()
+      setMessages(processedMessages)
+
+      // 분석 완료 플래그 설정 (자동 분석 방지)
+      if (processedMessages.length > 0) {
+        hasAnalyzedRef.current = true
+      }
+
+      isInitialLoadRef.current = false
+    } else if (isInitialLoadRef.current) {
+      // 초기 메시지가 없으면 빈 배열로 시작
+      setMessages([])
+      isInitialLoadRef.current = false
+    }
+  }, [initialMessages?.length]) // initialMessages 길이가 변경될 때만 실행
 
   // 메시지가 변경될 때마다 부모 컴포넌트로 전달 (자동 저장)
   useEffect(() => {
+    // 초기 로드 중에는 저장하지 않음
+    if (isInitialLoadRef.current) {
+      return
+    }
+
     // 분석 중 메시지나 환영 메시지는 제외하고 전달
     const permanentMessages = messages.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
-    if (onChatUpdate) {
+    if (onChatUpdate && permanentMessages.length > 0) {
       onChatUpdate(permanentMessages)
     }
   }, [messages, onChatUpdate])
@@ -434,19 +494,41 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   useEffect(() => {
     const analyzeDocument = async () => {
       if (selectedSources.length > 0) {
+        // 현재 소스 ID 문자열 생성
+        const currentSourceIdsStr = selectedSources.map(s => s.id).sort().join(',')
+
+        // 소스가 변경되지 않았으면 건너뛰기 (무한 루프 방지)
+        if (prevSourceIdsRef.current === currentSourceIdsStr) {
+          return
+        }
+
         // 새로운 파일이 있는지 확인 (analyzedSourceIds에 없는 파일)
         const currentSourceIds = selectedSources.map(s => s.id)
         const newSourceIds = currentSourceIds.filter(id => !analyzedSourceIds.includes(id))
 
         console.log('[ChatInterface] 현재 소스:', currentSourceIds)
+        console.log('[ChatInterface] 이전 소스:', prevSourceIdsRef.current)
         console.log('[ChatInterface] 이미 분석된 소스:', analyzedSourceIds)
         console.log('[ChatInterface] 새로운 소스:', newSourceIds)
 
         // 새로운 파일이 없으면 자동 분석 건너뛰기
         if (newSourceIds.length === 0) {
           console.log('[ChatInterface] ✅ 모든 파일이 이미 분석됨 - 자동 분석 건너뛰기')
+          prevSourceIdsRef.current = currentSourceIdsStr
           return
         }
+
+        // 기존 메시지가 있으면 자동 분석 건너뛰기 (노트북 재열기 시)
+        const permanentMessages = messages.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
+        if (permanentMessages.length > 0 && hasAnalyzedRef.current) {
+          console.log('[ChatInterface] ✅ 기존 대화 기록 존재 - 자동 분석 건너뛰기')
+          prevSourceIdsRef.current = currentSourceIdsStr
+          return
+        }
+
+        // 이전 소스 ID 업데이트
+        prevSourceIdsRef.current = currentSourceIdsStr
+        hasAnalyzedRef.current = true
 
         // 기존 대화 기록 유지 (초기화하지 않음)
         // 단, 분석 중 메시지나 환영 메시지는 제거
@@ -633,7 +715,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     analyzeDocument()
-  }, [selectedSources.length, selectedSources.map(s => s.id).join(','), analyzedSourceIds.join(',')])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSources.length, analyzedSourceIds.length]) // 배열 참조 대신 길이만 추적
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -646,7 +729,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       timestamp: new Date().toISOString()
     }
 
-    setMessages(prev => [...prev, userMessage])
+    setMessages(prev => {
+      // 🔥 중복 방지: 동일한 ID를 가진 메시지가 이미 있으면 추가하지 않음
+      if (prev.find(m => m.id === userMessage.id)) {
+        console.warn('[ChatInterface] 중복 메시지 감지 - 추가 방지:', userMessage.id)
+        return prev
+      }
+      return [...prev, userMessage]
+    })
     const userQuery = input
     setInput('')
     setIsTyping(true)
@@ -736,7 +826,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         allSources: allSourcesData // 다중 파일 지원 (파일ID + 이름 포함)
       }
 
-      setMessages(prev => [...prev, aiMessage])
+      setMessages(prev => {
+        // 🔥 중복 방지: 동일한 ID를 가진 메시지가 이미 있으면 추가하지 않음
+        if (prev.find(m => m.id === aiMessage.id)) {
+          console.warn('[ChatInterface] 중복 AI 응답 감지 - 추가 방지:', aiMessage.id)
+          return prev
+        }
+        return [...prev, aiMessage]
+      })
     } catch (error) {
       const errorMessage = {
         id: Date.now() + 1,
@@ -747,7 +844,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         timestamp: new Date().toISOString(),
         isError: true
       }
-      setMessages(prev => [...prev, errorMessage])
+      setMessages(prev => {
+        // 🔥 중복 방지
+        if (prev.find(m => m.id === errorMessage.id)) {
+          console.warn('[ChatInterface] 중복 에러 메시지 감지 - 추가 방지:', errorMessage.id)
+          return prev
+        }
+        return [...prev, errorMessage]
+      })
     } finally {
       setIsTyping(false)
     }
@@ -795,36 +899,36 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             <div className="flex bg-gray-100 rounded-md p-0.5">
             <button
               onClick={() => onModelChange('instant')}
-              className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
+              className={`px-3 py-1.5 rounded text-[11px] font-medium transition-all ${
                 selectedModel === 'instant'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
+              title="GPT-5.1 Chat Latest (빠른 응답)"
             >
-              <Zap className="w-3 h-3" />
-              <span>{language === 'ko' ? '빠름' : 'Fast'}</span>
+              GPT-5.1 Instant
             </button>
             <button
               onClick={() => onModelChange('thinking')}
-              className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
+              className={`px-3 py-1.5 rounded text-[11px] font-medium transition-all ${
                 selectedModel === 'thinking'
                   ? 'bg-white text-purple-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
+              title="GPT-5.1 (심층 추론)"
             >
-              <Brain className="w-3 h-3" />
-              <span>{language === 'ko' ? '심층' : 'Deep'}</span>
+              GPT-5.1 Thinking
             </button>
             <button
               onClick={() => onModelChange('gemini')}
-              className={`flex items-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${
+              className={`px-3 py-1.5 rounded text-[11px] font-medium transition-all ${
                 selectedModel === 'gemini'
                   ? 'bg-white text-emerald-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
+              title="Gemini 3 Flash Preview (Google AI)"
             >
-              <Gem className="w-3 h-3" />
-              <span>{language === 'ko' ? 'Gemini' : 'Gemini'}</span>
+              Gemini 3 Flash
             </button>
           </div>
 
@@ -1129,8 +1233,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
       {/* Input Area - Compact */}
       <div className="px-4 py-2.5 border-t border-gray-200 bg-white">
-        <form onSubmit={handleSubmit} className="flex items-end space-x-2">
-          <div className="flex-1">
+        <form onSubmit={handleSubmit} className="flex items-stretch space-x-2">
+          <div className="flex-1 flex items-stretch">
             <textarea
               value={input}
               onChange={(e) => {
@@ -1143,25 +1247,21 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               placeholder={selectedSources.length === 0
                 ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
                 : t('chat.placeholder')}
-              className="w-full px-3 py-2 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto"
+              className="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto box-border"
               rows="1"
-              style={{ minHeight: '40px', maxHeight: '200px' }}
+              style={{ minHeight: '44px', maxHeight: '200px', lineHeight: '1.4' }}
             />
           </div>
           <button
             type="submit"
             disabled={!input.trim() || isTyping}
-            className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center space-x-1"
+            className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-1.5 flex-shrink-0 box-border"
+            style={{ minHeight: '44px', height: 'auto' }}
           >
             <Send className="w-3.5 h-3.5" />
             <span className="text-[12px] font-medium">{t('chat.send')}</span>
           </button>
         </form>
-        <p className="text-[9px] text-gray-400 mt-1 text-center">
-          {selectedSources.length === 0
-            ? (language === 'ko' ? '문서 없이도 대화 가능 · Enter로 전송' : 'Chat without docs · Press Enter to send')
-            : (language === 'ko' ? 'Enter로 전송 · Shift+Enter로 줄바꿈' : 'Enter to send · Shift+Enter for new line')}
-        </p>
       </div>
     </div>
   )

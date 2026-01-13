@@ -32,8 +32,7 @@ const FileUpload = ({ onFileUpload, files, selectedFileId, onSelectFile, onDelet
 
     const droppedFiles = Array.from(e.dataTransfer.files).filter(file =>
       ['application/pdf', 'text/plain', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/msword',
-       'application/json'].includes(file.type) || file.name.endsWith('.txt')
+       'application/msword'].includes(file.type) || file.name.endsWith('.txt')
     )
 
     if (droppedFiles.length > 0) {
@@ -55,8 +54,6 @@ const FileUpload = ({ onFileUpload, files, selectedFileId, onSelectFile, onDelet
   const getFileIcon = (type) => {
     if (type.includes('pdf')) return <FileText className="w-5 h-5 text-red-500" />
     if (type.includes('word')) return <FileText className="w-5 h-5 text-blue-500" />
-    if (type.includes('sheet') || type.includes('excel')) return <FileSpreadsheet className="w-5 h-5 text-green-500" />
-    if (type.includes('json')) return <File className="w-5 h-5 text-purple-500" />
     return <File className="w-5 h-5 text-gray-500" />
   }
 
@@ -88,7 +85,7 @@ const FileUpload = ({ onFileUpload, files, selectedFileId, onSelectFile, onDelet
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".pdf,.txt,.doc,.docx,.xls,.xlsx,.json"
+          accept=".pdf,.txt,.doc,.docx"
           onChange={handleFileSelect}
           className="hidden"
         />

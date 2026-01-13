@@ -91,11 +91,12 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete }) => {
   return (
     <div
       onClick={onClick}
-      className="group bg-white rounded-lg border border-gray-200 p-5 cursor-pointer transition-all duration-200 hover:shadow-lg hover:-translate-y-1 flex flex-col h-full"
+      className="group bg-white rounded-2xl border border-gray-100 shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-gray-200 flex flex-col"
+      style={{ aspectRatio: '1 / 0.85' }}
     >
       {/* 상단: 이모지 + 더보기 메뉴 */}
-      <div className="flex items-start justify-between mb-4">
-        <div className={`${getBackgroundColor(notebook.emoji)} w-14 h-14 rounded-lg flex items-center justify-center text-2xl`}>
+      <div className="flex items-start justify-between mb-3">
+        <div className={`${getBackgroundColor(notebook.emoji)} w-12 h-12 rounded-xl flex items-center justify-center text-2xl flex-shrink-0`}>
           {notebook.emoji}
         </div>
 
@@ -104,27 +105,27 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete }) => {
           <div className="relative" ref={menuRef}>
             <button
               onClick={handleMenuClick}
-              className="p-1.5 hover:bg-gray-100 rounded transition-colors"
+              className="p-1 hover:bg-gray-50 rounded-lg transition-colors opacity-0 group-hover:opacity-100"
               title="더보기"
             >
-              <MoreVertical className="w-4 h-4 text-gray-500" />
+              <MoreVertical className="w-4 h-4 text-gray-400" />
             </button>
 
             {/* 드롭다운 메뉴 */}
             {showMenu && (
-              <div className="absolute right-0 top-8 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-10 min-w-[140px]">
+              <div className="absolute right-0 top-7 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-10 min-w-[130px]">
                 <button
                   onClick={handleEditFromMenu}
-                  className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center space-x-2"
+                  className="w-full px-3 py-2 text-left text-xs text-gray-800 hover:bg-gray-50 flex items-center space-x-2"
                 >
-                  <Edit2 className="w-4 h-4" />
+                  <Edit2 className="w-3.5 h-3.5" />
                   <span>제목 수정</span>
                 </button>
                 <button
                   onClick={handleDelete}
-                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                  className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                   <span>삭제</span>
                 </button>
               </div>
@@ -136,41 +137,41 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete }) => {
       {/* 중앙: 제목 (편집 가능) */}
       <div className="flex-1 mb-3">
         {isEditing ? (
-          <div className="flex items-center space-x-2" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
             <input
               type="text"
               value={editedTitle}
               onChange={(e) => setEditedTitle(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 px-2 py-1 text-sm font-semibold border border-blue-500 rounded focus:outline-none focus:ring-2 focus:ring-blue-300"
+              className="flex-1 px-2 py-1 text-sm font-semibold text-gray-800 border border-blue-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
               autoFocus
             />
             <button
               onClick={handleSave}
-              className="p-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+              className="p-1 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex-shrink-0"
               title="저장"
             >
-              <Check className="w-4 h-4" />
+              <Check className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={handleCancel}
-              className="p-1 bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+              className="p-1 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 flex-shrink-0"
               title="취소"
             >
-              <X className="w-4 h-4" />
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
         ) : (
-          <h3 className="text-[15px] font-semibold text-gray-900 leading-snug line-clamp-2">
+          <h3 className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">
             {notebook.title}
           </h3>
         )}
       </div>
 
       {/* 하단: 생성일 + 소스 개수 */}
-      <div className="flex items-center justify-between text-xs text-gray-500">
+      <div className="flex items-center justify-between text-[11px] text-gray-500 mt-auto">
         <span>{formatDate(notebook.createdAt)}</span>
-        <span>소스 {notebook.sources.length}개</span>
+        <span className="text-blue-600 font-medium">소스 {notebook.sources.length}개</span>
       </div>
     </div>
   )

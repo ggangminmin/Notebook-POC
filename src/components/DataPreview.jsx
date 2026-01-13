@@ -1091,6 +1091,15 @@ Set field to "invalid" if the request cannot be fulfilled.`
                   {language === 'ko' ? 'PDF 뷰어' : 'PDF Viewer'}
                 </h2>
               </>
+            ) : viewMode === 'text-preview' ? (
+              <>
+                <h2 className="text-sm font-bold text-gray-900">
+                  {rightPanelState.targetFile?.name || selectedFile?.name || (language === 'ko' ? '문서 뷰어' : 'Document Viewer')}
+                </h2>
+                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-semibold">
+                  {rightPanelState.targetFile?.parsedData?.fileType?.toUpperCase() || selectedFile?.parsedData?.fileType?.toUpperCase() || 'TEXT'}
+                </span>
+              </>
             ) : (
               <>
                 <h2 className="text-sm font-bold text-gray-900">
