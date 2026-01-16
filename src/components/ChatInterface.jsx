@@ -942,7 +942,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             }`}
             title={language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
           >
-            <Settings className={`w-4 h-4 ${isSettingsPanelOpen ? 'animate-spin' : ''}`} />
             <span>{language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}</span>
           </button>
         </div>

@@ -1,16 +1,15 @@
 import { useState } from 'react'
-import { Settings, Save, X, Edit2 } from 'lucide-react'
+import { Save, X, Edit2 } from 'lucide-react'
 
 /**
  * AI 지침(System Prompt) 설정 패널 컴포넌트
  * - 우측 패널 하단에 위치
  * - 사용자가 AI의 응답 스타일/규칙을 직접 제어
- * - 동적 페르소나 추천 시스템 (문서 기반)
+ * - 프리셋 지침과 사용자 정의 지침 제공
  */
-const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPersonas = null, detectedEntity = null, documentType = null }) => {
+const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate }) => {
   const [customPrompt, setCustomPrompt] = useState('')
   const [activePreset, setActivePreset] = useState(null)
-  const [activeSuggestedPersona, setActiveSuggestedPersona] = useState(null)
   const [isCustomPromptOpen, setIsCustomPromptOpen] = useState(false)
 
   // 프리셋 지침 정의
@@ -86,16 +85,7 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
     const preset = presets[presetKey][language]
     setCustomPrompt(preset.prompt)
     setActivePreset(presetKey)
-    setActiveSuggestedPersona(null) // 추천 페르소나 해제
     setIsCustomPromptOpen(true) // 프리셋 선택 시 텍스트 영역 자동 열기
-  }
-
-  // 동적 추천 페르소나 적용 핸들러
-  const handleSuggestedPersonaClick = (persona) => {
-    setCustomPrompt(persona.prompt)
-    setActiveSuggestedPersona(persona.label)
-    setActivePreset(null) // 고정 프리셋 해제
-    setIsCustomPromptOpen(true) // 추천 페르소나 선택 시 텍스트 영역 자동 열기
   }
 
   // 지침 적용 핸들러
@@ -118,7 +108,6 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
   const handleReset = () => {
     setCustomPrompt('')
     setActivePreset(null)
-    setActiveSuggestedPersona(null)
     setIsCustomPromptOpen(false)
     onSystemPromptUpdate?.([])
     alert(language === 'ko' ? '🔄 AI 지침이 초기화되었습니다.' : '🔄 AI guidelines reset.')
@@ -128,53 +117,10 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
     <div className="bg-gradient-to-br from-purple-50 via-indigo-50 to-blue-50 rounded-xl p-5 shadow-sm border border-purple-200 flex flex-col h-full">
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-4 flex-shrink-0">
-        <div className="flex items-center space-x-2">
-          <div className="w-7 h-7 bg-purple-600 rounded-lg flex items-center justify-center">
-            <Settings className="w-4 h-4 text-white" />
-          </div>
-          <h3 className="text-sm font-bold text-purple-900">
-            {language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Guidelines'}
-          </h3>
-        </div>
+        <h3 className="text-sm font-bold text-purple-900">
+          {language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Guidelines'}
+        </h3>
       </div>
-
-      {/* 동적 추천 페르소나 (문서 기반) */}
-      {suggestedPersonas && suggestedPersonas.length > 0 && (
-        <div className="mb-3 flex-shrink-0">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-semibold text-purple-800">
-              {language === 'ko' ? '✨ 추천 페르소나' : '✨ Recommended Personas'}
-            </p>
-            {(detectedEntity || documentType) && (
-              <span className="text-[10px] text-gray-500">
-                {detectedEntity && `${detectedEntity}`}
-                {detectedEntity && documentType && ' · '}
-                {documentType && `${documentType}`}
-              </span>
-            )}
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {suggestedPersonas.map((persona, index) => (
-              <button
-                key={index}
-                onClick={() => handleSuggestedPersonaClick(persona)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                  activeSuggestedPersona === persona.label
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-md'
-                    : 'bg-white text-purple-700 border-2 border-purple-300 hover:bg-purple-50 hover:border-purple-400'
-                }`}
-              >
-                {persona.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-[10px] text-gray-500 mt-1">
-            {language === 'ko'
-              ? '💡 문서 내용을 분석하여 자동으로 추천된 페르소나입니다. 클릭하면 해당 역할에 맞는 지침이 자동 입력됩니다.'
-              : '💡 These personas are automatically recommended based on document analysis. Click to auto-fill guidelines for that role.'}
-          </p>
-        </div>
-      )}
 
       {/* 고정 프리셋 버튼 + 사용자 정의 지침 토글 버튼 */}
       <div className="mb-3 flex-shrink-0">
@@ -198,12 +144,11 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
           {/* 사용자 정의 지침 토글 버튼 */}
           <button
             onClick={() => {
-              // 프리셋이나 추천 페르소나가 선택된 상태이거나, 텍스트 영역이 닫혀있을 때
-              if (activePreset || activeSuggestedPersona || !isCustomPromptOpen) {
+              // 프리셋이 선택된 상태이거나, 텍스트 영역이 닫혀있을 때
+              if (activePreset || !isCustomPromptOpen) {
                 // 텍스트를 비우고 프리셋 해제
                 setCustomPrompt('')
                 setActivePreset(null)
-                setActiveSuggestedPersona(null)
                 setIsCustomPromptOpen(true) // 항상 열기
               } else {
                 // 이미 열려있고 프리셋이 없는 경우 닫기
@@ -211,9 +156,9 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
               }
             }}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 ${
-              // 프리셋이나 추천 페르소나가 선택되지 않고, 사용자 정의 지침이 열려있거나 직접 입력한 경우만 활성화
-              (isCustomPromptOpen && !activePreset && !activeSuggestedPersona) || 
-              (customPrompt.trim() && !activePreset && !activeSuggestedPersona)
+              // 프리셋이 선택되지 않고, 사용자 정의 지침이 열려있거나 직접 입력한 경우만 활성화
+              (isCustomPromptOpen && !activePreset) ||
+              (customPrompt.trim() && !activePreset)
                 ? 'bg-purple-600 text-white shadow-md'
                 : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
             }`}
@@ -299,24 +244,6 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate, suggestedPer
           <X className="w-3.5 h-3.5" />
           <span>{language === 'ko' ? '초기화' : 'Reset'}</span>
         </button>
-      </div>
-
-      {/* 하단 정보 표시 */}
-      <div className="mt-3 pt-3 border-t border-purple-200/50 flex-shrink-0">
-        <div className="flex items-center justify-between text-[10px] text-gray-400">
-          <span className="flex items-center space-x-1">
-            <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
-            <span>{language === 'ko' ? 'AI 지침 시스템 활성화됨' : 'AI Guidelines Active'}</span>
-          </span>
-          <span>
-            {new Date().toLocaleString(language === 'ko' ? 'ko-KR' : 'en-US', {
-              month: 'short',
-              day: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </span>
-        </div>
       </div>
 
     </div>
