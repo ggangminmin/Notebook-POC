@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import React from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check, Upload } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -31,7 +31,7 @@ const GeminiLogo = ({ className, isActive }) => (
   </svg>
 )
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource }) => {
   // 초기 메시지 설정 (노트북에서 불러온 데이터 또는 빈 배열)
   // initialMessages의 allSources 데이터가 누락된 경우를 대비하여 재계산
   const processInitialMessages = () => {
@@ -693,23 +693,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           }
         }
       } else {
-        // 파일이 없어도 기존 대화 기록 유지 (환영 메시지는 추가하지 않음)
-        // 단, 메시지가 없는 경우에만 환영 메시지 표시
-        setMessages(prev => {
-          const filtered = prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome)
-          if (filtered.length === 0) {
-            return [{
-              id: Date.now(),
-              type: 'assistant',
-              content: language === 'ko'
-                ? `안녕하세요! 저는 NotebookLM 스타일의 문서 분석 AI입니다.\n\n문서를 업로드하시면 그 내용을 바탕으로 대화를 시작할 수 있습니다. 왼쪽의 "+ 소스 추가" 버튼을 눌러 파일을 업로드하거나 웹 URL을 추가해주세요.\n\n물론 간단한 인사나 질문도 환영합니다!`
-                : `Hello! I'm a NotebookLM-style document analysis AI.\n\nOnce you upload a document, I can start a conversation based on its content. Please click the "+ Add Source" button on the left to upload a file or add a web URL.\n\nOf course, simple greetings or questions are welcome too!`,
-              timestamp: new Date().toISOString(),
-              isWelcome: true
-            }]
-          }
-          return filtered
-        })
+        // 파일이 없을 때: 환영 메시지 없이 빈 상태 유지 (업로드 안내 UI가 대신 표시됨)
+        setMessages(prev => prev.filter(msg => !msg.isAnalyzing && !msg.isWelcome))
         setSuggestedQuestions([])
       }
     }
@@ -891,15 +876,15 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     <div className="h-full flex flex-col bg-white">
       {/* Compact Header */}
       <div className="px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="text-sm font-semibold text-gray-800">{t('chat.title')}</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-gray-900">{t('chat.title')}</h2>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
             {/* Model Selector - Compact (3 models) */}
             <div className="flex bg-gray-100 rounded-md p-0.5">
             <button
               onClick={() => onModelChange('instant')}
-              className={`px-3 py-1.5 rounded text-[11px] font-medium transition-all ${
+              className={`px-3 py-2 rounded text-xs font-medium transition-all ${
                 selectedModel === 'instant'
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
@@ -910,7 +895,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             </button>
             <button
               onClick={() => onModelChange('thinking')}
-              className={`px-3 py-1.5 rounded text-[11px] font-medium transition-all ${
+              className={`px-3 py-2 rounded text-xs font-medium transition-all ${
                 selectedModel === 'thinking'
                   ? 'bg-white text-purple-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
@@ -921,7 +906,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             </button>
             <button
               onClick={() => onModelChange('gemini')}
-              className={`px-3 py-1.5 rounded text-[11px] font-medium transition-all ${
+              className={`px-3 py-2 rounded text-xs font-medium transition-all ${
                 selectedModel === 'gemini'
                   ? 'bg-white text-emerald-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
@@ -935,7 +920,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           {/* AI 행동 지침 설정 버튼 */}
           <button
             onClick={onToggleSettingsPanel}
-            className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
+            className={`flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
               isSettingsPanelOpen
                 ? 'bg-purple-100 text-purple-700 ring-2 ring-purple-300'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -946,41 +931,30 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           </button>
         </div>
         </div>
-
-        {/* Context Indicator - Compact */}
-        {selectedSources.length > 0 ? (
-          <div className="px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-md">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center">
-                <FileText className="w-3 h-3 text-blue-600 mr-1.5" />
-                <span className="text-[10px] font-medium text-blue-800">
-                  {language === 'ko' ? `${selectedSources.length}개 선택됨` : `${selectedSources.length} selected`}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1">
-                {selectedSources.slice(0, 2).map(source => (
-                  <span key={source.id} className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                    {source.name.length > 15 ? source.name.substring(0, 15) + '...' : source.name}
-                  </span>
-                ))}
-                {selectedSources.length > 2 && (
-                  <span className="text-[9px] px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                    +{selectedSources.length - 2}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-md flex items-center">
-            <AlertCircle className="w-3 h-3 text-amber-600 mr-1.5" />
-            <span className="text-[10px] text-amber-800">{t('chat.noContext')}</span>
-          </div>
-        )}
       </div>
 
       {/* Messages Area - NotebookLM 스타일 슬림화 (스크롤바 고정으로 레이아웃 안정화) */}
       <div className="flex-1 p-5 space-y-3 bg-gray-50" style={{ overflowY: 'scroll' }}>
+        {/* 소스가 없을 때 업로드 안내 화면 */}
+        {selectedSources.length === 0 && messages.filter(m => !m.isWelcome).length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full">
+            <div className="flex flex-col items-center text-center">
+              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+                <Upload className="w-8 h-8 text-gray-400" />
+              </div>
+              <h3 className="text-lg font-medium text-gray-700 mb-2">
+                {language === 'ko' ? '시작하려면 소스 추가' : 'Add sources to start'}
+              </h3>
+              <button
+                onClick={onOpenAddSource}
+                className="mt-3 px-5 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors text-sm font-medium text-gray-700 shadow-sm"
+              >
+                {language === 'ko' ? '소스 업로드' : 'Upload sources'}
+              </button>
+            </div>
+          </div>
+        )}
+
         {messages.map((message) => (
           <div
             key={message.id}
@@ -1237,6 +1211,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
             <textarea
               value={input}
               onChange={(e) => {
+                if (selectedSources.length === 0) return // 소스 없으면 입력 불가
                 setInput(e.target.value)
                 // 자동 높이 조절
                 e.target.style.height = 'auto'
@@ -1244,16 +1219,19 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               }}
               onKeyDown={handleKeyPress}
               placeholder={selectedSources.length === 0
-                ? (language === 'ko' ? '안녕하세요! 또는 문서에 대해 질문해주세요...' : 'Say hello! Or ask about documents...')
+                ? (language === 'ko' ? '시작하려면 출처를 업로드하세요.' : 'Upload sources to start.')
                 : t('chat.placeholder')}
-              className="w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto box-border"
+              disabled={selectedSources.length === 0}
+              className={`w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto box-border ${
+                selectedSources.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''
+              }`}
               rows="1"
               style={{ minHeight: '44px', maxHeight: '200px', lineHeight: '1.4' }}
             />
           </div>
           <button
             type="submit"
-            disabled={!input.trim() || isTyping}
+            disabled={!input.trim() || isTyping || selectedSources.length === 0}
             className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-1.5 flex-shrink-0 box-border"
             style={{ minHeight: '44px', height: 'auto' }}
           >

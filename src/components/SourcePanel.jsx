@@ -1,12 +1,27 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight, FileSpreadsheet, File } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { parseFileContent, fetchWebMetadata } from '../utils/fileParser'
 import { performFastResearch, performDeepResearch } from '../services/webSearchService'
 import Tooltip from './Tooltip'
 
-const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource }) => {
+const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange }) => {
   const [showAddModal, setShowAddModal] = useState(false)
+
+  // 외부에서 모달 열림 상태 제어
+  useEffect(() => {
+    if (isAddModalOpen && !showAddModal) {
+      setShowAddModal(true)
+    }
+  }, [isAddModalOpen])
+
+  // 모달 상태 변경 시 부모에게 알림
+  const handleModalChange = (isOpen) => {
+    setShowAddModal(isOpen)
+    if (onAddModalChange) {
+      onAddModalChange(isOpen)
+    }
+  }
   const [activeTab, setActiveTab] = useState('file') // 'file' or 'url'
   const [urlInput, setUrlInput] = useState('')
   const [isLoadingUrl, setIsLoadingUrl] = useState(false)
@@ -137,7 +152,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
       console.log('✅ onAddSources 호출 직전')
       onAddSources(validSources)
       console.log('✅ onAddSources 호출 완료')
-      setShowAddModal(false)
+      handleModalChange(false)
     }
     // input 초기화 - 같은 파일 재선택 가능하도록
     e.target.value = ''
@@ -173,7 +188,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
       }
 
       onAddSources([newSource])
-      setShowAddModal(false)
+      handleModalChange(false)
       setUrlInput('')
       setUrlError('')
     } catch (error) {
@@ -331,34 +346,15 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Compact Header */}
-      <div className="p-3 space-y-2.5">
+      <div className="px-4 py-3 border-b border-gray-200 space-y-2.5">
         {/* Add Source Button - Compact Capsule */}
         <button
-          onClick={() => setShowAddModal(true)}
+          onClick={() => handleModalChange(true)}
           className="w-full px-3 py-2 bg-white border border-gray-300 rounded-full hover:bg-gray-50 transition-colors flex items-center justify-center space-x-1.5 text-xs font-medium text-gray-700 shadow-sm"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>{t('sources.addSource')}</span>
         </button>
-
-        {/* Deep Research Banner - Compact */}
-        <div className="relative overflow-hidden rounded-lg bg-gradient-to-br from-purple-100 via-blue-50 to-green-50 p-2.5 border border-purple-200/50">
-          <div className="flex items-start space-x-2">
-            <div className="flex-shrink-0">
-              <div className="w-6 h-6 bg-white/80 rounded-md flex items-center justify-center">
-                <Sparkles className="w-3.5 h-3.5 text-purple-600" />
-              </div>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-medium text-gray-800 mb-0.5">
-                {language === 'ko' ? 'Deep Research' : 'Deep Research'}
-              </p>
-              <p className="text-[9px] text-gray-600 leading-tight">
-                {language === 'ko' ? '웹 검색으로 심층 리포트 생성' : 'Generate deep reports'}
-              </p>
-            </div>
-          </div>
-        </div>
 
         {/* Web Search Bar - Compact */}
         <div className="relative">
@@ -413,31 +409,11 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               )}
             </div>
           )}
-
-          {/* Research Type Selector - Compact */}
-          <div className="mt-2 flex items-center space-x-1.5">
-            <button
-              onClick={() => setResearchType(researchType === 'fast' ? 'deep' : 'fast')}
-              disabled={isSearching}
-              className={`flex-1 flex items-center justify-center space-x-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                researchType === 'deep'
-                  ? 'bg-purple-100 text-purple-700 border border-purple-300'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              } disabled:opacity-50`}
-            >
-              <Sparkles className="w-3 h-3" />
-              <span>
-                {researchType === 'fast'
-                  ? (language === 'ko' ? '빠른 검색' : 'Fast')
-                  : (language === 'ko' ? '심층 분석' : 'Deep')}
-              </span>
-            </button>
-          </div>
         </div>
       </div>
 
       {/* Sources List Section - Compact */}
-      <div className="flex-1 flex flex-col overflow-hidden border-t border-gray-200">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {/* List Header - Compact */}
         <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between">
           <div className="flex items-center space-x-1.5">
@@ -573,127 +549,43 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
       {/* Add Source Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => setShowAddModal(false)}>
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => handleModalChange(false)}>
           <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900">{t('sources.addSource')}</h3>
               <button
-                onClick={() => setShowAddModal(false)}
+                onClick={() => handleModalChange(false)}
                 className="text-gray-400 hover:text-gray-600"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Tabs */}
-            <div className="flex border-b border-gray-200 mb-4">
-              <button
-                onClick={() => setActiveTab('file')}
-                className={`flex-1 py-2 px-4 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'file'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <Upload className="w-4 h-4" />
-                  <span>{t('sources.uploadFile')}</span>
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('url')}
-                className={`flex-1 py-2 px-4 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === 'url'
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                <div className="flex items-center justify-center space-x-2">
-                  <Globe className="w-4 h-4" />
-                  <span>{t('sources.webUrl')}</span>
-                </div>
-              </button>
-            </div>
-
-            {/* Tab Content */}
+            {/* File Upload Content */}
             <div className="space-y-4">
-              {activeTab === 'file' ? (
-                // File Upload Tab
-                <div className="space-y-3">
-                  <button
-                    onClick={handleAddFileClick}
-                    className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors flex flex-col items-center justify-center space-y-2"
-                  >
-                    <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                      <Upload className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <div className="text-center">
-                      <p className="font-medium text-gray-900">{t('sources.uploadFile')}</p>
-                      <p className="text-xs text-gray-500 mt-1">{t('sources.uploadFileDesc')}</p>
-                    </div>
-                  </button>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    accept=".pdf,.txt,.doc,.docx"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-
-                  <p className="text-xs text-gray-500 text-center">
-                    {t('sources.supportedFormats')}: PDF, Word, TXT
-                  </p>
-                </div>
-              ) : (
-                // URL Input Tab
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      {t('sources.webUrlLabel')}
-                    </label>
-                    <input
-                      type="url"
-                      value={urlInput}
-                      onChange={(e) => setUrlInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && !isLoadingUrl) {
-                          handleUrlSubmit()
-                        }
-                      }}
-                      placeholder="https://example.com"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                      disabled={isLoadingUrl}
-                    />
-                    {urlError && (
-                      <p className="mt-1 text-xs text-red-600">{urlError}</p>
-                    )}
+              <div className="space-y-3">
+                <button
+                  onClick={handleAddFileClick}
+                  className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors flex flex-col items-center justify-center space-y-2"
+                >
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Upload className="w-6 h-6 text-blue-600" />
                   </div>
+                  <div className="text-center">
+                    <p className="font-medium text-gray-900">{t('sources.uploadFile')}</p>
+                    <p className="text-xs text-gray-500 mt-1">{t('sources.uploadFileDesc')}</p>
+                  </div>
+                </button>
 
-                  <button
-                    onClick={handleUrlSubmit}
-                    disabled={isLoadingUrl || !urlInput.trim()}
-                    className="w-full py-2.5 px-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                  >
-                    {isLoadingUrl ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>{t('sources.loading')}</span>
-                      </>
-                    ) : (
-                      <>
-                        <Globe className="w-4 h-4" />
-                        <span>{t('sources.addUrl')}</span>
-                      </>
-                    )}
-                  </button>
-
-                  <p className="text-xs text-gray-500 text-center">
-                    {t('sources.urlHint')}
-                  </p>
-                </div>
-              )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.txt,.doc,.docx"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </div>
             </div>
           </div>
         </div>

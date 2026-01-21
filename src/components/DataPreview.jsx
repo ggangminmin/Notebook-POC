@@ -1076,40 +1076,35 @@ Set field to "invalid" if the request cannot be fulfilled.`
     <div className="h-full flex flex-col bg-white">
       {/* Studio Header */}
       <div className="px-4 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2 flex-1">
             {viewMode === 'pdf' ? (
               <>
                 <button
                   onClick={handleBackToSummary}
-                  className="p-1 rounded-lg hover:bg-gray-100 transition-all"
+                  className="p-1.5 rounded-lg hover:bg-gray-100 transition-all"
                   title={language === 'ko' ? '요약 보기' : 'Back to Summary'}
                 >
-                  <ChevronLeft className="w-4 h-4 text-gray-600" />
+                  <ChevronLeft className="w-5 h-5 text-gray-600" />
                 </button>
-                <h2 className="text-sm font-bold text-gray-900">
+                <h2 className="text-base font-bold text-gray-900">
                   {language === 'ko' ? 'PDF 뷰어' : 'PDF Viewer'}
                 </h2>
               </>
             ) : viewMode === 'text-preview' ? (
               <>
-                <h2 className="text-sm font-bold text-gray-900">
+                <h2 className="text-base font-bold text-gray-900">
                   {rightPanelState.targetFile?.name || selectedFile?.name || (language === 'ko' ? '문서 뷰어' : 'Document Viewer')}
                 </h2>
-                <span className="px-2 py-0.5 bg-gray-100 text-gray-600 rounded-full text-[10px] font-semibold">
+                <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold">
                   {rightPanelState.targetFile?.parsedData?.fileType?.toUpperCase() || selectedFile?.parsedData?.fileType?.toUpperCase() || 'TEXT'}
                 </span>
               </>
             ) : (
               <>
-                <h2 className="text-sm font-bold text-gray-900">
+                <h2 className="text-base font-bold text-gray-900">
                   {language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
                 </h2>
-                {viewMode === 'natural' && selectedFile && (
-                  <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-semibold">
-                    설정
-                  </span>
-                )}
               </>
             )}
           </div>
@@ -1120,7 +1115,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
               className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all"
               title={language === 'ko' ? '닫기' : 'Close'}
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           )}
           {viewMode === 'pdf' && pdfState.numPages > 0 && (

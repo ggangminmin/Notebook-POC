@@ -39,6 +39,7 @@ function AppContent() {
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false) // AI 설정 패널 토글
   const [previousSourceId, setPreviousSourceId] = useState(null) // 이전 선택 파일 ID (지침 초기화 감지용)
   const [analyzedSourceIds, setAnalyzedSourceIds] = useState([]) // 이미 분석한 파일 ID 목록
+  const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false) // 소스 추가 모달 열림 상태
 
   // 초기 마운트 감지 (useRef) - 각 자동 저장마다 별도로 관리
   const isInitialMountSources = React.useRef(true)
@@ -627,6 +628,8 @@ function AppContent() {
             selectedSourceIds={selectedSourceIds}
             onToggleSource={handleToggleSource}
             onDeleteSource={handleDeleteSource}
+            isAddModalOpen={isAddSourceModalOpen}
+            onAddModalChange={setIsAddSourceModalOpen}
           />
         </div>
 
@@ -653,6 +656,7 @@ function AppContent() {
             initialMessages={currentNotebook?.messages || []}
             analyzedSourceIds={analyzedSourceIds}
             onAnalyzedSourcesUpdate={handleAnalyzedSourcesUpdate}
+            onOpenAddSource={() => setIsAddSourceModalOpen(true)}
           />
         </div>
 
