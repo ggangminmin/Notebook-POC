@@ -1211,12 +1211,21 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           </div>
         ))}
 
-        {/* Typing Indicator - 프로그레스바 */}
+        {/* Typing Indicator - 원형 스피너 */}
         {isTyping && (
-          <div className="px-2">
-            <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full animate-pulse" style={{ width: '100%', animation: 'progressPulse 1.5s ease-in-out infinite' }} />
-            </div>
+          <div className="flex justify-center py-4">
+            <svg className="w-8 h-8 animate-spin" viewBox="0 0 50 50">
+              <circle cx="25" cy="25" r="20" fill="none" stroke="#e5e7eb" strokeWidth="4" />
+              <circle cx="25" cy="25" r="20" fill="none" stroke="#9ca3af" strokeWidth="4" strokeLinecap="round" strokeDasharray="80, 200" strokeDashoffset="0">
+                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1.5s" repeatCount="indefinite" />
+              </circle>
+              <circle cx="25" cy="25" r="20" fill="none" stroke="#6b7280" strokeWidth="4" strokeLinecap="round" strokeDasharray="40, 200" strokeDashoffset="-40">
+                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
+              </circle>
+              <circle cx="25" cy="25" r="20" fill="none" stroke="#374151" strokeWidth="4" strokeLinecap="round" strokeDasharray="20, 200" strokeDashoffset="-80">
+                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.75s" repeatCount="indefinite" />
+              </circle>
+            </svg>
           </div>
         )}
 
