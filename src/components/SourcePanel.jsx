@@ -362,7 +362,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
             <Search className="absolute left-2.5 w-3.5 h-3.5 text-gray-400" />
             <input
               type="text"
-              placeholder={language === 'ko' ? '웹 검색...' : 'Search...'}
+              placeholder={language === 'ko' ? '웹 검색' : 'Search'}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyPress={handleSearchKeyPress}
@@ -424,7 +424,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               className="w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
             />
             <span className="text-[10px] font-medium text-gray-700">
-              {t('sources.allSources')} ({sources.length})
+              {t('sources.allSources')}
             </span>
           </div>
         </div>

@@ -3,6 +3,8 @@ import { ChevronRight, ChevronDown, Copy, Check, Loader2, Lightbulb, FileText, L
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
 import SystemPromptPanel from './SystemPromptPanel'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfViewerController from '../utils/pdfViewerController'
 import { analyzeDocumentForPersonas } from '../services/aiService'
@@ -116,6 +118,8 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
   const { language } = useLanguage()
   const [showSyncNotification, setShowSyncNotification] = useState(false)
   const [highlightedPage, setHighlightedPage] = useState(null) // 페이지 이동 시 하이라이트 효과
+  const pendingTargetPageRef = useRef(null) // PDF 로드 완료 후 이동할 페이지 (비동기 체인용)
+  const previousFileIdRef = useRef(null) // 🔥 이전 파일 ID 추적 (파일 전환 감지용)
 
   // 편집 상태 관리
   const [isEditing, setIsEditing] = useState(null) // 'summary', 'keyPoints', 'keywords', 'dataDescription', null
@@ -581,6 +585,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
   useEffect(() => {
     if (targetPage && targetPage > 0) {
       console.log('[DataPreview] targetPage prop 변경 감지:', targetPage)
+      console.log('[DataPreview] PDF 로딩 상태:', pdfState.isLoading, '| 렌더링된 페이지 수:', pdfState.renderedPages?.length)
 
       // 텍스트 뷰어 모드인 경우 섹션으로 스크롤
       if (viewMode === 'text-preview') {
@@ -596,14 +601,21 @@ Set field to "invalid" if the request cannot be fulfilled.`
           })
         }
       }
-      // PDF 모드인 경우 기존 로직 실행
+      // PDF 모드인 경우
       else {
-        handlePageNavigate({ pageNumber: targetPage })
-        // 하이라이트 효과 추가
-        handlePageHighlight({ pageNumber: targetPage, duration: 3000 })
+        // 🔥 PDF가 아직 로딩 중이면 pendingTargetPageRef에 저장 (비동기 체인)
+        if (pdfState.isLoading || pdfState.renderedPages?.length === 0) {
+          console.log('[DataPreview] ⏳ PDF 로딩 중 - 페이지 대기열에 저장:', targetPage)
+          pendingTargetPageRef.current = targetPage
+        } else {
+          // PDF 로드 완료된 상태면 즉시 스크롤
+          console.log('[DataPreview] ✅ PDF 로드 완료 상태 - 즉시 스크롤:', targetPage)
+          handlePageNavigate({ pageNumber: targetPage })
+          handlePageHighlight({ pageNumber: targetPage, duration: 3000 })
+        }
       }
     }
-  }, [targetPage, viewMode, handlePageNavigate, handlePageHighlight])
+  }, [targetPage, viewMode, pdfState.isLoading, pdfState.renderedPages?.length, handlePageNavigate, handlePageHighlight])
 
   // 전역 PDF 뷰어 컨트롤러 이벤트 리스너 등록 (Event Bus 패턴)
   useEffect(() => {
@@ -621,26 +633,73 @@ Set field to "invalid" if the request cannot be fulfilled.`
     }
   }, [handlePageNavigate, handlePageHighlight])
 
-  // 우측 패널 상태 변경 감지 (모드 전환)
+  // 우측 패널 상태 변경 감지 (모드 전환 + 파일 전환)
   useEffect(() => {
     if (rightPanelState?.mode) {
       console.log('[DataPreview] 🔄 rightPanelState 모드 변경 감지:', rightPanelState.mode)
+      console.log('[DataPreview] 🔄 현재 selectedFile:', selectedFile?.name)
+      console.log('[DataPreview] 🔄 이전 파일 ID (ref):', previousFileIdRef.current)
 
       // 🚀 즉시 모드 전환 (PDF 포함)
       setViewMode(rightPanelState.mode)
       console.log('[DataPreview] ✅ viewMode 전환 완료 →', rightPanelState.mode)
 
-      // PDF 모드 + pdfPage가 있으면 해당 페이지로 스크롤
-      if (rightPanelState.mode === 'pdf' && rightPanelState.pdfPage) {
-        console.log('[DataPreview] 📖 PDF 페이지 스크롤 요청:', rightPanelState.pdfPage)
-        // 약간의 지연 후 스크롤 (DOM 렌더링 대기)
-        setTimeout(() => {
-          handlePageNavigate({ pageNumber: rightPanelState.pdfPage })
-          handlePageHighlight({ pageNumber: rightPanelState.pdfPage, duration: 3000 })
-        }, 100)
+      // 🔥 파일 전환 감지: 이전 파일 ID와 현재 파일 ID 비교
+      // App.jsx에서 selectedFile이 이미 targetFile로 설정되어 전달되므로
+      // previousFileIdRef를 사용하여 실제 파일 전환을 감지
+      const isFileChanging = selectedFile &&
+                             previousFileIdRef.current !== null &&
+                             previousFileIdRef.current !== selectedFile.id
+
+      if (isFileChanging) {
+        console.log('[DataPreview] 🔄 파일 전환 감지!')
+        console.log('[DataPreview] 이전 파일 ID:', previousFileIdRef.current)
+        console.log('[DataPreview] 새 파일:', selectedFile?.name, '(ID:', selectedFile?.id, ')')
+
+        // 파일 전환 중이면 pendingTargetPageRef에 페이지 저장
+        if (rightPanelState.pdfPage) {
+          console.log('[DataPreview] ⏳ 파일 전환 중 - 페이지 대기열에 저장:', rightPanelState.pdfPage)
+          pendingTargetPageRef.current = rightPanelState.pdfPage
+        } else if (rightPanelState.highlightSectionIndex) {
+          console.log('[DataPreview] ⏳ 파일 전환 중 - 섹션 대기열에 저장:', rightPanelState.highlightSectionIndex)
+          pendingTargetPageRef.current = rightPanelState.highlightSectionIndex
+        }
+      } else {
+        // 파일 전환이 아닌 경우 (같은 파일 내 페이지 이동)
+        // PDF 모드 + pdfPage가 있으면 해당 페이지로 스크롤
+        if (rightPanelState.mode === 'pdf' && rightPanelState.pdfPage) {
+          console.log('[DataPreview] 📖 PDF 페이지 스크롤 요청:', rightPanelState.pdfPage)
+          // 약간의 지연 후 스크롤 (DOM 렌더링 대기)
+          setTimeout(() => {
+            handlePageNavigate({ pageNumber: rightPanelState.pdfPage })
+            handlePageHighlight({ pageNumber: rightPanelState.pdfPage, duration: 3000 })
+          }, 100)
+        }
+
+        // 텍스트 미리보기 모드 + highlightSectionIndex가 있으면 해당 섹션으로 스크롤
+        if (rightPanelState.mode === 'text-preview' && rightPanelState.highlightSectionIndex) {
+          console.log('[DataPreview] 📝 텍스트 섹션 스크롤 요청:', rightPanelState.highlightSectionIndex)
+          setTimeout(() => {
+            const sectionElement = document.getElementById(`section-${rightPanelState.highlightSectionIndex}`)
+            if (sectionElement && scrollContainerRef.current) {
+              const container = scrollContainerRef.current
+              const offsetTop = sectionElement.offsetTop - container.offsetTop - 20
+              container.scrollTo({
+                top: offsetTop,
+                behavior: 'smooth'
+              })
+              // 하이라이트 효과
+              setHighlightedPage(rightPanelState.highlightSectionIndex)
+              setTimeout(() => setHighlightedPage(null), 3000)
+            }
+          }, 100)
+        }
       }
+
+      // 🔥 현재 파일 ID를 이전 파일로 저장 (다음 비교를 위해)
+      previousFileIdRef.current = selectedFile?.id || null
     }
-  }, [rightPanelState?.mode, rightPanelState?.pdfPage, handlePageNavigate, handlePageHighlight])
+  }, [rightPanelState?.mode, rightPanelState?.pdfPage, rightPanelState?.highlightSectionIndex, selectedFile?.id, handlePageNavigate, handlePageHighlight])
 
   // Mock PDF 페이지 데이터 생성 (테스트용 - 1~30 페이지)
   const generateMockPages = () => {
@@ -668,6 +727,46 @@ Set field to "invalid" if the request cannot be fulfilled.`
       isMockMode: true
     })
   }, []) // 빈 배열: 컴포넌트 마운트 시 1회만 실행
+
+  // 🔥 파일 전환 완료 감지: selectedFile이 변경될 때 pendingTargetPageRef 확인 및 스크롤 실행
+  useEffect(() => {
+    if (selectedFile && pendingTargetPageRef.current && pendingTargetPageRef.current > 0) {
+      console.log('[DataPreview] 🔄 파일 전환 완료 감지! selectedFile:', selectedFile.name)
+      console.log('[DataPreview] 🔄 대기 중인 페이지:', pendingTargetPageRef.current)
+
+      const pendingPage = pendingTargetPageRef.current
+
+      // 파일 타입에 따라 다른 처리
+      const fileType = selectedFile?.parsedData?.fileType
+
+      if (fileType === 'pdf') {
+        // PDF 파일인 경우: 로딩 완료 후 스크롤 (PDF 로드 useEffect에서 처리)
+        console.log('[DataPreview] 📖 PDF 파일 - PDF 로드 완료 후 스크롤 예정')
+        // pendingTargetPageRef는 유지 (PDF 로드 완료 후 사용)
+      } else {
+        // 텍스트 파일인 경우: 즉시 스크롤 시도 (약간의 딜레이로 DOM 렌더링 대기)
+        console.log('[DataPreview] 📝 텍스트 파일 - 섹션 스크롤 시도')
+        setTimeout(() => {
+          const sectionElement = document.getElementById(`section-${pendingPage}`)
+          if (sectionElement && scrollContainerRef.current) {
+            console.log('[DataPreview] ✅ 섹션 요소 찾음 - 스크롤 실행:', pendingPage)
+            const container = scrollContainerRef.current
+            const offsetTop = sectionElement.offsetTop - container.offsetTop - 20
+            container.scrollTo({
+              top: offsetTop,
+              behavior: 'smooth'
+            })
+            // 하이라이트 효과
+            setHighlightedPage(pendingPage)
+            setTimeout(() => setHighlightedPage(null), 3000)
+          } else {
+            console.log('[DataPreview] ⚠️ 섹션 요소를 찾지 못함:', `section-${pendingPage}`)
+          }
+          pendingTargetPageRef.current = null // 대기 페이지 초기화
+        }, 300) // 텍스트 렌더링 대기
+      }
+    }
+  }, [selectedFile?.id, selectedFile?.name])
 
   // PDF 파일 로드 및 전체 페이지 렌더링
   useEffect(() => {
@@ -747,6 +846,17 @@ Set field to "invalid" if the request cannot be fulfilled.`
         // 전역 PDF 뷰어 컨트롤러에 준비 완료 알림
         pdfViewerController.setReady(loadedPdf.numPages)
         console.log('[DataPreview PDF] 전역 컨트롤러에 준비 완료 알림:', loadedPdf.numPages, '페이지')
+
+        // 🔥 파일 변경 후 대기 중인 페이지가 있으면 스크롤 실행 (비동기 체인 완성)
+        if (pendingTargetPageRef.current && pendingTargetPageRef.current > 0) {
+          console.log('[DataPreview PDF] ✅ 대기 중인 페이지로 스크롤:', pendingTargetPageRef.current)
+          // 약간의 딜레이 후 스크롤 실행 (렌더링 완료 보장)
+          setTimeout(() => {
+            handlePageNavigate({ pageNumber: pendingTargetPageRef.current })
+            handlePageHighlight({ pageNumber: pendingTargetPageRef.current, duration: 3000 })
+            pendingTargetPageRef.current = null // 대기 페이지 초기화
+          }, 100)
+        }
       } catch (error) {
         console.error('[DataPreview PDF] PDF 로드 오류:', error)
         setPdfState(prev => ({ ...prev, isLoading: false }))
@@ -1074,74 +1184,32 @@ Set field to "invalid" if the request cannot be fulfilled.`
 
   return (
     <div className="h-full flex flex-col bg-white">
-      {/* Studio Header */}
-      <div className="px-4 py-3 border-b border-gray-200 bg-white">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-2 flex-1">
-            {viewMode === 'pdf' ? (
-              <>
-                <button
-                  onClick={handleBackToSummary}
-                  className="p-1.5 rounded-lg hover:bg-gray-100 transition-all"
-                  title={language === 'ko' ? '요약 보기' : 'Back to Summary'}
-                >
-                  <ChevronLeft className="w-5 h-5 text-gray-600" />
-                </button>
-                <h2 className="text-base font-bold text-gray-900">
-                  {language === 'ko' ? 'PDF 뷰어' : 'PDF Viewer'}
-                </h2>
-              </>
-            ) : viewMode === 'text-preview' ? (
-              <>
-                <h2 className="text-base font-bold text-gray-900">
-                  {rightPanelState.targetFile?.name || selectedFile?.name || (language === 'ko' ? '문서 뷰어' : 'Document Viewer')}
-                </h2>
-                <span className="px-2 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-semibold">
-                  {rightPanelState.targetFile?.parsedData?.fileType?.toUpperCase() || selectedFile?.parsedData?.fileType?.toUpperCase() || 'TEXT'}
-                </span>
-              </>
-            ) : (
-              <>
-                <h2 className="text-base font-bold text-gray-900">
-                  {language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
-                </h2>
-              </>
-            )}
-          </div>
-          {/* 닫기 버튼 */}
-          {onClose && (
-            <button
-              onClick={onClose}
-              className="p-2 rounded-lg hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-all"
-              title={language === 'ko' ? '닫기' : 'Close'}
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-          {viewMode === 'pdf' && pdfState.numPages > 0 && (
-            <div className="flex items-center space-x-2">
-              <span className="text-xs font-semibold text-gray-700 bg-gray-100 px-2 py-1 rounded">
-                {pdfState.numPages} {language === 'ko' ? '페이지' : 'pages'}
-              </span>
-              <button
-                onClick={handleBackToSummary}
-                className="p-2 rounded-lg hover:bg-red-100 text-red-600 transition-all"
-                title={language === 'ko' ? '닫기' : 'Close'}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+      {/* Studio Header - 높이 48.95px 고정 (ChatInterface와 동일) */}
+      <div className="px-4 border-b border-gray-200 bg-white flex items-center justify-between" style={{ height: '48.95px' }}>
+        <div className="flex items-center space-x-2 flex-1 min-w-0">
+          {viewMode === 'pdf' ? (
+            <h2 className="text-sm font-medium text-gray-700 truncate" title={selectedFile?.name}>
+              {selectedFile?.name || (language === 'ko' ? 'PDF 문서' : 'PDF Document')}
+            </h2>
+          ) : viewMode === 'text-preview' ? (
+            <h2 className="text-sm font-medium text-gray-700 truncate" title={rightPanelState.targetFile?.name || selectedFile?.name}>
+              {rightPanelState.targetFile?.name || selectedFile?.name || (language === 'ko' ? '문서 뷰어' : 'Document Viewer')}
+            </h2>
+          ) : (
+            <h2 className="text-base font-bold text-gray-900">
+              {language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
+            </h2>
           )}
         </div>
-        {selectedFile && viewMode === 'natural' && (
-          <p className="text-xs text-gray-500">
-            {language === 'ko' ? 'GPT-5.1 기반 문서 분석' : 'GPT-5.1 Document Analysis'}
-          </p>
-        )}
-        {viewMode === 'pdf' && selectedFile && (
-          <p className="text-xs text-gray-500 truncate" title={selectedFile.name}>
-            {selectedFile.name}
-          </p>
+        {/* 닫기 버튼 */}
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 hover:text-gray-700 transition-all flex-shrink-0"
+            title={language === 'ko' ? '닫기' : 'Close'}
+          >
+            <X className="w-4 h-4" />
+          </button>
         )}
       </div>
 
@@ -1361,11 +1429,65 @@ Set field to "invalid" if the request cannot be fulfilled.`
                         )}
                       </div>
 
-                      {/* 페이지 내용 (텍스트만) */}
+                      {/* 페이지 내용 (Markdown 렌더링 적용) */}
                       <div className="p-4">
-                        <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                          {section.text}
-                        </p>
+                        <div className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-800 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm]}
+                            components={{
+                              // 표(Table) 스타일링
+                              table: ({node, ...props}) => (
+                                <table className="min-w-full divide-y divide-gray-200 border border-gray-300 my-3" {...props} />
+                              ),
+                              thead: ({node, ...props}) => (
+                                <thead className="bg-gray-50" {...props} />
+                              ),
+                              th: ({node, ...props}) => (
+                                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-300" {...props} />
+                              ),
+                              td: ({node, ...props}) => (
+                                <td className="px-3 py-2 text-sm border-t border-gray-200" {...props} />
+                              ),
+                              // 제목 스타일링
+                              h1: ({node, ...props}) => (
+                                <h1 className="text-xl font-bold text-gray-900 mt-4 mb-2 border-b pb-1" {...props} />
+                              ),
+                              h2: ({node, ...props}) => (
+                                <h2 className="text-lg font-bold text-gray-800 mt-3 mb-2" {...props} />
+                              ),
+                              h3: ({node, ...props}) => (
+                                <h3 className="text-base font-semibold text-gray-800 mt-2 mb-1" {...props} />
+                              ),
+                              // 리스트 스타일링
+                              ul: ({node, ...props}) => (
+                                <ul className="list-disc list-inside ml-2 space-y-1" {...props} />
+                              ),
+                              ol: ({node, ...props}) => (
+                                <ol className="list-decimal list-inside ml-2 space-y-1" {...props} />
+                              ),
+                              // 코드 블록 스타일링
+                              code: ({node, inline, ...props}) => (
+                                inline
+                                  ? <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-pink-600" {...props} />
+                                  : <code className="block bg-gray-900 text-gray-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props} />
+                              ),
+                              // 인용구 스타일링
+                              blockquote: ({node, ...props}) => (
+                                <blockquote className="border-l-4 border-blue-400 pl-4 py-1 my-2 bg-blue-50 italic text-gray-700" {...props} />
+                              ),
+                              // 링크 스타일링
+                              a: ({node, ...props}) => (
+                                <a className="text-blue-600 hover:underline" {...props} />
+                              ),
+                              // 단락 스타일링
+                              p: ({node, ...props}) => (
+                                <p className="my-2 leading-relaxed" {...props} />
+                              )
+                            }}
+                          >
+                            {section.text}
+                          </ReactMarkdown>
+                        </div>
                       </div>
                     </div>
                   )
@@ -1848,10 +1970,6 @@ Set field to "invalid" if the request cannot be fulfilled.`
               </span>
             </div>
           )}
-
-          <div className="text-xs text-gray-500">
-            <span>{language === 'ko' ? '업데이트' : 'Updated'}: {new Date(selectedFile.uploadedAt).toLocaleTimeString()}</span>
-          </div>
         </div>
       )}
     </div>

@@ -412,17 +412,20 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           const endLocalPage = endFileInfo?.localPageNumber || endPage
           const endPageContent = endFile?.pageTexts?.[endLocalPage - 1]?.text || `Page ${endPage} content preview`
 
-          // 시작 페이지 배지
+          // 시작 페이지 배지 - 🔥 sourceId와 localPageNumber 추가
           parts.push(
             <CitationBadge
               key={`citation-${match.index}-${idx}-range-start-${startPage}`}
               pageNumber={startPage}
               pageContent={startPageContent}
               onPageClick={pageClickHandler}
+              sourceId={startFile?.id}
+              localPageNumber={startLocalPage}
+              sourceName={startFile?.name}
             />
           )
 
-          // 끝 페이지 배지 (시작과 끝이 다를 경우에만)
+          // 끝 페이지 배지 (시작과 끝이 다를 경우에만) - 🔥 sourceId와 localPageNumber 추가
           if (startPage !== endPage) {
             parts.push(
               <CitationBadge
@@ -430,6 +433,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 pageNumber={endPage}
                 pageContent={endPageContent}
                 onPageClick={pageClickHandler}
+                sourceId={endFile?.id}
+                localPageNumber={endLocalPage}
+                sourceName={endFile?.name}
               />
             )
           }
@@ -444,12 +450,16 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           const localPage = fileInfo?.localPageNumber || pageNum
           const pageContent = targetFile?.pageTexts?.[localPage - 1]?.text || `Page ${pageNum} content preview`
 
+          // 🔥 sourceId와 localPageNumber 추가
           parts.push(
             <CitationBadge
               key={`citation-${match.index}-${idx}-page-${pageNum}`}
               pageNumber={pageNum}
               pageContent={pageContent}
               onPageClick={pageClickHandler}
+              sourceId={targetFile?.id}
+              localPageNumber={localPage}
+              sourceName={targetFile?.name}
             />
           )
         }
@@ -920,14 +930,14 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           {/* AI 행동 지침 설정 버튼 */}
           <button
             onClick={onToggleSettingsPanel}
-            className={`flex items-center space-x-1.5 px-4 py-2 rounded-lg text-xs font-semibold transition-all ${
+            className={`flex items-center px-3 py-2 rounded text-xs font-medium transition-all ${
               isSettingsPanelOpen
-                ? 'bg-purple-100 text-purple-700 ring-2 ring-purple-300'
+                ? 'bg-purple-100 text-purple-700'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
             title={language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
           >
-            <span>{language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}</span>
+            {language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}
           </button>
         </div>
         </div>
@@ -1232,11 +1242,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           <button
             type="submit"
             disabled={!input.trim() || isTyping || selectedSources.length === 0}
-            className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center space-x-1.5 flex-shrink-0 box-border"
+            className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center flex-shrink-0 box-border"
             style={{ minHeight: '44px', height: 'auto' }}
           >
-            <Send className="w-3.5 h-3.5" />
-            <span className="text-[12px] font-medium">{t('chat.send')}</span>
+            <span className="text-sm font-medium">{t('chat.send')}</span>
           </button>
         </form>
       </div>

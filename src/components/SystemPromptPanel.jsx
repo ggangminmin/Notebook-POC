@@ -239,10 +239,9 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate }) => {
         </button>
         <button
           onClick={handleReset}
-          className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1"
+          className="px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-700 rounded-lg text-xs font-semibold transition-all"
         >
-          <X className="w-3.5 h-3.5" />
-          <span>{language === 'ko' ? '초기화' : 'Reset'}</span>
+          {language === 'ko' ? '초기화' : 'Reset'}
         </button>
       </div>
 

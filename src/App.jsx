@@ -16,7 +16,6 @@ import {
 } from './utils/notebookManager'
 import { migrateFromIndexedDB } from './utils/storage'
 import { testSupabaseConnection } from './utils/supabaseClient'
-import { Home } from 'lucide-react'
 
 function AppContent() {
   // 언어 설정
@@ -489,19 +488,31 @@ function AppContent() {
   }, [currentNotebook])
 
   // 인용 배지 클릭 시 페이지 이동 핸들러
-  const handlePageClick = useCallback((pageNumber) => {
+  // 🔥 멀티 파일 지원: (globalPageNumber, sourceId, localPageNumber) 형식으로 호출됨
+  const handlePageClick = useCallback((pageNumber, sourceId = null, localPage = null) => {
     console.log('═══════════════════════════════════════════════════════')
     console.log('[App.jsx] 🔵 인용 배지 클릭 감지!')
-    console.log('[App.jsx] 목표 페이지:', pageNumber)
+    console.log('[App.jsx] 전역 페이지:', pageNumber)
+    console.log('[App.jsx] 전달받은 sourceId:', sourceId)
+    console.log('[App.jsx] 전달받은 localPage:', localPage)
     console.log('[App.jsx] 현재 우측 패널 모드:', rightPanelState.mode)
     console.log('[App.jsx] AI 설정 패널 열림 상태:', isSettingsPanelOpen)
 
-    // 다중 파일 지원: 페이지 번호로 해당 파일 찾기
+    // 🔥 멀티 파일 지원: sourceId로 직접 파일 찾기 (더 정확함)
     let targetFile = selectedSources[0]
-    let localPageNumber = pageNumber
+    let localPageNumber = localPage || pageNumber
 
-    if (selectedSources.length > 1) {
-      // 페이지 범위 계산
+    if (sourceId) {
+      // sourceId가 제공된 경우 해당 파일을 직접 찾기
+      const foundFile = selectedSources.find(s => s.id === sourceId)
+      if (foundFile) {
+        targetFile = foundFile
+        console.log(`[App.jsx] ✅ sourceId로 파일 찾음: ${foundFile.name}`)
+      } else {
+        console.warn(`[App.jsx] ⚠️ sourceId(${sourceId})에 해당하는 파일을 찾지 못함!`)
+      }
+    } else if (selectedSources.length > 1) {
+      // sourceId가 없으면 기존 페이지 범위 계산 방식 사용 (하위 호환성)
       let cumulativePageOffset = 0
       for (const source of selectedSources) {
         const pageCount = source.parsedData?.pageCount || source.parsedData?.pageTexts?.length || 0
@@ -511,7 +522,7 @@ function AppContent() {
         if (pageNumber >= startPage && pageNumber <= endPage) {
           targetFile = source
           localPageNumber = pageNumber - cumulativePageOffset
-          console.log(`[App.jsx] ✅ 파일 찾음: ${source.name}, 로컬 페이지: ${localPageNumber}`)
+          console.log(`[App.jsx] ✅ 페이지 범위로 파일 찾음: ${source.name}, 로컬 페이지: ${localPageNumber}`)
           break
         }
 
@@ -523,7 +534,8 @@ function AppContent() {
     const fileType = targetFile?.parsedData?.fileType
     console.log('[App.jsx] 파일 타입:', fileType)
     console.log('[App.jsx] 대상 파일:', targetFile?.name)
-    console.log('[App.jsx] 로컬 페이지 번호:', localPageNumber)
+    console.log('[App.jsx] 대상 파일 ID:', targetFile?.id)
+    console.log('[App.jsx] 최종 로컬 페이지 번호:', localPageNumber)
     console.log('═══════════════════════════════════════════════════════')
 
     // PDF가 아닌 파일일 경우 (Word, Excel, TXT, JSON 등) - 텍스트 미리보기 표시
@@ -538,15 +550,16 @@ function AppContent() {
 
       // 해당 "페이지 번호"를 섹션 인덱스로 간주
       // 우측 패널을 텍스트 뷰어 모드로 전환 (전체 문서 표시 + 해당 섹션 하이라이트)
+      // 🔥 targetFile 전달로 파일 스위칭 지원
       setRightPanelState({
         mode: 'text-preview',
-        highlightSectionIndex: pageNumber, // 하이라이트할 섹션
+        highlightSectionIndex: localPageNumber, // 하이라이트할 섹션 (로컬 페이지 번호)
         targetFile: targetFile // 대상 파일 설정
       })
 
       // targetPage 설정 (DataPreview가 감지하여 스크롤 실행)
-      setTargetPage(pageNumber)
-      console.log('[App.jsx] ✅ 우측 패널 → 텍스트 뷰어 모드, 섹션', pageNumber, '으로 스크롤')
+      setTargetPage(localPageNumber)
+      console.log('[App.jsx] ✅ 우측 패널 → 텍스트 뷰어 모드, 섹션', localPageNumber, '으로 스크롤')
 
       // targetPage 리셋 (다음 클릭을 위해)
       setTimeout(() => {
@@ -564,8 +577,9 @@ function AppContent() {
     }
 
     // 1️⃣ 즉시 PDF 뷰어 모드로 전환 (강제) - 로컬 페이지 번호 사용
+    // 🔥 targetFile 전달로 파일 스위칭 지원
     setRightPanelState({ mode: 'pdf', pdfPage: localPageNumber, targetFile: targetFile })
-    console.log('[App.jsx] ✅ 우측 패널 모드 → PDF 뷰어로 전환 (로컬 페이지:', localPageNumber, ')')
+    console.log('[App.jsx] ✅ 우측 패널 모드 → PDF 뷰어로 전환 (파일:', targetFile?.name, ', 로컬 페이지:', localPageNumber, ')')
 
     // 2️⃣ targetPage 설정 (DataPreview가 감지하여 스크롤 실행) - 로컬 페이지 번호 사용
     setTargetPage(localPageNumber)
@@ -588,33 +602,22 @@ function AppContent() {
   // 채팅 뷰
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Top Header - NotebookLM 스타일 심리스 제목 수정 */}
+      {/* Top Header - 심플한 네비게이션 */}
       <div className="px-6 py-3 bg-white border-b border-gray-200">
-        <div className="flex items-center relative">
-          {/* 홈 아이콘 - 대시보드로 돌아가기 */}
+        <div className="flex items-center">
+          {/* 에이전트 챗봇 - 대시보드로 돌아가기 */}
           <button
             onClick={handleBackToDashboard}
-            className="mr-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
-            title={language === 'ko' ? '대시보드로 돌아가기' : 'Back to Dashboard'}
+            className="text-base font-semibold text-gray-900 hover:text-gray-600 transition-colors"
+            style={{ fontFamily: 'Pretendard, Inter, sans-serif' }}
           >
-            <Home className="w-5 h-5 text-gray-600" />
+            {language === 'ko' ? '에이전트 챗봇' : 'Agent Chatbot'}
           </button>
 
-          {/* 이모지 (항상 표시) */}
-          <span className="text-xl mr-2">{currentNotebook?.emoji}</span>
-
-          {/* 제목 표시 (읽기 전용) */}
-          <div className="flex-1 relative">
-            <h1
-              className="text-xl font-bold text-gray-900 px-2 py-1 -mx-2 -my-1"
-              style={{
-                lineHeight: '1.75rem',
-                letterSpacing: '-0.01em'
-              }}
-            >
-              {currentNotebook?.title || t('app.title')}
-            </h1>
-          </div>
+          {/* 노트북 제목 */}
+          <span className="ml-3 text-base text-gray-600" style={{ fontFamily: 'Pretendard, Inter, sans-serif' }}>
+            {currentNotebook?.title || t('app.title')}
+          </span>
         </div>
       </div>
 
