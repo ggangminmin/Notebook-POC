@@ -4,12 +4,15 @@ import { useState } from 'react'
  * NotebookLM 스타일 인용 배지 컴포넌트 (동그란 숫자 아이콘)
  *
  * @param {number|string} pageNumber - 인용 페이지 번호 또는 범위 (예: 5 또는 "11-14")
- * @param {function} onPageClick - 클릭 시 실행할 함수 (페이지 이동)
+ * @param {function} onPageClick - 클릭 시 실행할 함수 (페이지 이동) - (pageNumber, sourceId, localPageNumber) 전달
  * @param {number} startPage - 범위 인용일 경우 시작 페이지 (옵션)
  * @param {number} endPage - 범위 인용일 경우 끝 페이지 (옵션)
  * @param {string} pageContent - 페이지 내용 (미리보기용)
+ * @param {string} sourceId - 해당 페이지가 속한 파일의 ID (멀티 파일 지원)
+ * @param {number} localPageNumber - 해당 파일 내에서의 로컬 페이지 번호
+ * @param {string} sourceName - 해당 파일의 이름 (미리보기용)
  */
-const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage, pageContent }) => {
+const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage, pageContent, sourceId, localPageNumber, sourceName }) => {
   const [showPreview, setShowPreview] = useState(false)
 
   // 범위 인용인지 확인
@@ -26,19 +29,25 @@ const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage, pageConten
     e.stopPropagation()
 
     const targetPage = isRange ? startPage : pageNumber
+    // localPageNumber가 없으면 targetPage를 그대로 사용 (단일 파일 모드 호환)
+    const targetLocalPage = localPageNumber || targetPage
 
     console.log('═══════════════════════════════════════════════════════')
     console.log('[CitationBadge] 🔵 클릭 이벤트 발생!')
-    console.log('[CitationBadge] 목표 페이지:', targetPage)
+    console.log('[CitationBadge] 전역 페이지:', targetPage)
+    console.log('[CitationBadge] 로컬 페이지:', targetLocalPage)
+    console.log('[CitationBadge] 파일 ID:', sourceId || '(단일 파일 모드)')
+    console.log('[CitationBadge] 파일 이름:', sourceName || '(미지정)')
     console.log('[CitationBadge] 인용 타입:', isRange ? `범위 (${startPage}-${endPage})` : '단일 페이지')
     console.log('[CitationBadge] onPageClick 핸들러 존재:', !!onPageClick)
     console.log('═══════════════════════════════════════════════════════')
 
     if (onPageClick) {
       try {
-        // 범위 인용일 경우 시작 페이지로 이동
-        onPageClick(targetPage)
-        console.log('[CitationBadge] ✅ onPageClick 호출 성공:', targetPage)
+        // 🔥 멀티 파일 지원: sourceId와 localPageNumber를 함께 전달
+        // onPageClick(globalPageNumber, sourceId, localPageNumber)
+        onPageClick(targetPage, sourceId, targetLocalPage)
+        console.log('[CitationBadge] ✅ onPageClick 호출 성공:', { targetPage, sourceId, targetLocalPage })
       } catch (error) {
         console.error('[CitationBadge] ❌ onPageClick 호출 실패:', error)
       }
@@ -98,6 +107,7 @@ const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage, pageConten
             </svg>
             <span className="text-xs font-bold text-blue-700">
               Page {displayText}
+              {sourceName && <span className="font-normal text-gray-500 ml-1">· {sourceName}</span>}
             </span>
             <span className="ml-auto text-[10px] text-gray-400 uppercase tracking-wide">
               Preview

@@ -3,6 +3,32 @@
 
 import * as storage from './storage'
 
+// 노트북에 사용할 Lucide 아이콘 목록 (검증된 아이콘만 사용)
+export const NOTEBOOK_ICONS = [
+  'FileText', 'BookOpen', 'Folder', 'File',
+  'Lightbulb', 'Sparkles', 'Zap', 'Target',
+  'Rocket', 'Star', 'Heart', 'Flag', 'Bookmark',
+  'PenTool', 'Code', 'Terminal', 'Database', 'Server', 'Cloud',
+  'Image', 'Camera', 'Video', 'Music', 'Mic',
+  'Globe', 'Map', 'Compass', 'Send',
+  'Users', 'User', 'Home',
+  'Calendar', 'Clock',
+  'TrendingUp', 'BarChart', 'PieChart', 'Activity',
+  'Gift', 'Award', 'Box', 'Briefcase', 'Coffee',
+  'Cpu', 'Layers', 'Layout', 'Mail', 'MessageSquare',
+  'Package', 'Pen', 'Phone', 'Settings', 'Shield',
+  'Sun', 'Tag', 'Truck', 'Umbrella', 'Wifi'
+]
+
+// 기본 폴백 아이콘
+export const DEFAULT_ICON = 'FileText'
+
+// 랜덤 아이콘 선택
+export const getRandomIcon = () => {
+  const randomIndex = Math.floor(Math.random() * NOTEBOOK_ICONS.length)
+  return NOTEBOOK_ICONS[randomIndex]
+}
+
 // 노트북 데이터 구조
 // {
 //   id: string (고유 ID)
@@ -143,12 +169,41 @@ export const getNotebookById = (id) => {
   })
 }
 
+// 중복 제목 방지를 위한 고유 제목 생성
+export const generateUniqueTitle = async (baseTitle = '새 노트북') => {
+  const notebooks = await storage.getAllNotebooks()
+  const existingTitles = notebooks.map(nb => nb.title)
+
+  // 기본 제목이 중복되지 않으면 그대로 반환
+  if (!existingTitles.includes(baseTitle)) {
+    return baseTitle
+  }
+
+  // 중복되면 숫자를 붙여서 고유한 제목 생성
+  let counter = 1
+  let newTitle = `${baseTitle}(${counter})`
+
+  while (existingTitles.includes(newTitle)) {
+    counter++
+    newTitle = `${baseTitle}(${counter})`
+  }
+
+  return newTitle
+}
+
 // 새 노트북 생성
-export const createNotebook = async (title = '새 노트북', emoji = '📄') => {
+export const createNotebook = async (title = '새 노트북', icon = null) => {
+  // 중복 제목 방지
+  const uniqueTitle = await generateUniqueTitle(title)
+
+  // 아이콘이 지정되지 않으면 랜덤 선택
+  const notebookIcon = icon || getRandomIcon()
+
   const newNotebook = {
     id: `notebook-${Date.now()}`,
-    title,
-    emoji,
+    title: uniqueTitle,
+    icon: notebookIcon, // emoji 대신 icon 필드 사용
+    emoji: notebookIcon, // 호환성을 위해 emoji도 유지
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     sources: [],
@@ -159,7 +214,7 @@ export const createNotebook = async (title = '새 노트북', emoji = '📄') =>
   }
 
   await storage.saveNotebook(newNotebook)
-  console.log('[notebookManager] 새 노트북 생성:', newNotebook.id)
+  console.log('[notebookManager] 새 노트북 생성:', newNotebook.id, '제목:', uniqueTitle, '아이콘:', notebookIcon)
   return newNotebook
 }
 
@@ -196,6 +251,11 @@ export const updateNotebookTitle = (id, newTitle) => {
 // 노트북 이모지 변경
 export const updateNotebookEmoji = (id, newEmoji) => {
   return updateNotebook(id, { emoji: newEmoji })
+}
+
+// 노트북 아이콘 변경
+export const updateNotebookIcon = (id, newIcon) => {
+  return updateNotebook(id, { icon: newIcon, emoji: newIcon })
 }
 
 // 노트북의 소스 업데이트 (파일 추가/제거)
