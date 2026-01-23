@@ -4,10 +4,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
-// GPT 모델 설정 (2025년 12월 기준 최신)
+// GPT 모델 설정 (2026년 1월 기준 최신)
 const GPT_MODELS = {
-  INSTANT: 'gpt-5.1-chat-latest',  // 빠른 응답 (GPT-5.1 Instant - 적응형 추론)
-  THINKING: 'gpt-5.1'              // 심층 추론 (GPT-5.1 Thinking - 고급 추론)
+  INSTANT: 'gpt-5.2-chat-latest',  // 빠른 응답 (GPT-5.2 Instant - 적응형 추론)
+  THINKING: 'gpt-5.2'              // 심층 추론 (GPT-5.2 Thinking - 고급 추론)
 }
 
 // Gemini 모델 설정 (2025년 12월 기준 최신)
@@ -37,12 +37,12 @@ const isSmallTalk = (query) => {
 }
 
 // OpenAI API 호출
-// GPT-5.1은 temperature를 지원하지 않음 (고정값 1)
+// GPT-5.2는 temperature를 지원하지 않음 (고정값 1)
 const callOpenAI = async (messages, useThinking = false) => {
   try {
     const model = useThinking ? GPT_MODELS.THINKING : GPT_MODELS.INSTANT
 
-    // GPT-5.1은 temperature, top_p, presence_penalty, frequency_penalty 모두 미지원
+    // GPT-5.2는 temperature, top_p, presence_penalty, frequency_penalty 모두 미지원
     // 내부적으로 temperature=1 고정
     // 심층 분석 모드는 더 긴 응답 허용 (4000 토큰)
     const requestBody = {
@@ -203,7 +203,7 @@ ${documentText.substring(0, 3000)}
       { role: 'user', content: language === 'ko' ? '이 문서를 요약해주세요.' : 'Please summarize this document.' }
     ]
 
-    const summary = await callOpenAI(messages, false) // Instant 모델 (GPT-5.1)
+    const summary = await callOpenAI(messages, false) // Instant 모델 (GPT-5.2)
     return summary
 
   } catch (error) {
@@ -310,7 +310,7 @@ ${documentText.substring(0, 4000)}
       { role: 'user', content: personaPrompt }
     ]
 
-    const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.1)
+    const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.2)
 
     // JSON 파싱
     try {
@@ -379,7 +379,7 @@ ${documentText.substring(0, 3000)}
       { role: 'user', content: language === 'ko' ? '질문 3개를 생성해주세요.' : 'Generate 3 questions.' }
     ]
 
-    const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.1)
+    const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.2)
 
     // JSON 파싱 시도
     try {
