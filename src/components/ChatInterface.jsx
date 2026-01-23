@@ -899,9 +899,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                   ? 'bg-white text-blue-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
-              title="GPT-5.1 Chat Latest (빠른 응답)"
+              title="GPT-5.2 Chat Latest (빠른 응답)"
             >
-              GPT-5.1 Instant
+              GPT-5.2 Instant
             </button>
             <button
               onClick={() => onModelChange('thinking')}
@@ -910,9 +910,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                   ? 'bg-white text-purple-600 shadow-sm'
                   : 'text-gray-600 hover:text-gray-800'
               }`}
-              title="GPT-5.1 (심층 추론)"
+              title="GPT-5.2 (심층 추론)"
             >
-              GPT-5.1 Thinking
+              GPT-5.2 Thinking
             </button>
             <button
               onClick={() => onModelChange('gemini')}
@@ -945,6 +945,30 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
 
       {/* Messages Area - NotebookLM 스타일 슬림화 (스크롤바 고정으로 레이아웃 안정화) */}
       <div className="flex-1 p-5 space-y-3 bg-gray-50" style={{ overflowY: 'scroll' }}>
+        {/* 상단 날짜 표시 */}
+        {messages.length > 0 && messages.some(m => !m.isWelcome) && (
+          <div className="flex justify-center mb-2">
+            <span className="text-xs text-gray-400">
+              {(() => {
+                const firstMessage = messages.find(m => !m.isWelcome)
+                if (firstMessage?.timestamp) {
+                  const date = new Date(firstMessage.timestamp)
+                  const month = date.getMonth() + 1
+                  const day = date.getDate()
+                  const weekdays = language === 'ko'
+                    ? ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
+                    : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+                  const weekday = weekdays[date.getDay()]
+                  return language === 'ko'
+                    ? `${month}월 ${day}일 ${weekday}`
+                    : `${weekday}, ${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
+                }
+                return ''
+              })()}
+            </span>
+          </div>
+        )}
+
         {/* 소스가 없을 때 업로드 안내 화면 */}
         {selectedSources.length === 0 && messages.filter(m => !m.isWelcome).length === 0 && (
           <div className="flex flex-col items-center justify-center h-full">
@@ -1156,13 +1180,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                   )}
                 </div>
 
-                {/* 타임스탬프와 복사 버튼 */}
-                <div className="flex items-center justify-between mt-1 px-1">
-                  <p className="text-[10px] text-gray-400">
-                    {new Date(message.timestamp).toLocaleTimeString()}
-                  </p>
-
-                  {/* 복사 버튼 (AI 메시지에만 표시) */}
+                {/* 복사 버튼 (AI 메시지에만 표시) */}
+                <div className="flex items-center justify-end mt-1 px-1">
                   {message.type === 'assistant' && (
                     <button
                       onClick={() => handleCopyMessage(message.id, message.content)}
@@ -1192,21 +1211,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           </div>
         ))}
 
-        {/* Typing Indicator - Compact */}
+        {/* Typing Indicator - 프로그레스바 */}
         {isTyping && (
-          <div className="flex justify-start">
-            <div className="flex">
-              <div className="mr-2">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                  <Bot className="w-4 h-4 text-white" />
-                </div>
-              </div>
-              <div className="bg-white px-3 py-2 rounded-xl border border-gray-200 shadow-sm">
-                <div className="flex items-center space-x-1.5">
-                  <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
-                  <span className="text-[12px] text-gray-600">{t('chat.typing')}</span>
-                </div>
-              </div>
+          <div className="px-2">
+            <div className="w-full h-1 bg-gray-200 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-blue-500 rounded-full animate-pulse" style={{ width: '100%', animation: 'progressPulse 1.5s ease-in-out infinite' }} />
             </div>
           </div>
         )}
