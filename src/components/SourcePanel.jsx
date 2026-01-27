@@ -4,6 +4,7 @@ import { useLanguage } from '../contexts/LanguageContext'
 import { parseFileContent, fetchWebMetadata } from '../utils/fileParser'
 import { performFastResearch, performDeepResearch } from '../services/webSearchService'
 import Tooltip from './Tooltip'
+import WebSearchPopup from './WebSearchPopup'
 
 const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange }) => {
   const [showAddModal, setShowAddModal] = useState(false)
@@ -30,6 +31,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const [researchType, setResearchType] = useState('fast')
   const [isSearching, setIsSearching] = useState(false)
   const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
+  const [isSearchPopupOpen, setIsSearchPopupOpen] = useState(false)
   const [expandedSourceIds, setExpandedSourceIds] = useState(new Set()) // 펼쳐진 소스 ID 추적
   const fileInputRef = useRef(null)
   const { t, language } = useLanguage()
@@ -138,9 +140,10 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               }
             }
           } catch (error) {
-            console.error('❌ 파일 파싱 오류:', file.name, error)
-            console.error('❌ 에러 상세:', error.message, error.stack)
-            alert(`파일 "${file.name}" 파싱 실패: ${error.message}`)
+            const parsingErrorMsg = language === 'ko'
+              ? `파일 "${file.name}" 파싱 실패: ${error.message}`
+              : `Failed to parse file "${file.name}": ${error.message}`
+            alert(parsingErrorMsg)
             return null
           }
         })
@@ -192,18 +195,31 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
       setUrlInput('')
       setUrlError('')
     } catch (error) {
-      setUrlError(error.message || t('sources.urlError') || 'URL을 가져올 수 없습니다.')
+      setUrlError(error.message || t('errors.urlFetch'))
     } finally {
       setIsLoadingUrl(false)
     }
   }
 
-  // 웹 검색 핸들러
-  const handleWebSearch = async () => {
+  // 웹 검색 핸들러 (팝업 열기)
+  const handleWebSearchClick = () => {
     if (!searchQuery.trim()) return
+    setIsSearchPopupOpen(true)
+  }
 
+  // 실제 웹 검색 실행 (팝업에서 호출)
+  const executeWebSearch = async (query, plans = []) => {
     setIsSearching(true)
     setSearchProgress({ percent: 0, message: language === 'ko' ? '웹 검색 시작...' : 'Starting web search...' })
+
+    // 계획/추가 명령어가 있으면 쿼리에 보완 (명확한 리서치 질문 생성)
+    let finalSearchQuery = query
+    if (plans && plans.length > 0) {
+      const combinedPlans = plans.filter(p => p.trim()).join(', ')
+      if (combinedPlans) {
+        finalSearchQuery = `${query} (${combinedPlans})`
+      }
+    }
 
     try {
       let result
@@ -211,7 +227,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
       if (researchType === 'fast') {
         // Fast Research
         setSearchProgress({ percent: 20, message: language === 'ko' ? 'GPT가 추천 URL 생성 중...' : 'GPT generating recommended URLs...' })
-        result = await performFastResearch(searchQuery, language)
+        result = await performFastResearch(finalSearchQuery, language)
 
         // Tavily 크레딧 소진 경고 표시
         if (result.warning) {
@@ -223,7 +239,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
         setSearchProgress({ percent: 80, message: language === 'ko' ? `인터넷에서 관련 자료 ${result.totalSources}개를 찾았습니다!` : `Found ${result.totalSources} related sources!` })
       } else {
         // Deep Research
-        result = await performDeepResearch(searchQuery, language, (percent, message) => {
+        result = await performDeepResearch(finalSearchQuery, language, (percent, message) => {
           setSearchProgress({ percent, message })
         })
 
@@ -316,10 +332,21 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
     }
   }
 
+  // 문서 컨텍스트 생성 (AI 추천 시스템용)
+  const getDocumentContext = () => {
+    const selected = sources.filter(s => selectedSourceIds.includes(s.id))
+    if (selected.length === 0) return null
+    return selected.map(s => ({
+      name: s.name,
+      fileName: s.name,
+      parsedData: s.parsedData
+    }))
+  }
+
   // Enter 키로 검색
   const handleSearchKeyPress = (e) => {
     if (e.key === 'Enter' && !isSearching) {
-      handleWebSearch()
+      handleWebSearchClick()
     }
   }
 
@@ -370,7 +397,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               className="w-full pl-8 pr-16 py-1.5 text-xs border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white disabled:bg-gray-50"
             />
             <button
-              onClick={handleWebSearch}
+              onClick={handleWebSearchClick}
               disabled={!searchQuery.trim() || isSearching}
               className="absolute right-1.5 px-2.5 py-0.5 text-[10px] font-medium bg-blue-500 text-white rounded hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors"
             >
@@ -384,20 +411,18 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
           {/* Search Progress - Compact */}
           {isSearching && (
-            <div className={`mt-2 px-2 py-1.5 rounded-md ${
-              searchProgress.message.includes('⚠️')
-                ? 'bg-yellow-50 border border-yellow-300'
-                : 'bg-blue-50 border border-blue-200'
-            }`}>
+            <div className={`mt-2 px-2 py-1.5 rounded-md ${searchProgress.message.includes('⚠️')
+              ? 'bg-yellow-50 border border-yellow-300'
+              : 'bg-blue-50 border border-blue-200'
+              }`}>
               <div className="flex items-center space-x-1.5 mb-1">
                 {searchProgress.message.includes('⚠️') ? (
                   <span className="text-yellow-600 text-xs">⚠️</span>
                 ) : (
                   <Loader2 className="w-3 h-3 text-blue-600 animate-spin" />
                 )}
-                <span className={`text-[10px] font-medium ${
-                  searchProgress.message.includes('⚠️') ? 'text-yellow-800' : 'text-blue-800'
-                }`}>{searchProgress.message}</span>
+                <span className={`text-[10px] font-medium ${searchProgress.message.includes('⚠️') ? 'text-yellow-800' : 'text-blue-800'
+                  }`}>{searchProgress.message}</span>
               </div>
               {!searchProgress.message.includes('⚠️') && (
                 <div className="w-full bg-blue-200 rounded-full h-1">
@@ -446,9 +471,8 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                 return (
                   <div
                     key={source.id}
-                    className={`px-3 py-2 hover:bg-gray-50 transition-colors group ${
-                      selectedSourceIds.includes(source.id) ? 'bg-blue-50' : 'bg-white'
-                    }`}
+                    className={`px-3 py-2 hover:bg-gray-50 transition-colors group ${selectedSourceIds.includes(source.id) ? 'bg-blue-50' : 'bg-white'
+                      }`}
                   >
                     {/* Main Row */}
                     <div className="flex items-start space-x-2">
@@ -590,6 +614,18 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
           </div>
         </div>
       )}
+      {/* Web Search Refinement Popup */}
+      <WebSearchPopup
+        isOpen={isSearchPopupOpen}
+        onClose={() => setIsSearchPopupOpen(false)}
+        initialQuery={searchQuery}
+        documentContext={getDocumentContext()}
+        onStartSearch={(finalQuery, plans) => {
+          setSearchQuery(finalQuery)
+          executeWebSearch(finalQuery, plans)
+        }}
+        language={language}
+      />
     </div>
   )
 }

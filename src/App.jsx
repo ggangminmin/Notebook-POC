@@ -12,14 +12,15 @@ import {
   updateNotebookMessages,
   updateNotebookModel,
   updateNotebookSystemPrompt,
-  updateNotebookAnalyzedSources
+  updateNotebookAnalyzedSources,
+  updateNotebookSelectedSourceIds
 } from './utils/notebookManager'
 import { migrateFromIndexedDB } from './utils/storage'
 import { testSupabaseConnection } from './utils/supabaseClient'
 
 function AppContent() {
   // 언어 설정
-  const { language } = useLanguage()
+  const { language, t } = useLanguage()
 
   // 라우팅 상태
   const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' or 'chat'
@@ -51,7 +52,19 @@ function AppContent() {
   // 디바운스 타이머 ref (자동 저장 최적화)
   const saveMessagesTimerRef = React.useRef(null)
 
-  const { t } = useLanguage()
+
+  // 상태 추적용 ref (이벤트 리스너에서 최신 값 참조용)
+  const currentNotebookRef = React.useRef(currentNotebook)
+  const currentViewRef = React.useRef(currentView)
+
+  // 상태가 변경될 때마다 ref 업데이트
+  useEffect(() => {
+    currentNotebookRef.current = currentNotebook
+  }, [currentNotebook])
+
+  useEffect(() => {
+    currentViewRef.current = currentView
+  }, [currentView])
 
   // ArrayBuffer를 File 객체로 변환하는 헬퍼 함수
   const bufferToFile = (buffer, metadata) => {
@@ -82,43 +95,55 @@ function AppContent() {
       return source
     })
 
-  // 현재 노트북 데이터 저장 (IndexedDB)
+  // 현재 노트북 데이터 저장 (IndexedDB + Supabase)
   const saveCurrentNotebookData = useCallback(async () => {
     if (!currentNotebook) return
 
-    console.log('[App] 현재 노트북 데이터 저장:', currentNotebook.id)
+    console.log('[App] 현재 노트북 데이터 저장 시작:', currentNotebook.id)
 
     try {
-      // sources 업데이트 (IndexedDB는 대용량 지원)
+      // 1. 소스 업데이트
       await updateNotebookSources(currentNotebook.id, sources)
 
-      // selectedModel 업데이트
+      // 2. 모델 및 프롬프트 업데이트
       await updateNotebookModel(currentNotebook.id, selectedModel)
-
-      // systemPromptOverrides 업데이트
       await updateNotebookSystemPrompt(currentNotebook.id, systemPromptOverrides)
 
-      console.log('[App] 노트북 데이터 저장 완료 (소스:', sources.length, '개)')
+      // 3. 메시지 업데이트 (채팅 이력이 있으면)
+      if (chatHistory && chatHistory.length > 0) {
+        await updateNotebookMessages(currentNotebook.id, chatHistory)
+        console.log('[App] 메시지 동기화 저장 완료:', chatHistory.length, '개')
+      }
+
+      // 4. 분석된 소스 ID 업데이트
+      await updateNotebookAnalyzedSources(currentNotebook.id, analyzedSourceIds)
+
+      console.log('[App] ✅ 모든 노트북 데이터 저장 완료')
     } catch (error) {
-      console.error('[App] 저장 실패:', error)
-      alert('데이터 저장에 실패했습니다: ' + error.message)
+      console.error('[App] ❌ 저장 실패:', error)
     }
-  }, [currentNotebook, sources, selectedModel, systemPromptOverrides])
+  }, [currentNotebook, sources, selectedModel, systemPromptOverrides, chatHistory, analyzedSourceIds])
 
   // 브라우저 뒤로가기/앞으로가기 지원
   useEffect(() => {
     const handlePopState = async (event) => {
       console.log('[App] popstate 이벤트:', event.state)
+      const currentView = currentViewRef.current
+      const currentNotebook = currentNotebookRef.current
 
       if (event.state?.view === 'dashboard') {
         // 대시보드로 복귀
-        if (currentNotebook) {
+        if (currentNotebook && currentView === 'chat') {
           await saveCurrentNotebookData()
         }
         setCurrentView('dashboard')
         setCurrentNotebook(null)
       } else if (event.state?.view === 'chat' && event.state?.notebookId) {
-        // 특정 노트북으로 이동
+        // 특정 노트북으로 이동 (비교하여 이미 해당 노트북이면 스킵)
+        if (currentNotebook?.id === event.state.notebookId && currentView === 'chat') {
+          return
+        }
+
         const savedNotebook = await getNotebookById(event.state.notebookId)
         if (savedNotebook) {
           setCurrentNotebook(savedNotebook)
@@ -127,7 +152,18 @@ function AppContent() {
           setSelectedModel(savedNotebook.selectedModel || 'instant')
           setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
 
-          // analyzedSourceIds 복원: 기존 메시지가 있으면 모든 소스를 분석됨으로 표시
+          // 대화 이력 복원
+          if (savedNotebook.messages) {
+            setChatHistory(savedNotebook.messages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp
+            })))
+          } else {
+            setChatHistory([])
+          }
+
+          // analyzedSourceIds 복원
           let restoredAnalyzedIds = savedNotebook.analyzedSourceIds || []
           if (savedNotebook.messages && savedNotebook.messages.length > 0 && savedNotebook.sources && savedNotebook.sources.length > 0) {
             const allSourceIds = savedNotebook.sources.map(s => s.id)
@@ -161,7 +197,18 @@ function AppContent() {
           setSelectedModel(savedNotebook.selectedModel || 'instant')
           setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
 
-          // analyzedSourceIds 복원: 기존 메시지가 있으면 모든 소스를 분석됨으로 표시
+          // 대화 이력 복원
+          if (savedNotebook.messages) {
+            setChatHistory(savedNotebook.messages.map(msg => ({
+              role: msg.role,
+              content: msg.content,
+              timestamp: msg.timestamp
+            })))
+          } else {
+            setChatHistory([])
+          }
+
+          // analyzedSourceIds 복원
           let restoredAnalyzedIds = savedNotebook.analyzedSourceIds || []
           if (savedNotebook.messages && savedNotebook.messages.length > 0 && savedNotebook.sources && savedNotebook.sources.length > 0) {
             const allSourceIds = savedNotebook.sources.map(s => s.id)
@@ -251,9 +298,27 @@ function AppContent() {
 
     // 저장된 데이터로 상태 복원
     setSources(savedNotebook.sources || [])
-    setSelectedSourceIds(savedNotebook.sources.map(s => s.id))
+
+    // 이전에 선택된 ID가 있으면 그것으로 복원, 없으면 전체 선택
+    if (savedNotebook.selectedSourceIds && savedNotebook.selectedSourceIds.length > 0) {
+      setSelectedSourceIds(savedNotebook.selectedSourceIds)
+    } else {
+      setSelectedSourceIds((savedNotebook.sources || []).map(s => s.id))
+    }
     setSelectedModel(savedNotebook.selectedModel || 'instant')
     setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
+
+    // 대화 이력 상태 복원 (DataPreview용)
+    if (savedNotebook.messages) {
+      const formattedHistory = savedNotebook.messages.map(msg => ({
+        role: msg.role,
+        content: msg.content,
+        timestamp: msg.timestamp
+      }))
+      setChatHistory(formattedHistory)
+    } else {
+      setChatHistory([])
+    }
 
     // analyzedSourceIds 복원: 기존에 메시지가 있으면 모든 소스를 이미 분석한 것으로 간주
     let restoredAnalyzedIds = savedNotebook.analyzedSourceIds || []
@@ -380,6 +445,13 @@ function AppContent() {
     // 현재 파일 ID 저장
     setPreviousSourceId(currentSourceId)
   }, [selectedSources[0]?.id])
+
+  // 선택된 소스 ID 변경 시 자동 저장
+  useEffect(() => {
+    if (currentNotebook && currentView === 'chat') {
+      updateNotebookSelectedSourceIds(currentNotebook.id, selectedSourceIds)
+    }
+  }, [selectedSourceIds, currentNotebook, currentView])
 
   const handleAddSources = (newSources) => {
     setSources(prev => [...prev, ...newSources])
@@ -595,8 +667,7 @@ function AppContent() {
 
   // 대시보드 뷰
   if (currentView === 'dashboard') {
-    // key를 사용하여 뷰 전환 시마다 Dashboard를 완전히 리마운트
-    return <Dashboard key={Date.now()} onNotebookSelect={handleNotebookSelect} />
+    return <Dashboard onNotebookSelect={handleNotebookSelect} />
   }
 
   // 채팅 뷰

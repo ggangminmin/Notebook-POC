@@ -132,11 +132,10 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate }) => {
             <button
               key={key}
               onClick={() => handlePresetClick(key)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activePreset === key
-                  ? 'bg-purple-600 text-white shadow-md'
-                  : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${activePreset === key
+                ? 'bg-purple-600 text-white shadow-md'
+                : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
+                }`}
             >
               {preset[language].label}
             </button>
@@ -158,10 +157,10 @@ const SystemPromptPanel = ({ language = 'ko', onSystemPromptUpdate }) => {
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center space-x-1.5 ${
               // 프리셋이 선택되지 않고, 사용자 정의 지침이 열려있거나 직접 입력한 경우만 활성화
               (isCustomPromptOpen && !activePreset) ||
-              (customPrompt.trim() && !activePreset)
+                (customPrompt.trim() && !activePreset)
                 ? 'bg-purple-600 text-white shadow-md'
                 : 'bg-white text-purple-700 border border-purple-300 hover:bg-purple-100'
-            }`}
+              }`}
           >
             <Edit2 className="w-3 h-3" />
             <span>{language === 'ko' ? '사용자 정의 지침' : 'Custom Guidelines'}</span>

@@ -129,9 +129,6 @@ const initializeDB = async () => {
   if (initialized) return
 
   try {
-    // localStorage에서 마이그레이션 시도
-    await storage.migrateFromLocalStorage()
-
     // IndexedDB에서 노트북 확인
     const notebooks = await storage.getAllNotebooks()
 
@@ -279,9 +276,10 @@ export const updateNotebookSystemPrompt = (id, systemPromptOverrides) => {
 }
 
 // 노트북의 분석된 소스 ID 업데이트
-export const updateNotebookAnalyzedSources = (id, analyzedSourceIds) => {
-  return updateNotebook(id, { analyzedSourceIds })
-}
+export const updateNotebookAnalyzedSources = (id, analyzedSourceIds) => updateNotebook(id, { analyzedSourceIds })
+
+// 노트북의 선택된 소스 ID 업데이트
+export const updateNotebookSelectedSourceIds = (id, selectedSourceIds) => updateNotebook(id, { selectedSourceIds })
 
 // 노트북 삭제
 export const deleteNotebook = async (id) => {

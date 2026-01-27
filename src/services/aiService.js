@@ -7,7 +7,8 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
 // GPT 모델 설정 (2026년 1월 기준 최신)
 const GPT_MODELS = {
   INSTANT: 'gpt-5.2-chat-latest',  // 빠른 응답 (GPT-5.2 Instant - 적응형 추론)
-  THINKING: 'gpt-5.2'              // 심층 추론 (GPT-5.2 Thinking - 고급 추론)
+  THINKING: 'gpt-5.2',             // 심층 추론 (GPT-5.2 Thinking - 고급 추론)
+  MINI: 'gpt-4o-mini'              // 초저비용/초고속 (제안/필터링용)
 }
 
 // Gemini 모델 설정 (2025년 12월 기준 최신)
@@ -23,24 +24,28 @@ export const detectLanguage = (text) => {
   return koreanRegex.test(text) ? 'ko' : 'en'
 }
 
-// 일상 대화 패턴 감지
-const isSmallTalk = (query) => {
+// 단순 인사말/의미 없는 입력인지 확인 (API 비용 절감용)
+export const isMeaninglessQuery = (query) => {
+  if (!query || query.trim().length < 2) return true
+
   const greetings = [
     '안녕', '반가워', '하이', 'hi', 'hello', '헬로', '좋은 아침', '좋은 저녁',
     '어떻게 지내', '잘 지내', '뭐해', '뭐하니', '고마워', '감사', 'thank',
     '잘했어', '좋아', '괜찮아', 'good', 'great', 'thanks', 'bye', '안녕히',
-    '잘가', '또 봐'
+    '잘가', '또 봐', '테스트', 'test', '오늘 날씨', '날씨'
   ]
 
   const queryLower = query.toLowerCase().trim()
-  return greetings.some(greeting => queryLower.includes(greeting))
+  // 너무 짧거나 리스트에 있는 인사말인 경우
+  return queryLower.length < 2 || greetings.some(greeting => queryLower === greeting || queryLower.includes(greeting) && queryLower.length < 5)
 }
 
 // OpenAI API 호출
 // GPT-5.2는 temperature를 지원하지 않음 (고정값 1)
-const callOpenAI = async (messages, useThinking = false) => {
+const callOpenAI = async (messages, useThinking = false, useMini = false) => {
   try {
-    const model = useThinking ? GPT_MODELS.THINKING : GPT_MODELS.INSTANT
+    let model = useThinking ? GPT_MODELS.THINKING : GPT_MODELS.INSTANT
+    if (useMini) model = GPT_MODELS.MINI
 
     // GPT-5.2는 temperature, top_p, presence_penalty, frequency_penalty 모두 미지원
     // 내부적으로 temperature=1 고정
@@ -75,6 +80,19 @@ const callOpenAI = async (messages, useThinking = false) => {
     return content
   } catch (error) {
     console.error('OpenAI API 오류:', error)
+
+    // 사용자 친화적 에러 메시지 처리 (한글화)
+    const errMessage = error.message || ''
+    if (errMessage.includes('rate_limit')) {
+      throw new Error('OpenAI API 호출 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.')
+    } else if (errMessage.includes('insufficient_quota')) {
+      throw new Error('OpenAI API 크레딧이 부족합니다. 결제 수단이나 한도를 확인해 주세요.')
+    } else if (errMessage.includes('context_length_exceeded')) {
+      throw new Error('입력 양이 너무 많아 모델의 컨텍스트 제한을 초과했습니다. 문서 선택을 줄여주세요.')
+    } else if (errMessage.includes('invalid_api_key')) {
+      throw new Error('OpenAI API 키가 유효하지 않습니다. 환경 변수를 확인해 주세요.')
+    }
+
     throw error
   }
 }
@@ -142,15 +160,21 @@ const callGemini = async (messages, temperature = 0.3, isDeepAnalysis = false) =
   } catch (error) {
     console.error('Gemini API 오류:', error)
 
-    // 사용자 친화적 에러 메시지 처리
-    if (error.message?.includes('404') || error.message?.includes('not found')) {
+    // 사용자 친화적 에러 메시지 처리 (한글화)
+    const errMessage = error.message || ''
+
+    if (errMessage.includes('404') || errMessage.includes('not found')) {
       throw new Error(`지원하지 않는 Gemini 모델 설정입니다 (${GEMINI_MODEL}). 모델명을 확인해주세요.`)
-    } else if (error.message?.includes('API key')) {
-      throw new Error('Gemini API 키가 유효하지 않습니다. 환경 변수를 확인해주세요.')
-    } else if (error.message?.includes('quota') || error.message?.includes('limit')) {
-      throw new Error('Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도해주세요.')
-    } else if (error.message?.includes('permission')) {
+    } else if (errMessage.includes('API key')) {
+      throw new Error('Gemini API 키가 유효하지 않거나 설정되지 않았습니다. 환경 변수를 확인해주세요.')
+    } else if (errMessage.includes('quota') || errMessage.includes('limit') || errMessage.includes('consumed')) {
+      throw new Error('Gemini API 사용량 한도를 초과했습니다. 잠시 후 다시 시도하거나 다른 모델을 선택해 주세요.')
+    } else if (errMessage.includes('permission')) {
       throw new Error('Gemini API 키에 해당 모델 사용 권한이 없습니다.')
+    } else if (errMessage.includes('exceed') && errMessage.includes('token')) {
+      throw new Error('입력 데이터가 너무 커서 토큰 제한을 초과했습니다. 선택된 문서의 양을 줄이거나 메시지 길이를 줄여주세요.')
+    } else if (errMessage.includes('safety') || errMessage.includes('finish_reason: SAFETY')) {
+      throw new Error('안전 가이드라인에 따른 차단으로 응답을 생성할 수 없습니다. 질문 내용을 검토해 주세요.')
     }
 
     throw error
@@ -334,49 +358,55 @@ ${documentText.substring(0, 4000)}
 // 추천 질문 생성 (Instant 모델 사용 - 빠른 생성)
 export const generateSuggestedQuestions = async (documentContext, language = 'ko') => {
   try {
-    if (!documentContext || !documentContext.parsedData) {
-      return []
+    if (!documentContext) return []
+
+    let documentText = ''
+    let contextName = ''
+
+    if (Array.isArray(documentContext)) {
+      documentText = documentContext.map(s => extractTextFromParsedData(s.parsedData)).join('\n\n---\n\n')
+      contextName = documentContext.map(s => s.name).join(', ')
+    } else if (documentContext.parsedData) {
+      documentText = extractTextFromParsedData(documentContext.parsedData)
+      contextName = documentContext.name || '문서'
     }
 
-    const documentText = extractTextFromParsedData(documentContext.parsedData)
-    const fileName = documentContext.name || '문서'
-
-    // 문서가 너무 짧으면 스킵
-    if (!documentText || documentText.length < 100) {
+    // 문서 내용이 너무 짧으면 스킵
+    if (!documentText || documentText.length < 50) {
       return []
     }
 
     const questionsPrompt = language === 'ko'
-      ? `다음 문서를 읽고, 사용자가 물어볼 만한 흥미로운 질문 3개를 생성해주세요.
-
-**문서 제목:** ${fileName}
-
-**문서 내용:**
-${documentText.substring(0, 3000)}
+      ? `다음 문서를 읽고, 사용자가 물어볼 만한 흥미로운 질문 4개를 생성해주세요.
+ 
+ **문서:** ${contextName}
+ 
+ **문서 내용:**
+ ${documentText.substring(0, 5000)}
 
 **질문 생성 규칙:**
 - 문서 내용을 기반으로 답변 가능한 질문만 생성
 - 각 질문은 15자 이내로 간결하게
 - 문서의 핵심 내용을 다루는 질문
-- JSON 배열 형식으로만 응답: ["질문1", "질문2", "질문3"]
+- JSON 배열 형식으로만 응답: ["질문1", "질문2", "질문3", "질문4"]
 - 다른 텍스트 없이 JSON만 출력`
-      : `Read the following document and generate 3 interesting questions users might ask.
+      : `Read the following document and generate 4 interesting questions users might ask.
 
-**Document Title:** ${fileName}
+**Document Title:** ${contextName}
 
 **Document Content:**
-${documentText.substring(0, 3000)}
+${documentText.substring(0, 5000)}
 
 **Question Generation Rules:**
 - Only generate questions answerable from the document
 - Keep each question under 15 words
 - Focus on key content
-- Respond only in JSON array format: ["Question 1", "Question 2", "Question 3"]
+- Respond only in JSON array format: ["Question 1", "Question 2", "Question 3", "Question 4"]
 - Output only JSON, no other text`
 
     const messages = [
       { role: 'system', content: questionsPrompt },
-      { role: 'user', content: language === 'ko' ? '질문 3개를 생성해주세요.' : 'Generate 3 questions.' }
+      { role: 'user', content: language === 'ko' ? '질문 4개를 생성해주세요.' : 'Generate 4 questions.' }
     ]
 
     const response = await callOpenAI(messages, false) // Instant 모델 (GPT-5.2)
@@ -385,20 +415,75 @@ ${documentText.substring(0, 3000)}
     try {
       const questions = JSON.parse(response)
       if (Array.isArray(questions) && questions.length > 0) {
-        return questions.slice(0, 3)
+        return questions.slice(0, 4)
       }
     } catch (e) {
       console.warn('질문 JSON 파싱 실패, 텍스트 파싱 시도')
       // JSON 파싱 실패 시 텍스트에서 추출 시도
       const lines = response.split('\n').filter(line => line.trim() && !line.includes('{') && !line.includes('}'))
       if (lines.length > 0) {
-        return lines.slice(0, 3).map(q => q.replace(/^[-*•]\s*/, '').replace(/^["']|["']$/g, '').trim())
+        return lines.slice(0, 4).map(q => q.replace(/^[-*•]\s*/, '').replace(/^["']|["']$/g, '').trim())
       }
     }
 
     return []
   } catch (error) {
     console.error('추천 질문 생성 오류:', error)
+    return []
+  }
+}
+
+// 검색 키워드 기반 추천 질문 생성 (웹 검색 최적화용)
+export const generateQuerySuggestions = async (query, language = 'ko') => {
+  try {
+    if (!query || query.trim().length === 0) {
+      return []
+    }
+
+    const suggestionsPrompt = language === 'ko'
+      ? `사용자가 "${query}"에 대해 웹 검색을 하려고 합니다. 
+ 
+ 이 검색어와 관련하여 심층 리서치에 실질적으로 도움이 될 수 있는 4개의 구체적이고 깊이 있는 질문을 생성해주세요.
+ 
+ **규칙:**
+ - 검색어의 의도를 꿰뚫어보는 실질적이고 구체적인 리서치 소주제 생성
+ - 단순히 단어를 나열하지 말고, 명확한 분석 방향을 제시하는 문장형으로 작성 (30자 내외)
+ - 주제 예: "OO 서비스의 시장 점유율 분석" (X) -> "최근 3년간 OO 서비스의 글로벌 시장 점유율 변화 및 주요 경쟁사 비교 분석" (O)
+ - JSON 배열 형식으로만 응답: ["질문1", "질문2", "질문3", "질문4"]
+ - 다른 텍스트 없이 JSON만 출력`
+      : `The user wants to search for "${query}" on the web.
+ 
+ Generate 4 deep, specific, and professional research questions to help with a comprehensive investigation.
+ 
+ **Rules:**
+ - Create substantial research sub-topics that go beyond simple keywords
+ - Provide clear analytical directions in sentence form (around 15-20 words)
+ - Example: "Market share of X" (X) -> "Analysis of X's global market share trends over the last 3 years and comparison with key competitors" (O)
+ - Respond only in JSON array format: ["Question 1", "Question 2", "Question 3", "Question 4"]
+ - Output only JSON, no other text`
+
+    const messages = [
+      { role: 'system', content: suggestionsPrompt },
+      { role: 'user', content: language === 'ko' ? '추천 질문 4개를 생성해주세요.' : 'Generate 4 suggestions.' }
+    ]
+
+    const response = await callOpenAI(messages, false, true) // 세 번째 인자로 mini 모델 사용 여부 전달
+
+    try {
+      const suggestions = JSON.parse(response)
+      if (Array.isArray(suggestions) && suggestions.length > 0) {
+        return suggestions.slice(0, 4)
+      }
+    } catch (e) {
+      const lines = response.split('\n').filter(line => line.trim() && !line.includes('{') && !line.includes('}'))
+      if (lines.length > 0) {
+        return lines.slice(0, 4).map(q => q.replace(/^[-*•]\s*/, '').replace(/^["']|["']$/g, '').trim())
+      }
+    }
+
+    return []
+  } catch (error) {
+    console.error('검색어 기반 추천 생성 오류:', error)
     return []
   }
 }
@@ -420,7 +505,7 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       const customGuidelines = systemPromptOverrides.length > 0
         ? systemPromptOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
         : ''
-      
+
       const casualPrompt = customGuidelines + baseCasualPrompt
 
       const messages = [
@@ -457,14 +542,38 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       }
     }
 
-    // 3. 엄격한 문서 기반 답변 모드 - 다중 소스 지원
-    const allTexts = documentContextArray.map(doc => {
-      const text = extractTextFromParsedData(doc.parsedData)
-      const name = doc.name || doc.fileName || '문서'
-      return { name, text }
-    }).filter(item => item.text && item.text.trim().length >= 10)
+    // 3. 엄격한 문서 기반 답변 모드 - 다중 소스 지원 (각 문서별 독립 페이지 번호)
+    const sourceContexts = []
+    const allSourceNames = []
 
-    if (allTexts.length === 0) {
+    documentContextArray.forEach((doc, index) => {
+      const docName = doc.name || doc.fileName || `문서 ${index + 1}`
+      const pageTexts = doc.parsedData?.pageTexts || []
+      const extractedText = doc.parsedData?.extractedText || ''
+
+      let docContent = ''
+
+      if (pageTexts.length > 0) {
+        // 각 문서별로 1페이지부터 시작
+        docContent = pageTexts.map(page =>
+          `[페이지 ${page.pageNumber}]\n${page.text}`
+        ).join('\n\n')
+      } else if (extractedText.trim().length >= 10) {
+        // 텍스트/기타 문서: 가상의 1페이지 할당
+        docContent = `[페이지 1]\n${extractedText}`
+      }
+
+      if (docContent) {
+        sourceContexts.push({
+          id: index + 1, // 문서 인덱스 (1부터 시작)
+          name: docName,
+          content: docContent
+        })
+        allSourceNames.push(`${index + 1}. ${docName}`)
+      }
+    })
+
+    if (sourceContexts.length === 0) {
       const invalidDocMessage = language === 'ko'
         ? `죄송합니다. 문서 내용을 읽을 수 없습니다.\n\n파일이 비어있거나 지원하지 않는 형식일 수 있습니다. PDF의 경우 텍스트가 포함되어 있는지 확인해주세요.`
         : `Sorry, I cannot read the document content.\n\nThe file may be empty or in an unsupported format. For PDFs, please ensure they contain text.`
@@ -477,32 +586,15 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       }
     }
 
-    // 페이지별 텍스트 정보 추출 (페이지 번호 메타데이터 포함)
-    const pageTextInfo = documentContextArray.map(doc => {
-      const pageTexts = doc.parsedData?.pageTexts || []
-      if (pageTexts.length > 0) {
-        // PDF 파일: 페이지별로 구분된 텍스트
-        console.log(`[페이지 데이터] PDF 파일 "${doc.name}" - 총 ${pageTexts.length}개 페이지`)
-        return pageTexts.map(page =>
-          `[페이지 ${page.pageNumber}]\n${page.text}`
-        ).join('\n\n')
-      } else {
-        // 일반 텍스트 파일: 전체 텍스트
-        console.log(`[페이지 데이터] 텍스트 파일 "${doc.name}" - pageTexts 배열 없음, extractedText 사용`)
-        return doc.parsedData?.extractedText || ''
-      }
-    }).filter(text => text.length > 0)
-
-    // 모든 문서 텍스트 종합 (페이지 정보 포함)
-    const combinedDocumentText = allTexts.map((item, index) =>
-      `[출처: ${item.name}]\n${pageTextInfo[index] || item.text}`
+    // 모든 문서 텍스트 종합
+    const documentText = sourceContexts.map(ctx =>
+      `[문서 ${ctx.id}: ${ctx.name}]\n${ctx.content}`
     ).join('\n\n---\n\n')
 
-    const sourceNames = allTexts.map(item => item.name).join(', ')
-    const documentText = combinedDocumentText
-    const fileName = allTexts.length > 1
-      ? `${allTexts.length}개의 문서 (${sourceNames})`
-      : allTexts[0].name
+    const sourceNames = allSourceNames.join(', ')
+    const fileName = allSourceNames.length > 1
+      ? `${allSourceNames.length}개의 문서 (${sourceNames})`
+      : allSourceNames[0]
 
     // extractedText 유효성 검증
     if (!documentText || documentText.trim().length < 10) {
@@ -546,17 +638,22 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 - **[가상 목차] 자동 생성**: 목차가 없는 문서는 페이지별 헤더나 문맥을 분석해 스스로 생성
 - 추론 시 반드시 명시: "**문서의 전체 맥락을 분석한 결과**, [추론 내용]으로 파악됩니다 [문서 맥락 기반 추론]"
 
-**✨ 시각적 강조 규칙 (필수)**
-- **핵심 명사, 기능명, 고유 대명사, 중요 수치**는 반드시 \`**굵게**\` 처리
+**✨ 시각적 강조 및 인용 규칙 (필수)**
+- **핵심 지표 및 중요 정보**: 강조 없이 일반 텍스트로 작성하세요. 불필요한 굵게(Bold) 처리를 절대 하지 마세요.
+- **인라인 시테이션 활성화**: 모든 주요 주장이나 설명이 끝나는 지점에 반드시 \`[문서번호:페이지번호]\`를 추가하세요. (예: ...라고 파악됩니다 [1:5].)
+  * **문서번호**: 제공된 문서 리스트의 순서 (1, 2, 3...)
+  * **페이지번호**: 해당 문서 내의 로컬 페이지 번호 (각 문서마다 1부터 시작)
+  * 예시: 1번 문서의 5페이지는 \`[1:5]\`, 2번 문서의 12페이지는 \`[2:12]\`
 - 문단 구분점에는 \`###\` 헤더 사용하여 시각적 위계 구성
 - 3줄 이상의 나열은 반드시 글머리 기호(Bullet Points) 사용
 - **리스트 형식 규칙**: "1. **서론**" 또는 "- **핵심 내용**"처럼 숫자/기호와 텍스트를 같은 줄에 작성 (줄바꿈 금지)
 
 **핵심 규칙:**
-1. ✅ **직접 근거 우선** - 문서에 명시된 내용을 먼저 제시하되, 핵심 키워드는 굵게 표시
+1. ✅ **직접 근거 우선** - 문서에 명시된 내용을 먼저 제시하세요.
 2. ✅ **맥락 기반 추론 필수** - 문서의 여러 정보를 종합하여 논리적 결론 도출 (추론 태그 사용)
-3. ✅ **구조적 답변** - 개요 → 세부 분석 → 출처/참조 순서로 구성
+3. ✅ **구조적 답변** - 개요 → 세부 분석 → AI 인사이트 순서로 구성
 4. ✅ **정중하고 분석적인 톤** - NotebookLM처럼 전문적이고 신뢰감 있게
+5. ✅ **텍스트 내 페이지 직접 언급 금지** - "3페이지에 따르면", "Page 5"와 같은 텍스트 형태의 페이지 언급을 절대 하지 마세요. 모든 출처는 오직 인용 배지 [N] 또는 [N-M] 형태로만 문장 끝에 표기하세요.
 
 **제공된 문서:**
 파일명: ${fileName}
@@ -568,7 +665,7 @@ ${documentText}
 **답변 구조화 템플릿 (필수):**
 
 ### [핵심 요약]
-질문에 대한 답변을 **1~2줄로 강렬하게 요약** (핵심 단어는 굵게)
+질문에 대한 답변을 **1~2줄로 강렬하게 요약** (강조 효과 없이 일반 텍스트 사용)
 
 예: "이 문서는 **삼성전자의 2024년 실적**을 다루며, **영업이익 35조원**, **시장점유율 1위** 달성이 핵심입니다"
 
@@ -588,11 +685,6 @@ ${documentText}
 
 예: 이러한 실적 추세로 볼 때[5, 12, 18], **2025년 목표 달성 가능성**이 높으며, **투자 확대** 전략이 예상됩니다 [문서 맥락 기반 추론]
 
-### [출처/참조]
-답변 근거가 된 문서의 **섹션이나 데이터 위치** 명시
-
-예: **2장 재무 현황**, **3페이지 실적 표**, **경영진 인터뷰** 섹션에서 도출
-
 **특별 규칙:**
 - 목차, 구조, 전체 요약 등을 물어볼 경우: 문서 전체를 분석하여 **[가상 목차]** 또는 **[구조 분석]**을 직접 생성하세요
 - **목차 생성 시 페이지 번호 자동 계산 (100% 필수)**:
@@ -602,7 +694,6 @@ ${documentText}
   * 목차 항목 없이 페이지 번호 누락은 절대 불가
 - 직접 언급이 없는 경우: "문서에 직접 언급은 없으나, **문서의 전체 맥락을 분석한 결과** [추론 내용]으로 파악됩니다 [문서 맥락 기반 추론]"
 - 외부 지식 사용 금지: 오직 **제공된 문서 내용(extractedText)**의 범위 안에서만 논리적으로 추론하세요
-- 답변 마지막에 "\n\n📄 **출처**: ${fileName} (${today} 분석)"을 추가하세요
 - 추론 부분에는 반드시 **[문서 맥락 기반 추론]** 태그를 달아 투명성을 확보하세요`
       : `You are the **Universal Document Analyzer** that penetrates the structure of all documents. Apply the following rules unconditionally regardless of document type (PDF, TXT, Web).
 
@@ -616,39 +707,28 @@ ${documentText}
 - **Auto-generate [Virtual Table of Contents]**: For documents without TOC, analyze page headers or context to create one
 - When reasoning, must specify: "**Based on analyzing the document's overall context**, [inferred content] is identified [Context-Based Reasoning]"
 
-**✨ Visual Emphasis Rules (Mandatory)**
-- **Key nouns, feature names, proper nouns, important numbers** must be \`**bolded**\`
+**✨ 시각적 강조 및 인용 규칙 (필수)**
+- **Key metrics and info**: Write in regular text without emphasis. Do NOT use **bold** markers.
 - Use \`###\` headers at paragraph breaks to create visual hierarchy
 - Lists of 3+ items must use bullet points
 - **List Format Rule**: Write number/symbol and text on the same line like "1. **Introduction**" or "- **Key Point**" (no line breaks)
 
-**📌 Citation Badge Rules (Top Priority - Very Important! Mandatory - ALWAYS CITATION SYSTEM)**
-- **🔴 Absolute Rule: Always include citation badges in every answer!** When mentioning specific content from the document, mark page numbers in [N] format
-- **Page information usage**: Document text includes "[페이지 N]" markers, so cite accurate page numbers based on these
-- **Simple format**:
-  - Single page: [page_number] - Examples: [3], [15]
-  - **Range citation** (multiple pages): [start_page-end_page] - Examples: [5-8], [1-3]
-  - **Multiple citations**: [N, M, O] - Examples: [3, 7, 12]
-  - **Complex citations**: [N-M, O] - Examples: [1-3, 7]
-- **🚨 ALWAYS CITATION: Forced Citation Generation Rules (No Exceptions, 0% Failure Tolerance)**:
-  - **Never say "page information unavailable", "cannot generate citations", or "page numbers not found"**
-  - **Even if page markers are unclear, sequentially apply these strategies to generate page numbers**:
-    1. **Direct Matching**: Search for "[페이지 N]" markers to find exact pages
-    2. **Keyword Similarity**: Find pages where query keywords appear most frequently
-    3. **Semantic Similarity**: Estimate page range of sections most related to query topic
-    4. **Document Structure Analysis**: Calculate page numbers based on content position ratio to total pages
-    5. **Final Fallback**: Even if all methods fail, divide document into 3 parts: beginning[1-N/3], middle[N/3-2N/3], end[2N/3-N]
-  - Example: In 45-page document, "conclusion" question → estimate end section[30-45]
-  - Example: In 20-page document, "introduction" question → estimate beginning[1-5]
-  - **Every answer must include minimum 3 citation badges** (answers violating this rule will be rejected)
-  - **Answer without citations = Incorrect answer**: AI must infer pages and generate badges
+- **🔴 Absolute Rule: Always include citation badges in [DocIndex:PageNumber] format!**
+- **Format**: \`[Document_Number:Local_Page_Number]\`
+  - Document 1, Page 5: [1:5]
+  - Document 2, Page 12: [2:12]
+  - Range (same doc): [1:5-8]
+  - Multiple pages (same doc): [1:3, 7]
+  - Multiple documents: [1:5, 2:12]
+- **Page numbering**: Each document starts from Page 1. Use the local page number found in "[페이지 N]" markers within each source.
+- **🚨 ALWAYS CITATION: Forced Citation Generation Rules (No Exceptions)**:
+  - **Every answer must include citation badges in [DocIndex:PageNumber] format**
+  - AI must infer pages if unclear and generate badges based on the provided source indices.
 - **Examples**:
-  - "AI market size is estimated at $500 billion[3]"
-  - "According to the document, <cite page="5">semiconductor division performance increased by 40%</cite>"
-  - "2024 target is operating profit of $35 billion[1]"
-  - **"Detailed pricing policy is presented[11-14]"** (range citation)
-  - **"Introduction continues from chapter 1 to 3[1-3]"** (range citation)
-  - **"Based on analyzing the document's overall context**, main target is identified as B2B market[5, 12, 18]"** (reasoning-based multiple citations)
+  - "AI market size is estimated at $500 billion[1:3]"
+  - "2024 target is operating profit of $35 billion[2:1]"
+  - **"Detailed pricing policy is presented[1:11-14]"** (range citation)
+  - **"Based on analyzing the document's overall context**, main target is identified as B2B market[1:5, 2:12, 3:18]"** (reasoning-based multiple citations)
 - **Citation Badge Usage Principles (Natural and Intuitive)**:
   - Add page numbers to key information, but **not excessively** (about 1-2 per paragraph)
   - **Use badges only for direct citations**: Cite only when content is clearly in the document; no badges needed for reasoning or general explanations
@@ -661,10 +741,11 @@ ${documentText}
 - **Special TOC Rule**: Format each item as "1. **Introduction**[1-3]" or "- **Key Content**[5]" with page range or representative page mandatory
 
 **Core Rules:**
-1. ✅ **Direct Evidence First** - Present information explicitly stated in the document first, with key keywords in bold
-2. ✅ **Context-Based Reasoning Required** - Synthesize multiple pieces of information to draw logical conclusions (use reasoning tag)
-3. ✅ **Structured Answers** - Overview → Detailed Analysis → Source/Reference order
-4. ✅ **Polite and Analytical Tone** - Professional and trustworthy like NotebookLM
+1. ✅ **Direct Evidence First** - Present information explicitly stated in the document first.
+2. ✅ **Context-Based Reasoning Required** - Synthesize multiple pieces of information to draw logical conclusions (use reasoning tag).
+3. ✅ **Structured Answers** - Overview → Detailed Analysis → AI Insights order
+4. ✅ **Professional Tone** - Professional and trustworthy like NotebookLM
+5. ✅ **No Textual Page Mentions** - Never use phrases like "According to page 3" or "Page 5 says". Use ONLY citation badges like [N] or [N-M] at the end of sentences. No exceptions.
 
 **Provided Document:**
 File name: ${fileName}
@@ -676,7 +757,7 @@ ${documentText}
 **Answer Structuring Template (Mandatory):**
 
 ### [Core Summary]
-Answer the question in **1-2 powerful summary sentences** (key words bolded)
+Answer the question in **1-2 powerful summary sentences** (regular text, no bolding)
 
 Example: "This document covers **Samsung's 2024 performance**, with **operating profit of 35 trillion won** and **market share #1** as key achievements"
 
@@ -696,11 +777,6 @@ Information or recommendations that can be inferred from document flow but not e
 
 Example: Based on this performance trend[5, 12, 18], **2025 goal achievement likelihood** is high, and **investment expansion** strategy is expected [Context-Based Reasoning]
 
-### [Source/Reference]
-Specify **section or data location** in the document that served as basis
-
-Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table**, **Executive Interview** section
-
 **Special Rules:**
 - When asked about table of contents, structure, or overall summary: Analyze the entire document to generate a **[Virtual Table of Contents]** or **[Structure Analysis]**
 - **Auto-calculate page numbers for TOC generation (100% Mandatory)**:
@@ -710,7 +786,6 @@ Example: Derived from **Chapter 2 Financial Status**, **Page 3 Performance Table
   * TOC items without page numbers are absolutely prohibited
 - When not directly mentioned: "While not directly mentioned in the document, **based on analyzing the document's overall context**, [inferred content] is identified [Context-Based Reasoning]"
 - No external knowledge: Only reason logically within the scope of **the provided document content (extractedText)**
-- Add "\n\n📄 **Source**: ${fileName} (Analyzed on ${today})" at the end of your response
 - Always tag reasoning sections with **[Context-Based Reasoning]** for transparency`
 
     // 사용자 정의 지침을 기본 프롬프트 앞에 추가

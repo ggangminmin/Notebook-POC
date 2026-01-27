@@ -2,6 +2,7 @@
 // PostgreSQL 기반 클라우드 데이터베이스 (무제한 용량, 멀티 디바이스 지원)
 
 import { supabase } from './supabaseClient';
+import * as localDB from './idb';
 
 const BUCKET_NAME = 'notebook-files'; // Supabase Storage 버킷 이름
 
@@ -46,6 +47,16 @@ const sanitizeNotebookForStorage = (notebook) => {
 // 모든 노트북 가져오기
 export const getAllNotebooks = async () => {
   try {
+    // 1. 로컬 DB에서 먼저 시도 (빠른 로딩)
+    const localNotebooks = await localDB.localGetAllNotebooks();
+    if (localNotebooks && localNotebooks.length > 0) {
+      console.log('[Storage] 로컬 DB에서 노트북 로드:', localNotebooks.length, '개');
+
+      // 백그라운드에서 Supabase와 동기화 (선택 사항 - 여기서는 생략하거나 필요시 추가)
+      return localNotebooks;
+    }
+
+    // 2. 로컬에 없으면 Supabase에서 로드
     const { data, error } = await supabase
       .from('notebooks')
       .select('*')
@@ -56,14 +67,12 @@ export const getAllNotebooks = async () => {
       return [];
     }
 
-    console.log('[Supabase] 노트북 로드:', data.length, '개');
-
-    // 각 노트북의 메시지와 소스 정보도 함께 로드
+    // 각 노트북의 상세 정보 로드
     const notebooksWithDetails = await Promise.all(
       data.map(async (notebook) => {
         const messages = await getNotebookMessages(notebook.id);
         const sources = await getNotebookSources(notebook.id);
-        return {
+        const fullNotebook = {
           id: notebook.id,
           title: notebook.title,
           emoji: notebook.emoji,
@@ -77,12 +86,16 @@ export const getAllNotebooks = async () => {
           messages,
           sources
         };
+
+        // 로컬 DB에 캐싱
+        await localDB.localSaveNotebook(fullNotebook);
+        return fullNotebook;
       })
     );
 
     return notebooksWithDetails;
   } catch (error) {
-    console.error('[Supabase] 노트북 로드 실패:', error);
+    console.error('[Storage] 노트북 로드 중 오류:', error);
     return [];
   }
 };
@@ -90,6 +103,14 @@ export const getAllNotebooks = async () => {
 // ID로 노트북 가져오기
 export const getNotebookById = async (id) => {
   try {
+    // 1. 로컬 DB에서 확인
+    const localNotebook = await localDB.localGetNotebookById(id);
+    if (localNotebook) {
+      console.log('[Storage] 로컬 DB에서 노트북 조회 성공:', id);
+      return localNotebook;
+    }
+
+    // 2. 없으면 Supabase에서 조회
     const { data, error } = await supabase
       .from('notebooks')
       .select('*')
@@ -101,11 +122,10 @@ export const getNotebookById = async (id) => {
       return null;
     }
 
-    // 메시지와 소스 정보도 함께 로드
     const messages = await getNotebookMessages(id);
     const sources = await getNotebookSources(id);
 
-    return {
+    const fullNotebook = {
       id: data.id,
       title: data.title,
       emoji: data.emoji,
@@ -119,8 +139,12 @@ export const getNotebookById = async (id) => {
       messages,
       sources
     };
+
+    // 로컬 DB에 저장
+    await localDB.localSaveNotebook(fullNotebook);
+    return fullNotebook;
   } catch (error) {
-    console.error('[Supabase] 노트북 조회 실패:', error);
+    console.error('[Storage] 노트북 조회 중 오류:', error);
     return null;
   }
 };
@@ -128,10 +152,14 @@ export const getNotebookById = async (id) => {
 // 노트북 저장/업데이트
 export const saveNotebook = async (notebook) => {
   try {
-    // 🔥 저장 전 데이터 정제 (썸네일 제거)
+    // 🔥 먼저 로컬 DB에 즉시 저장 (사용자 경험 최적화)
+    await localDB.localSaveNotebook(notebook);
+    console.log('[Storage] 로컬 DB 저장 완료');
+
+    // 데이터 정제
     const sanitizedNotebook = sanitizeNotebookForStorage(notebook);
 
-    // 노트북 기본 정보 저장
+    // Supabase 동기화 (비동기로 진행되지만 await 하여 완료 보장)
     const notebookData = {
       id: sanitizedNotebook.id,
       title: sanitizedNotebook.title || 'Untitled Notebook',
@@ -145,34 +173,26 @@ export const saveNotebook = async (notebook) => {
       analyzed_source_ids: sanitizedNotebook.analyzedSourceIds || []
     };
 
-    console.log('[Supabase] 저장할 AI 지침:', notebookData.system_prompt_overrides);
-
     const { error: notebookError } = await supabase
       .from('notebooks')
       .upsert(notebookData, { onConflict: 'id' });
 
-    if (notebookError) {
-      console.error('[Supabase] 노트북 저장 실패:', notebookError);
-      throw notebookError;
-    }
+    if (notebookError) throw notebookError;
 
-    // 메시지 저장
-    if (sanitizedNotebook.messages && sanitizedNotebook.messages.length > 0) {
+    // 메시지 및 소스 동기화
+    if (sanitizedNotebook.messages) {
       await saveNotebookMessages(sanitizedNotebook.id, sanitizedNotebook.messages);
     }
-
-    // 소스 저장
-    if (sanitizedNotebook.sources && sanitizedNotebook.sources.length > 0) {
+    if (sanitizedNotebook.sources) {
       await saveNotebookSources(sanitizedNotebook.id, sanitizedNotebook.sources);
     }
 
-    console.log('[Supabase] ✅ 노트북 저장 성공:', sanitizedNotebook.id);
-    console.log('[Supabase] 저장된 소스 개수:', sanitizedNotebook.sources?.length || 0);
-
+    console.log('[Supabase] ✅ 클라우드 동기화 완료:', sanitizedNotebook.id);
     return sanitizedNotebook;
   } catch (error) {
-    console.error('[Supabase] ❌ 노트북 저장 실패:', error);
-    throw error;
+    console.error('[Storage] ❌ 저장/동기화 중 오류:', error);
+    // 로컬에는 저장되었을 것이므로 일단 진행 가능
+    return notebook;
   }
 };
 
@@ -340,10 +360,11 @@ export const saveNotebookSources = async (notebookId, sources) => {
     const sourcesData = [];
 
     for (const source of validSources) {
-      let filePath = null;
+      let filePath = source.file_path;
 
-      // 파일이 있으면 Supabase Storage에 업로드
-      if (source.file || source.fileBuffer) {
+      // 파일이 있고 아직 업로드되지 않았거나, 강제로 다시 업로드해야 하는 경우에만 업로드
+      // file_path가 이미 있고 source.file이 없으면 이미 업로드된 것으로 간주
+      if ((source.file || source.fileBuffer) && !filePath) {
         const fileName = `${notebookId}/${source.id}_${source.name}`;
 
         let fileToUpload;
@@ -354,6 +375,7 @@ export const saveNotebookSources = async (notebookId, sources) => {
           fileToUpload = new Blob([source.fileBuffer], { type: source.type });
         }
 
+        console.log('[Supabase] 파일 업로드 시도:', fileName);
         const { error: uploadError } = await supabase.storage
           .from(BUCKET_NAME)
           .upload(fileName, fileToUpload, {
@@ -363,9 +385,12 @@ export const saveNotebookSources = async (notebookId, sources) => {
 
         if (!uploadError) {
           filePath = fileName;
+          console.log('[Supabase] 파일 업로드 성공:', fileName);
         } else {
           console.error('[Supabase] 파일 업로드 실패:', uploadError);
         }
+      } else if (filePath) {
+        console.log('[Supabase] 이미 업로드된 파일 스킵:', source.name);
       }
 
       // 소스 메타데이터 추가
@@ -406,7 +431,11 @@ export const saveNotebookSources = async (notebookId, sources) => {
 // 노트북 삭제
 export const deleteNotebook = async (id) => {
   try {
-    // 소스에 연결된 파일 삭제
+    // 1. 로컬 DB에서 삭제
+    await localDB.localDeleteNotebook(id);
+    console.log('[Storage] 로컬 DB에서 노트북 삭제:', id);
+
+    // 2. Supabase Storage에서 파일 삭제
     const { data: sources } = await supabase
       .from('sources')
       .select('file_path')
@@ -419,7 +448,7 @@ export const deleteNotebook = async (id) => {
       }
     }
 
-    // 노트북 삭제 (CASCADE로 messages, sources도 자동 삭제)
+    // 3. Supabase DB에서 삭제 (CASCADE로 messages, sources도 자동 삭제)
     const { error } = await supabase
       .from('notebooks')
       .delete()
@@ -433,7 +462,7 @@ export const deleteNotebook = async (id) => {
     console.log('[Supabase] 노트북 삭제 성공:', id);
     return true;
   } catch (error) {
-    console.error('[Supabase] 노트북 삭제 실패:', error);
+    console.error('[Storage] 노트북 삭제 중 오류:', error);
     return false;
   }
 };

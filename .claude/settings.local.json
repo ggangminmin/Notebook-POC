@@ -50,7 +50,23 @@
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: 다중 파일 인용 시스템 완전 수정 + UI/UX 개선\n\n🐛 다중 파일 인용 버그 수정\n- 2개 이상 파일 선택 시 모든 인용이 첫 번째 파일로 연결되던 버그 수정\n- 누적 페이지 번호 시스템 구현 \\(파일1: 1-30, 파일2: 31-50\\)\n- findFileByPageNumber 헬퍼 함수로 페이지→파일 매핑\n- 전역 페이지 번호를 로컬 페이지 번호로 자동 변환\n- DataPreview에 targetFile 전달하여 정확한 파일 열기\n\n🎨 UI/UX 개선\n- 소스 패널 너비 확대: 15% → 20% \\(파일명 가독성 향상\\)\n- NotebookLM 스타일 폰트: 11.5px, line-height 1.65\n- 자동 확장 textarea \\(최소 40px, 최대 200px\\)\n- AI 메시지에 복사 버튼 추가 \\(2초간 체크 표시\\)\n- 동적 레이아웃: 설정 패널 열림/닫힘에 따라 채팅창 너비 조절\n\n📝 문서 업데이트\n- README.md: 다중 파일 인용 수정 내용 추가\n- TODO.md: 완료된 기능 업데이트\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: 다중 파일 인용 시스템 완전 수정 + 자동 분석 최적화\n\n## 다중 파일 인용 버그 수정 \\(4단계\\)\n\n### 문제 1: PDF 전환 시 우측 패널 미업데이트\n- DataPreview의 useEffect에 selectedFile.id 의존성 추가\n- 파일: src/components/DataPreview.jsx:818\n\n### 문제 2: Word/Excel 인용이 첫 번째 PDF 열림\n- App.jsx handlePageClick에서 targetFile 설정 추가\n- 파일: src/App.jsx:419-423\n\n### 문제 3: 저장된 노트북에서 인용이 첫 번째 파일로만 연결\n- processInitialMessages 함수로 페이지 범위 재계산\n- 파일: src/components/ChatInterface.jsx:13-46\n\n### 문제 4: 반복 자동 분석 메시지\n- analyzedSourceIds 트래킹 시스템 구현\n- 파일: src/App.jsx, src/components/ChatInterface.jsx, src/utils/notebookManager.js\n\n## 자동 분석 최적화 시스템\n\n### analyzedSourceIds 트래킹\n- 노트북에 analyzedSourceIds 필드 추가\n- 이미 분석된 파일은 자동 분석에서 제외\n- 메시지가 있는 노트북 로드 시 모든 소스를 분석됨으로 표시\n- 분석 완료 시 analyzedSourceIds 실시간 업데이트 및 저장\n\n### 동작 방식\n- 첫 파일 업로드 → 자동 분석 ✅\n- 동일 파일 재선택 → 건너뛰기 ✅\n- 새 파일 추가 → 새 파일만 분석 ✅\n- 기존 노트북 재열기 → 건너뛰기 ✅\n\n🤖 Generated with [Claude Code]\\(https://claude.com/claude-code\\)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
       "Bash(timeout /t 3)",
-      "Bash(timeout /t 3 /nobreak)"
+      "Bash(timeout /t 3 /nobreak)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfeat: 채팅 입력창 UI/UX 개선\n\n- 입력창 하단 안내 텍스트 제거 \\(\"문서 없이도 대화 가능 · Enter로 전송\"\\)\n- 전송 버튼과 입력창 높이 완벽 정렬 \\(items-stretch + box-border\\)\n- 최소 높이 44px 통일, 동일한 패딩 적용 \\(py-2.5\\)\n- 입력창 확장 시 버튼도 함께 늘어나도록 개선\n- TODO.md 및 README.md 업데이트\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git push)",
+      "Bash(del \"c:\\\\Users\\\\AIWEB\\\\OneDrive - 지피티코리아\\\\바탕 화면\\\\활용\\\\notebooklm copy\\\\AI_BEHAVIOR_GUIDELINES_SPEC.md\")",
+      "Bash(gh api:*)",
+      "Bash(vercel env:*)",
+      "Bash(printf:*)",
+      "Bash(timeout:*)",
+      "Bash(start http://localhost:5173)",
+      "Bash(powershell -Command \"Start-Sleep -Seconds 3; Invoke-WebRequest -Uri 'http://localhost:5173' -UseBasicParsing -TimeoutSec 5 | Select-Object -ExpandProperty StatusCode\" 2>&1:*)",
+      "Bash(powershell -Command:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: 다중 파일 스위칭 + UI 개선\n\n- 다중 파일 인용 클릭 시 파일 스위칭 문제 수정 \\(previousFileIdRef 추가\\)\n- PDF/텍스트 뷰어 헤더 간소화 \\(파일명만 표시\\)\n- 우측 패널 헤더 높이 48.95px로 통일\n- AI 지침 설정 버튼 높이 조정\n- 불필요한 UI 요소 제거 \\(업데이트 시간, 말줄임표, 괄호 등\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nchore: 추가 파일 커밋 \\(Dashboard, NotebookCard 등\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nfix: 채팅 입력창 placeholder 말줄임표 제거\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\AIWEB\\OneDrive - 지피티코리아\\바탕 화면\\활용\\notebooklm copy"
     ]
   }
 }

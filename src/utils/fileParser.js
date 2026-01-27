@@ -41,38 +41,64 @@ const renderPDFPageToImage = async (page, scale = 0.6) => {
   }
 }
 
-// Word 파일에서 텍스트 추출
+// Word 파일에서 텍스트 추출 (구조 보존형)
 const extractWordText = async (file) => {
   try {
     console.log('[Word 추출] 시작:', file.name, 'Size:', file.size)
     const arrayBuffer = await file.arrayBuffer()
-    const result = await mammoth.extractRawText({ arrayBuffer })
-    const text = result.value
 
-    // Word 파일을 페이지 단위로 나누기 (500단어당 1페이지로 가정)
-    const wordsPerPage = 500
-    const words = text.split(/\s+/)
-    const totalPages = Math.max(1, Math.ceil(words.length / wordsPerPage))
+    // HTML로 변환하여 구조 보존 (표, 목록, 제목 등)
+    const result = await mammoth.convertToHtml({ arrayBuffer })
+    const html = result.value
+
+    // 단순 텍스트도 추출 (RAG용)
+    const textResult = await mammoth.extractRawText({ arrayBuffer })
+    const rawText = textResult.value
+
+    // HTML을 단락 단위로 파싱하여 자연스러운 페이지 분할 시도
+    // 여기서는 간단하게 <p>, <h1-6>, <table> 태그를 기준으로 나눔
+    const parser = new DOMParser()
+    const doc = parser.parseFromString(html, 'text/html')
+    const elements = Array.from(doc.body.children)
+
     const pageTexts = []
+    let currentPageContent = ''
+    let currentPageWords = 0
+    let pageNumber = 1
+    const wordsPerPage = 600 // 자연스러운 단락 끊기를 고려하여 약간 상향 조정
 
-    for (let i = 0; i < totalPages; i++) {
-      const startIdx = i * wordsPerPage
-      const endIdx = Math.min((i + 1) * wordsPerPage, words.length)
-      const pageContent = words.slice(startIdx, endIdx).join(' ')
+    elements.forEach((el, index) => {
+      const elText = el.textContent || ''
+      const elWords = elText.split(/\s+/).filter(Boolean).length
 
-      pageTexts.push({
-        pageNumber: i + 1,
-        text: pageContent,
-        wordCount: endIdx - startIdx,
-        thumbnail: null // Word 파일은 썸네일 없음
-      })
-    }
+      // 현재 요소의 HTML 추가
+      currentPageContent += el.outerHTML
+      currentPageWords += elWords
 
-    console.log('[Word 추출] 완료 - 총 길이:', text.length, '페이지:', totalPages)
+      // 페이지 구분 기준: 단어 수가 넘었거나, 다음 요소가 제목(h1, h2)이거나, 마지막 요소인 경우
+      const nextEl = elements[index + 1]
+      const isNextHeading = nextEl && ['H1', 'H2', 'H3'].includes(nextEl.tagName)
+
+      if (currentPageWords >= wordsPerPage || isNextHeading || index === elements.length - 1) {
+        if (currentPageContent.trim()) {
+          pageTexts.push({
+            pageNumber: pageNumber++,
+            text: currentPageContent, // HTML 내용 저장
+            isHtml: true, // HTML임을 표시
+            wordCount: currentPageWords,
+            thumbnail: null
+          })
+          currentPageContent = ''
+          currentPageWords = 0
+        }
+      }
+    })
+
+    console.log('[Word 추출] 완료 - 페이지:', pageTexts.length)
 
     return {
-      text: text,
-      pageCount: totalPages,
+      text: rawText,
+      pageCount: pageTexts.length,
       pageTexts: pageTexts,
       pageImages: []
     }

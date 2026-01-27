@@ -245,11 +245,10 @@ const Dashboard = ({ onNotebookSelect }) => {
                 <button
                   key={page}
                   onClick={() => handlePageChange(page)}
-                  className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${
-                    currentPage === page
+                  className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${currentPage === page
                       ? 'bg-blue-500 text-white shadow-sm'
                       : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                  }`}
+                    }`}
                 >
                   {page}
                 </button>

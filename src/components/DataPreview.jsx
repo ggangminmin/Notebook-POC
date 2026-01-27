@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save, Sparkles } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
 import SystemPromptPanel from './SystemPromptPanel'
@@ -516,62 +516,62 @@ Set field to "invalid" if the request cannot be fulfilled.`
   // 페이지 이동 핸들러 (NotebookLM 스타일 - useCallback으로 메모이제이션)
   // 🚀 Retry 로직 추가: DOM이 준비될 때까지 최대 5번 재시도
   const handlePageNavigate = useCallback(({ pageNumber }) => {
-      console.log('═══════════════════════════════════════════════════════')
-      console.log('[DataPreview] 📖 페이지 이동 요청:', pageNumber)
-      console.log('[현재 상태] viewMode:', viewMode, '| 렌더링된 페이지:', pdfState.renderedPages.length)
-      console.log('═══════════════════════════════════════════════════════')
+    console.log('═══════════════════════════════════════════════════════')
+    console.log('[DataPreview] 📖 페이지 이동 요청:', pageNumber)
+    console.log('[현재 상태] viewMode:', viewMode, '| 렌더링된 페이지:', pdfState.renderedPages.length)
+    console.log('═══════════════════════════════════════════════════════')
 
-      // ✅ 강제 PDF 뷰어 모드로 전환
-      if (viewMode !== 'pdf') {
-        console.log('[DataPreview] ⚙️ PDF 뷰어 모드로 전환 중...')
-        setViewMode('pdf')
-      }
+    // ✅ 강제 PDF 뷰어 모드로 전환
+    if (viewMode !== 'pdf') {
+      console.log('[DataPreview] ⚙️ PDF 뷰어 모드로 전환 중...')
+      setViewMode('pdf')
+    }
 
-      // 🎯 Retry 스크롤 함수: DOM이 그려질 때까지 재시도
-      const tryScroll = (attempt = 1, maxAttempts = 5) => {
-        const pageKey = `page-${pageNumber}`
-        const pageElement = pageRefs.current[pageKey]
-        const scrollContainer = scrollContainerRef.current
+    // 🎯 Retry 스크롤 함수: DOM이 그려질 때까지 재시도
+    const tryScroll = (attempt = 1, maxAttempts = 5) => {
+      const pageKey = `page-${pageNumber}`
+      const pageElement = pageRefs.current[pageKey]
+      const scrollContainer = scrollContainerRef.current
 
-        console.log(`[DataPreview Scroll] 시도 ${attempt}/${maxAttempts} - 페이지 ${pageNumber}`)
+      console.log(`[DataPreview Scroll] 시도 ${attempt}/${maxAttempts} - 페이지 ${pageNumber}`)
 
-        if (pageElement && scrollContainer) {
-          // ✅ 성공: 페이지 요소 발견
-          const elementTop = pageElement.offsetTop
-          const offset = 20
+      if (pageElement && scrollContainer) {
+        // ✅ 성공: 페이지 요소 발견
+        const elementTop = pageElement.offsetTop
+        const offset = 20
 
-          console.log(`[DataPreview Scroll] ✨ 페이지 ${pageNumber} 발견! 스크롤 시작 (offset: ${offset}px)`)
+        console.log(`[DataPreview Scroll] ✨ 페이지 ${pageNumber} 발견! 스크롤 시작 (offset: ${offset}px)`)
 
-          // Smooth scroll 실행
-          scrollContainer.scrollTo({
-            top: elementTop - offset,
-            behavior: 'smooth'
-          })
+        // Smooth scroll 실행
+        scrollContainer.scrollTo({
+          top: elementTop - offset,
+          behavior: 'smooth'
+        })
 
-          console.log('✅ [DataPreview] 페이지 이동 완료:', pageNumber)
+        console.log('✅ [DataPreview] 페이지 이동 완료:', pageNumber)
+      } else {
+        // ⚠️ 실패: 페이지 요소 아직 없음
+        if (attempt < maxAttempts) {
+          console.warn(`⚠️ [DataPreview] 페이지 ${pageKey} 아직 없음. ${100 * attempt}ms 후 재시도...`)
+
+          // 재귀 호출: 점진적 지연 (100ms, 200ms, 300ms, ...)
+          setTimeout(() => {
+            tryScroll(attempt + 1, maxAttempts)
+          }, 100 * attempt)
         } else {
-          // ⚠️ 실패: 페이지 요소 아직 없음
-          if (attempt < maxAttempts) {
-            console.warn(`⚠️ [DataPreview] 페이지 ${pageKey} 아직 없음. ${100 * attempt}ms 후 재시도...`)
-
-            // 재귀 호출: 점진적 지연 (100ms, 200ms, 300ms, ...)
-            setTimeout(() => {
-              tryScroll(attempt + 1, maxAttempts)
-            }, 100 * attempt)
-          } else {
-            // ❌ 최종 실패
-            console.error('❌ [DataPreview] 최대 재시도 횟수 초과! 페이지를 찾을 수 없습니다:', pageKey)
-            console.error('사용 가능한 페이지 refs:', Object.keys(pageRefs.current))
-            console.error('viewMode:', viewMode)
-            console.error('렌더링된 페이지 수:', pdfState.renderedPages.length)
-          }
+          // ❌ 최종 실패
+          console.error('❌ [DataPreview] 최대 재시도 횟수 초과! 페이지를 찾을 수 없습니다:', pageKey)
+          console.error('사용 가능한 페이지 refs:', Object.keys(pageRefs.current))
+          console.error('viewMode:', viewMode)
+          console.error('렌더링된 페이지 수:', pdfState.renderedPages.length)
         }
       }
+    }
 
-      // 초기 지연 후 스크롤 시작 (모드 전환 시간 고려)
-      setTimeout(() => {
-        tryScroll()
-      }, viewMode === 'pdf' ? 50 : 200) // PDF 모드면 빠르게, 아니면 여유 있게
+    // 초기 지연 후 스크롤 시작 (모드 전환 시간 고려)
+    setTimeout(() => {
+      tryScroll()
+    }, viewMode === 'pdf' ? 50 : 200) // PDF 모드면 빠르게, 아니면 여유 있게
   }, [viewMode, pdfState.renderedPages.length])
 
   // 페이지 하이라이트 핸들러 (useCallback으로 메모이제이션)
@@ -648,8 +648,8 @@ Set field to "invalid" if the request cannot be fulfilled.`
       // App.jsx에서 selectedFile이 이미 targetFile로 설정되어 전달되므로
       // previousFileIdRef를 사용하여 실제 파일 전환을 감지
       const isFileChanging = selectedFile &&
-                             previousFileIdRef.current !== null &&
-                             previousFileIdRef.current !== selectedFile.id
+        previousFileIdRef.current !== null &&
+        previousFileIdRef.current !== selectedFile.id
 
       if (isFileChanging) {
         console.log('[DataPreview] 🔄 파일 전환 감지!')
@@ -936,7 +936,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
 
     const analyzePersonas = async () => {
       console.log('[DataPreview] 파일 변경 감지 - 페르소나 분석 시작:', selectedFile.name)
-      
+
       // 기존 행동 지침 초기화
       setAiGuidelines(prev => ({
         ...prev,
@@ -953,7 +953,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
           { name: selectedFile.name, parsedData: selectedFile.parsedData },
           language
         )
-        
+
         if (analysis) {
           setPersonaAnalysis(analysis)
           console.log('[DataPreview] 페르소나 분석 완료:', analysis)
@@ -1268,11 +1268,10 @@ Set field to "invalid" if the request cannot be fulfilled.`
                     <div
                       key={`page-${pageData.pageNumber}`}
                       ref={(el) => pageRefs.current[`page-${pageData.pageNumber}`] = el}
-                      className={`bg-white mx-auto shadow-lg rounded-lg overflow-hidden transition-all duration-300 hover:shadow-xl ${
-                        highlightedPage === pageData.pageNumber
-                          ? 'border-4 border-blue-500 ring-8 ring-blue-300 ring-opacity-50 animate-pulse scale-105 shadow-2xl'
-                          : 'border border-gray-200'
-                      }`}
+                      className={`bg-white mx-auto shadow-lg rounded-lg overflow-hidden transition-all duration-300 hover:shadow-xl ${highlightedPage === pageData.pageNumber
+                        ? 'border-4 border-blue-500 ring-8 ring-blue-300 ring-opacity-50 animate-pulse scale-105 shadow-2xl'
+                        : 'border border-gray-200'
+                        }`}
                       style={highlightedPage === pageData.pageNumber ? {
                         transform: 'scale(1.02)',
                         boxShadow: '0 20px 60px rgba(59, 130, 246, 0.4)',
@@ -1280,14 +1279,12 @@ Set field to "invalid" if the request cannot be fulfilled.`
                       } : {}}
                     >
                       {/* 페이지 번호 표시 - NotebookLM 스타일 (슬림화) + 하이라이트 효과 */}
-                      <div className={`px-3 py-2 border-b border-gray-200 flex items-center justify-between transition-all ${
-                        highlightedPage === pageData.pageNumber
-                          ? 'bg-gradient-to-r from-blue-100 to-indigo-100'
-                          : 'bg-gradient-to-r from-blue-50 to-indigo-50'
-                      }`}>
-                        <span className={`text-[11px] font-bold flex items-center space-x-1.5 ${
-                          highlightedPage === pageData.pageNumber ? 'text-blue-700' : 'text-gray-700'
+                      <div className={`px-3 py-2 border-b border-gray-200 flex items-center justify-between transition-all ${highlightedPage === pageData.pageNumber
+                        ? 'bg-gradient-to-r from-blue-100 to-indigo-100'
+                        : 'bg-gradient-to-r from-blue-50 to-indigo-50'
                         }`}>
+                        <span className={`text-[11px] font-bold flex items-center space-x-1.5 ${highlightedPage === pageData.pageNumber ? 'text-blue-700' : 'text-gray-700'
+                          }`}>
                           <FileText className={`w-3 h-3 ${highlightedPage === pageData.pageNumber ? 'text-blue-700' : 'text-blue-600'}`} />
                           <span>{language === 'ko' ? '페이지' : 'Page'} {pageData.pageNumber}</span>
                           {highlightedPage === pageData.pageNumber && (
@@ -1391,107 +1388,97 @@ Set field to "invalid" if the request cannot be fulfilled.`
           <div className="h-full flex flex-col">
             <div
               ref={scrollContainerRef}
-              className="flex-1 overflow-y-auto bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50"
+              className="flex-1 overflow-y-auto bg-gradient-to-b from-slate-50 via-slate-100 to-slate-50"
               style={{ scrollBehavior: 'smooth' }}
             >
-              <div className="py-4 px-3 space-y-4">
-                {/* 전체 페이지를 순회하며 표시 (텍스트만 추출됨 - 이미지/레이아웃 제외) */}
-                {selectedFile?.parsedData?.pageTexts?.map((section, index) => {
-                  const pageNumber = index + 1
-                  const isHighlighted = rightPanelState.highlightSectionIndex === pageNumber
+              <div className="py-0 px-0">
+                {/* 전체 문서 (하나의 긴 종이 스타일로 통합) */}
+                <div className="max-w-4xl mx-auto my-8 bg-white shadow-2xl min-h-[calc(100vh-200px)] border border-slate-200 rounded-sm relative overflow-hidden">
+                  <div className="h-1 bg-blue-600/20 w-full" />
 
-                  return (
-                    <div
-                      key={`section-${pageNumber}`}
-                      id={`section-${pageNumber}`}
-                      className={`bg-white mx-auto shadow-md rounded-lg overflow-hidden border transition-all duration-300 ${
-                        isHighlighted
-                          ? 'border-yellow-400 ring-4 ring-yellow-200 shadow-xl'
-                          : 'border-gray-200'
-                      }`}
-                      style={{ maxWidth: '800px' }}
-                    >
-                      {/* 페이지 헤더 */}
-                      <div className={`px-4 py-2 border-b flex items-center justify-between ${
-                        isHighlighted
-                          ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-200'
-                          : 'bg-gradient-to-r from-blue-50 to-indigo-50 border-gray-200'
-                      }`}>
-                        <span className={`text-xs font-semibold ${
-                          isHighlighted ? 'text-yellow-800' : 'text-blue-700'
-                        }`}>
-                          {language === 'ko' ? `페이지 ${pageNumber}` : `Page ${pageNumber}`}
-                        </span>
-                        {isHighlighted && (
-                          <span className="text-[10px] bg-yellow-200 text-yellow-900 px-2 py-0.5 rounded-full font-bold">
-                            {language === 'ko' ? '인용됨' : 'Cited'}
-                          </span>
-                        )}
-                      </div>
+                  <div className="p-12 sm:p-20">
+                    {selectedFile?.parsedData?.pageTexts?.map((section, index) => {
+                      const pageNumber = index + 1
+                      const isHighlighted = rightPanelState.highlightSectionIndex === pageNumber || highlightedPage === pageNumber
 
-                      {/* 페이지 내용 (Markdown 렌더링 적용) */}
-                      <div className="p-4">
-                        <div className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-800 prose-headings:font-semibold prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm]}
-                            components={{
-                              // 표(Table) 스타일링
-                              table: ({node, ...props}) => (
-                                <table className="min-w-full divide-y divide-gray-200 border border-gray-300 my-3" {...props} />
-                              ),
-                              thead: ({node, ...props}) => (
-                                <thead className="bg-gray-50" {...props} />
-                              ),
-                              th: ({node, ...props}) => (
-                                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 border-b border-gray-300" {...props} />
-                              ),
-                              td: ({node, ...props}) => (
-                                <td className="px-3 py-2 text-sm border-t border-gray-200" {...props} />
-                              ),
-                              // 제목 스타일링
-                              h1: ({node, ...props}) => (
-                                <h1 className="text-xl font-bold text-gray-900 mt-4 mb-2 border-b pb-1" {...props} />
-                              ),
-                              h2: ({node, ...props}) => (
-                                <h2 className="text-lg font-bold text-gray-800 mt-3 mb-2" {...props} />
-                              ),
-                              h3: ({node, ...props}) => (
-                                <h3 className="text-base font-semibold text-gray-800 mt-2 mb-1" {...props} />
-                              ),
-                              // 리스트 스타일링
-                              ul: ({node, ...props}) => (
-                                <ul className="list-disc list-inside ml-2 space-y-1" {...props} />
-                              ),
-                              ol: ({node, ...props}) => (
-                                <ol className="list-decimal list-inside ml-2 space-y-1" {...props} />
-                              ),
-                              // 코드 블록 스타일링
-                              code: ({node, inline, ...props}) => (
-                                inline
-                                  ? <code className="bg-gray-100 px-1.5 py-0.5 rounded text-xs font-mono text-pink-600" {...props} />
-                                  : <code className="block bg-gray-900 text-gray-100 p-3 rounded-lg text-xs font-mono overflow-x-auto my-2" {...props} />
-                              ),
-                              // 인용구 스타일링
-                              blockquote: ({node, ...props}) => (
-                                <blockquote className="border-l-4 border-blue-400 pl-4 py-1 my-2 bg-blue-50 italic text-gray-700" {...props} />
-                              ),
-                              // 링크 스타일링
-                              a: ({node, ...props}) => (
-                                <a className="text-blue-600 hover:underline" {...props} />
-                              ),
-                              // 단락 스타일링
-                              p: ({node, ...props}) => (
-                                <p className="my-2 leading-relaxed" {...props} />
-                              )
-                            }}
-                          >
-                            {section.text}
-                          </ReactMarkdown>
+                      return (
+                        <div
+                          key={`section-${pageNumber}`}
+                          id={`section-${pageNumber}`}
+                          className="relative group mb-1 scroll-mt-32 px-4 py-2 transition-all duration-500"
+                        >
+                          {/* 내용 렌더링 */}
+                          <div className={`prose prose-slate max-w-none transition-colors duration-700 ${isHighlighted ? 'prose-p:text-slate-900' : 'text-slate-600'
+                            }`}>
+                            {section.isHtml ? (
+                              <div
+                                className={`word-content-render transition-all duration-500 ${isHighlighted ? '[&_p]:bg-purple-50 [&_p]:inline-block [&_p]:px-1 [&_p]:rounded-sm' : ''}`}
+                                dangerouslySetInnerHTML={{ __html: section.text }}
+                              />
+                            ) : (
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  table: ({ node, ...props }) => (
+                                    <div className="my-8 overflow-hidden rounded-xl border border-slate-200 shadow-sm">
+                                      <table className="min-w-full divide-y divide-slate-200" {...props} />
+                                    </div>
+                                  ),
+                                  thead: ({ node, ...props }) => <thead className="bg-slate-50/50" {...props} />,
+                                  th: ({ node, ...props }) => <th className="px-5 py-4 text-left text-xs font-bold text-slate-500 uppercase tracking-widest" {...props} />,
+                                  td: ({ node, ...props }) => <td className="px-5 py-4 text-sm text-slate-600 border-t border-slate-100" {...props} />,
+                                  h1: ({ node, ...props }) => (
+                                    <h1 className="text-4xl font-extrabold text-slate-900 mt-14 mb-10 tracking-tight leading-tight">
+                                      <span className={`transition-all duration-500 ${isHighlighted ? 'bg-purple-100/70 px-2 py-0.5 rounded-sm' : ''}`}>
+                                        {props.children}
+                                      </span>
+                                    </h1>
+                                  ),
+                                  h2: ({ node, ...props }) => (
+                                    <h2 className="text-2xl font-bold text-slate-800 mt-12 mb-8 tracking-tight border-b border-slate-100 pb-3">
+                                      <span className={`transition-all duration-500 ${isHighlighted ? 'bg-purple-50/80 px-1.5 py-0.5 rounded-sm' : ''}`}>
+                                        {props.children}
+                                      </span>
+                                    </h2>
+                                  ),
+                                  h3: ({ node, ...props }) => (
+                                    <h3 className="text-xl font-bold text-slate-800 mt-10 mb-6 tracking-tight">
+                                      <span className={`transition-all duration-500 ${isHighlighted ? 'bg-purple-50/80 px-1 py-0.5 rounded-sm' : ''}`}>
+                                        {props.children}
+                                      </span>
+                                    </h3>
+                                  ),
+                                  strong: ({ node, ...props }) => <strong className="font-bold text-slate-900 underline decoration-slate-200 underline-offset-4" {...props} />,
+                                  blockquote: ({ node, ...props }) => (
+                                    <blockquote className="border-l-4 border-slate-300 pl-8 py-3 my-10 italic text-slate-600 bg-slate-50/50 rounded-r-2xl" {...props} />
+                                  ),
+                                  p: ({ node, ...props }) => (
+                                    <p className="leading-relaxed my-4 first:mt-0 last:mb-0">
+                                      <span className={`transition-all duration-700 ${isHighlighted ? 'bg-purple-50/90 box-decoration-clone px-1 py-0.5 rounded-sm shadow-[0_0_0_2px_rgba(250,245,255,0.9)]' : ''}`}>
+                                        {props.children}
+                                      </span>
+                                    </p>
+                                  ),
+                                }}
+                              >
+                                {section.text}
+                              </ReactMarkdown>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )
+                    })}
+                  </div>
+
+                  {/* 문서 푸터 가이드 */}
+                  <div className="py-16 border-t border-slate-100 bg-slate-50/30 text-center">
+                    <div className="text-xs text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center space-x-2">
+                      <div className="w-8 h-px bg-slate-200" />
+                      <span>{language === 'ko' ? '문서의 끝' : 'End of Document'}</span>
+                      <div className="w-8 h-px bg-slate-200" />
                     </div>
-                  )
-                })}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1720,11 +1707,10 @@ Set field to "invalid" if the request cannot be fulfilled.`
                       {editHistory.map((entry, index) => (
                         <div
                           key={index}
-                          className={`text-xs p-2 rounded ${
-                            index === currentHistoryIndex
-                              ? 'bg-blue-100 border border-blue-300'
-                              : 'bg-white border border-gray-200'
-                          }`}
+                          className={`text-xs p-2 rounded ${index === currentHistoryIndex
+                            ? 'bg-blue-100 border border-blue-300'
+                            : 'bg-white border border-gray-200'
+                            }`}
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-gray-700">
@@ -1952,27 +1938,29 @@ Set field to "invalid" if the request cannot be fulfilled.`
             </div>
           </div>
         )}
-      </div>
+      </div >
 
       {/* Footer */}
-      {selectedFile && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
-          {/* 동기화 알림 배너 */}
-          {showSyncNotification && (
-            <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center space-x-2">
-              <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-              <span>
-                {language === 'ko'
-                  ? '대화 이력이 구조화 데이터로 동기화되었습니다'
-                  : 'Chat history synchronized to structured data'}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
+      {
+        selectedFile && (
+          <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
+            {/* 동기화 알림 배너 */}
+            {showSyncNotification && (
+              <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center space-x-2">
+                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                </svg>
+                <span>
+                  {language === 'ko'
+                    ? '대화 이력이 구조화 데이터로 동기화되었습니다'
+                    : 'Chat history synchronized to structured data'}
+                </span>
+              </div>
+            )}
+          </div>
+        )
+      }
+    </div >
   )
 }
 

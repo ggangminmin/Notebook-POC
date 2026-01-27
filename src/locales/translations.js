@@ -65,6 +65,16 @@ const translations = {
       loading: '로딩 중...',
       urlHint: '웹 페이지의 메타데이터를 자동으로 추출합니다',
       supportedFormats: '지원 형식'
+    },
+    errors: {
+      default: '죄송합니다. 오류가 발생했습니다.',
+      tokenLimit: '입력 데이터가 너무 커서 토큰 제한을 초과했습니다. 문서의 양을 줄여주세요.',
+      quotaExceeded: '사용량 한도를 초과했습니다. 잠시 후 다시 시도해 주세요.',
+      invalidApiKey: 'API 키가 유효하지 않습니다. 설정을 확인해 주세요.',
+      fileParsing: '파일 파싱 중 오류가 발생했습니다.',
+      urlFetch: 'URL 정보를 가져오는 중 오류가 발생했습니다.',
+      noDocument: '문서를 선택하여 대화를 시작해 주세요.',
+      safetyBlocked: '안전 가이드라인에 따른 차단으로 응답을 생성할 수 없습니다.'
     }
   },
   en: {
@@ -133,6 +143,16 @@ const translations = {
       loading: 'Loading...',
       urlHint: 'Automatically extracts metadata from the web page',
       supportedFormats: 'Supported Formats'
+    },
+    errors: {
+      default: 'Sorry, an error occurred.',
+      tokenLimit: 'Input tokens exceed the limit. Please reduce the document size.',
+      quotaExceeded: 'Usage quota exceeded. Please try again later.',
+      invalidApiKey: 'Invalid API key. Please check your settings.',
+      fileParsing: 'Error occurred while parsing the file.',
+      urlFetch: 'Error occurred while fetching URL information.',
+      noDocument: 'Please select a document to start the conversation.',
+      safetyBlocked: 'Request blocked by safety policy.'
     }
   }
 }

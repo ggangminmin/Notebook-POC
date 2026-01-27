@@ -10,9 +10,9 @@ import CitationBadge from './CitationBadge'
 // ChatGPT 로고 SVG 컴포넌트
 const ChatGPTLogo = ({ className, isActive }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M22.2819 9.8211C23.5136 9.8211 24.5103 8.82445 24.5103 7.59277C24.5103 6.36109 23.5136 5.36445 22.2819 5.36445C21.0503 5.36445 20.0536 6.36109 20.0536 7.59277C20.0536 8.82445 21.0503 9.8211 22.2819 9.8211Z" fill={isActive ? "currentColor" : "#6B7280"}/>
-    <path d="M12 2C6.477 2 2 6.477 2 12C2 17.523 6.477 22 12 22C17.523 22 22 17.523 22 12C22 6.477 17.523 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill={isActive ? "currentColor" : "#6B7280"}/>
-    <circle cx="12" cy="12" r="6" fill={isActive ? "currentColor" : "#6B7280"}/>
+    <path d="M22.2819 9.8211C23.5136 9.8211 24.5103 8.82445 24.5103 7.59277C24.5103 6.36109 23.5136 5.36445 22.2819 5.36445C21.0503 5.36445 20.0536 6.36109 20.0536 7.59277C20.0536 8.82445 21.0503 9.8211 22.2819 9.8211Z" fill={isActive ? "currentColor" : "#6B7280"} />
+    <path d="M12 2C6.477 2 2 6.477 2 12C2 17.523 6.477 22 12 22C17.523 22 22 17.523 22 12C22 6.477 17.523 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill={isActive ? "currentColor" : "#6B7280"} />
+    <circle cx="12" cy="12" r="6" fill={isActive ? "currentColor" : "#6B7280"} />
   </svg>
 )
 
@@ -27,7 +27,7 @@ const GeminiLogo = ({ className, isActive }) => (
       </linearGradient>
     </defs>
     <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill={isActive ? "url(#gemini-gradient)" : "#6B7280"} />
-    <path d="M12 8L8 10.5V15.5L12 18L16 15.5V10.5L12 8Z" fill="white" opacity="0.3"/>
+    <path d="M12 8L8 10.5V15.5L12 18L16 15.5V10.5L12 8Z" fill="white" opacity="0.3" />
   </svg>
 )
 
@@ -76,7 +76,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   }
 
   const [messages, setMessages] = useState([]) // 빈 배열로 시작
-  const [input, setInput] = useState('')
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const [copiedMessageId, setCopiedMessageId] = useState(null)
@@ -125,21 +124,21 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   // 텍스트 블록에서 대괄호 없는 페이지 패턴을 처리하는 헬퍼 함수
   const processBarePagePatterns = (textBlock, pageTexts, pageClickHandler, keyPrefix) => {
     if (!textBlock || typeof textBlock !== 'string') return [textBlock]
-    
+
     let processedText = textBlock
     const badges = []
     let badgeCounter = 0
-    
+
     // 플레이스홀더로 교체하기 위해 역순으로 처리 (인덱스 유지)
     const replacements = []
-    
+
     // 1단계: "페이지 15", "페이지 15 17" 패턴 처리
     const pagePrefixPattern = /페이지\s+((?:\d+(?:\s+\d+)*))/g
     let pageMatch
     while ((pageMatch = pagePrefixPattern.exec(textBlock)) !== null) {
       const numbers = pageMatch[1].trim().split(/\s+/).filter(n => /^\d+$/.test(n))
       const placeholder = `__PAGE_BADGE_${keyPrefix}_${badgeCounter++}__`
-      
+
       replacements.push({
         original: pageMatch[0],
         placeholder: placeholder,
@@ -148,17 +147,17 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         index: pageMatch.index
       })
     }
-    
+
     // 2단계: 범위 패턴 처리 (예: 15-18 또는 15–18 en dash 지원)
     const rangePattern = /\b(\d+)\s*[-–]\s*(\d+)\b/g
     let rangeMatch
     while ((rangeMatch = rangePattern.exec(textBlock)) !== null) {
       // 이미 처리된 "페이지" 패턴과 겹치지 않는지 확인
-      const isOverlapping = replacements.some(r => 
-        rangeMatch.index >= r.index && 
+      const isOverlapping = replacements.some(r =>
+        rangeMatch.index >= r.index &&
         rangeMatch.index + rangeMatch[0].length <= r.index + r.original.length
       )
-      
+
       if (!isOverlapping) {
         const placeholder = `__RANGE_BADGE_${keyPrefix}_${badgeCounter++}__`
         replacements.push({
@@ -171,7 +170,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         })
       }
     }
-    
+
     // 3단계: 콤마(,)로 구분된 숫자 패턴 처리 (예: 16, 18 또는 3, 7, 12)
     const commaNumberPattern = /\b(\d+)(?:\s*,\s*(\d+))+\b/g
     let commaMatch
@@ -219,23 +218,23 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         }
       }
     }
-    
+
     // 역순으로 정렬하여 뒤에서부터 교체 (인덱스 유지)
     replacements.sort((a, b) => b.index - a.index)
-    
+
     // 텍스트에 플레이스홀더 삽입
     replacements.forEach(rep => {
-      processedText = processedText.substring(0, rep.index) + 
-                     rep.placeholder + 
-                     processedText.substring(rep.index + rep.original.length)
+      processedText = processedText.substring(0, rep.index) +
+        rep.placeholder +
+        processedText.substring(rep.index + rep.original.length)
     })
-    
+
     // replacement를 맵으로 변환 (플레이스홀더로 쉽게 찾기 위해)
     const replacementMap = new Map()
     replacements.forEach((rep, idx) => {
       replacementMap.set(rep.placeholder, rep)
     })
-    
+
     // 플레이스홀더를 배지 컴포넌트로 교체
     const parts = []
     let currentIndex = 0
@@ -253,11 +252,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       if (placeholderMatch.index > currentIndex) {
         parts.push(processedText.substring(currentIndex, placeholderMatch.index))
       }
-      
+
       // 해당하는 replacement 찾기
       const placeholder = placeholderMatch[0]
       const replacement = replacementMap.get(placeholder)
-      
+
       if (replacement) {
         if (replacement.type === 'range') {
           // 범위를 개별 배지로 분리 (시작 페이지와 끝 페이지)
@@ -301,28 +300,24 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           })
         }
       }
-      
+
       currentIndex = placeholderMatch.index + placeholderMatch[0].length
     }
-    
+
     // 남은 텍스트
     if (currentIndex < processedText.length) {
       parts.push(processedText.substring(currentIndex))
     }
-    
+
     return parts.length > 0 ? parts : [textBlock]
   }
 
   // 페이지 번호로 해당 파일 찾기 (다중 파일 지원)
   const findFileByPageNumber = (pageNumber, allSources) => {
-    console.log('[findFileByPageNumber] 🔍 페이지 검색 시작:', pageNumber)
-    console.log('[findFileByPageNumber] allSources 개수:', allSources?.length || 0)
-
     if (!allSources || allSources.length === 0) return null
 
     // 단일 파일인 경우
     if (allSources.length === 1) {
-      console.log('[findFileByPageNumber] ✅ 단일 파일 모드:', allSources[0]?.name)
       return {
         file: allSources[0],
         localPageNumber: pageNumber  // 파일 내 로컬 페이지 번호
@@ -330,15 +325,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     // 다중 파일인 경우: 누적 페이지 범위로 찾기
-    console.log('[findFileByPageNumber] 📚 다중 파일 모드 - 파일 범위:')
-    allSources.forEach((file, idx) => {
-      console.log(`  ${idx + 1}. ${file.name}: 페이지 ${file.startPage}-${file.endPage} (${file.pageCount}페이지)`)
-    })
-
     for (const file of allSources) {
       if (pageNumber >= file.startPage && pageNumber <= file.endPage) {
         const localPageNumber = pageNumber - file.startPage + 1
-        console.log(`[findFileByPageNumber] ✅ 파일 찾음: ${file.name}, 로컬 페이지: ${localPageNumber}`)
         return {
           file: file,
           localPageNumber: localPageNumber
@@ -347,7 +336,6 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     // 찾지 못한 경우 첫 번째 파일 기본값
-    console.warn('[findFileByPageNumber] ⚠️ 파일을 찾지 못함! 첫 번째 파일 사용')
     return {
       file: allSources[0],
       localPageNumber: pageNumber
@@ -355,13 +343,9 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   }
 
   // [숫자] 패턴을 CitationBadge로 변환하는 함수 (NotebookLM 스타일 강화)
-  // 복합 인용구 지원: [35, 38, 문서 맥락 기반 추론] 또는 {35, 38}
-  // 대괄호 없는 패턴도 지원: 페이지 15, 15 17, 15-18, 2-14
+  // [숫자] 패턴을 CitationBadge로 변환하는 함수 (NotebookLM 스타일 강화)
   const renderTextWithCitations = (text, allSources = [], pageClickHandler = onPageClick) => {
     if (!text || typeof text !== 'string') return text
-
-    // pageTexts 추출 (하위 호환성)
-    const pageTexts = allSources?.[0]?.pageTexts || []
 
     // 대괄호 [] 또는 중괄호 {} 모두 지원
     const citationPattern = /[\[\{]([^\]\}]+)[\]\}]/g
@@ -369,113 +353,128 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     let lastIndex = 0
     let match
 
-    // 먼저 대괄호/중괄호가 있는 패턴 처리
     while ((match = citationPattern.exec(text)) !== null) {
-      // 매칭 이전 텍스트 추가 (대괄호 없는 패턴은 일단 비활성화)
       if (match.index > lastIndex) {
         parts.push(text.substring(lastIndex, match.index))
       }
 
-      // 대괄호/중괄호 안의 내용 추출
       const citationContent = match[1]
       const items = citationContent.split(',').map(item => item.trim())
 
-      // 숫자만 있는지 확인 (순수 숫자 또는 범위만 배지로 변환)
-      const hasOnlyNumbers = items.every(item =>
-        /^\d+$/.test(item) || /^\d+\s*[-–]\s*\d+$/.test(item)
-      )
-
-      // 텍스트가 섞여 있으면 원본 그대로 표시
-      if (!hasOnlyNumbers) {
-        parts.push(match[0]) // 대괄호/중괄호 포함 원본 텍스트
-        return
-      }
-
-      // 각 항목을 순회하며 배지 생성 (숫자만 있는 경우)
+      // 숫자/범위 항목과 텍스트 항목 분리
       items.forEach((item, idx) => {
-        // 1. 범위 인용 체크 (예: "5-8" 또는 "5–8" en dash 지원)
-        const rangeMatch = item.match(/^(\d+)\s*[-–]\s*(\d+)$/)
+        // [문서번호:페이지번호] 형식 체크 (예: 1:5, 2:10-12)
+        const multiDocMatch = item.match(/^(\d+)\s*:\s*(.+)$/)
 
-        if (rangeMatch) {
-          const startPage = parseInt(rangeMatch[1])
-          const endPage = parseInt(rangeMatch[2])
+        if (multiDocMatch) {
+          const docIdx = parseInt(multiDocMatch[1]) - 1
+          const pagePart = multiDocMatch[2].trim()
 
-          // 시작 페이지 파일 찾기
-          const startFileInfo = findFileByPageNumber(startPage, allSources)
-          const startFile = startFileInfo?.file || allSources[0]
-          const startLocalPage = startFileInfo?.localPageNumber || startPage
-          const startPageContent = startFile?.pageTexts?.[startLocalPage - 1]?.text || `Page ${startPage} content preview`
+          const targetFile = allSources[docIdx] || allSources[0]
 
-          // 끝 페이지 파일 찾기
-          const endFileInfo = findFileByPageNumber(endPage, allSources)
-          const endFile = endFileInfo?.file || allSources[0]
-          const endLocalPage = endFileInfo?.localPageNumber || endPage
-          const endPageContent = endFile?.pageTexts?.[endLocalPage - 1]?.text || `Page ${endPage} content preview`
+          // 페이지 부분 분석 (단일 또는 범위)
+          const rangeMatch = pagePart.match(/^(\d+)\s*[-–]\s*(\d+)$/)
 
-          // 시작 페이지 배지 - 🔥 sourceId와 localPageNumber 추가
-          parts.push(
-            <CitationBadge
-              key={`citation-${match.index}-${idx}-range-start-${startPage}`}
-              pageNumber={startPage}
-              pageContent={startPageContent}
-              onPageClick={pageClickHandler}
-              sourceId={startFile?.id}
-              localPageNumber={startLocalPage}
-              sourceName={startFile?.name}
-            />
-          )
+          if (rangeMatch) {
+            const startLocalPage = parseInt(rangeMatch[1])
+            const endLocalPage = parseInt(rangeMatch[2])
 
-          // 끝 페이지 배지 (시작과 끝이 다를 경우에만) - 🔥 sourceId와 localPageNumber 추가
-          if (startPage !== endPage) {
+            const startPageContent = targetFile?.pageTexts?.[startLocalPage - 1]?.text || `Page ${startLocalPage} content`
+            const endPageContent = targetFile?.pageTexts?.[endLocalPage - 1]?.text || `Page ${endLocalPage} content`
+
             parts.push(
               <CitationBadge
-                key={`citation-${match.index}-${idx}-range-end-${endPage}`}
-                pageNumber={endPage}
-                pageContent={endPageContent}
+                key={`citation-${match.index}-${idx}-start-${docIdx}-${startLocalPage}`}
+                pageNumber={startLocalPage} // UI에는 로컬 페이지 번호만 표시
+                pageContent={startPageContent}
                 onPageClick={pageClickHandler}
-                sourceId={endFile?.id}
-                localPageNumber={endLocalPage}
-                sourceName={endFile?.name}
+                sourceId={targetFile?.id}
+                localPageNumber={startLocalPage}
+                sourceName={targetFile?.name}
+              />
+            )
+
+            if (startLocalPage !== endLocalPage) {
+              parts.push(
+                <CitationBadge
+                  key={`citation-${match.index}-${idx}-end-${docIdx}-${endLocalPage}`}
+                  pageNumber={endLocalPage}
+                  pageContent={endPageContent}
+                  onPageClick={pageClickHandler}
+                  sourceId={targetFile?.id}
+                  localPageNumber={endLocalPage}
+                  sourceName={targetFile?.name}
+                />
+              )
+            }
+          } else if (/^\d+$/.test(pagePart)) {
+            const localPage = parseInt(pagePart)
+            const pageContent = targetFile?.pageTexts?.[localPage - 1]?.text || `Page ${localPage} content`
+
+            parts.push(
+              <CitationBadge
+                key={`citation-${match.index}-${idx}-page-${docIdx}-${localPage}`}
+                pageNumber={localPage}
+                pageContent={pageContent}
+                onPageClick={pageClickHandler}
+                sourceId={targetFile?.id}
+                localPageNumber={localPage}
+                sourceName={targetFile?.name}
               />
             )
           }
         }
-        // 2. 단일 숫자 체크 (예: "35", "38")
-        else if (/^\d+$/.test(item)) {
-          const pageNum = parseInt(item)
+        // 하위 호환성 또는 단일 문서용 (기존 로직 유지하되 현재는 로컬 페이지로 간주)
+        else {
+          const isNumeric = /^\d+$/.test(item)
+          const rangeMatch = item.match(/^(\d+)\s*[-–]\s*(\d+)$/)
 
-          // 다중 파일 지원: 페이지 번호로 해당 파일 찾기
-          const fileInfo = findFileByPageNumber(pageNum, allSources)
-          const targetFile = fileInfo?.file || allSources[0]
-          const localPage = fileInfo?.localPageNumber || pageNum
-          const pageContent = targetFile?.pageTexts?.[localPage - 1]?.text || `Page ${pageNum} content preview`
+          if (rangeMatch) {
+            const startPage = parseInt(rangeMatch[1])
+            const endPage = parseInt(rangeMatch[2])
+            const targetFile = allSources[0]
 
-          // 🔥 sourceId와 localPageNumber 추가
-          parts.push(
-            <CitationBadge
-              key={`citation-${match.index}-${idx}-page-${pageNum}`}
-              pageNumber={pageNum}
-              pageContent={pageContent}
-              onPageClick={pageClickHandler}
-              sourceId={targetFile?.id}
-              localPageNumber={localPage}
-              sourceName={targetFile?.name}
-            />
-          )
+            parts.push(
+              <CitationBadge
+                key={`citation-${match.index}-${idx}-legacy-start-${startPage}`}
+                pageNumber={startPage}
+                pageContent={targetFile?.pageTexts?.[startPage - 1]?.text || `Page ${startPage} content`}
+                onPageClick={pageClickHandler}
+                sourceId={targetFile?.id}
+                localPageNumber={startPage}
+                sourceName={targetFile?.name}
+              />
+            )
+          } else if (isNumeric) {
+            const pageNum = parseInt(item)
+            const targetFile = allSources[0]
+
+            parts.push(
+              <CitationBadge
+                key={`citation-${match.index}-${idx}-legacy-page-${pageNum}`}
+                pageNumber={pageNum}
+                pageContent={targetFile?.pageTexts?.[pageNum - 1]?.text || `Page ${pageNum} content`}
+                onPageClick={pageClickHandler}
+                sourceId={targetFile?.id}
+                localPageNumber={pageNum}
+                sourceName={targetFile?.name}
+              />
+            )
+          } else {
+            parts.push(`${idx > 0 ? ', ' : ''}${item}`)
+          }
         }
       })
 
       lastIndex = match.index + match[0].length
     }
 
-    // 남은 텍스트 추가 (대괄호 없는 패턴은 일단 비활성화)
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex))
     }
 
-    // 배열을 반환하되, React Fragment로 감싸서 반환
     if (parts.length > 1) {
-      return <React.Fragment>{parts}</React.Fragment>
+      return <React.Fragment>{parts.map((part, i) => <React.Fragment key={i}>{part}</React.Fragment>)}</React.Fragment>
     } else if (parts.length === 1) {
       return parts[0]
     }
@@ -713,161 +712,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSources.length, analyzedSourceIds.length]) // 배열 참조 대신 길이만 추적
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
-    if (!input.trim()) return
 
-    const userMessage = {
-      id: Date.now(),
-      type: 'user',
-      content: input,
-      timestamp: new Date().toISOString()
-    }
-
-    setMessages(prev => {
-      // 🔥 중복 방지: 동일한 ID를 가진 메시지가 이미 있으면 추가하지 않음
-      if (prev.find(m => m.id === userMessage.id)) {
-        console.warn('[ChatInterface] 중복 메시지 감지 - 추가 방지:', userMessage.id)
-        return prev
-      }
-      return [...prev, userMessage]
-    })
-    const userQuery = input
-    setInput('')
-    setIsTyping(true)
-
-    // 입력창 높이 초기화
-    setTimeout(() => {
-      const textarea = document.querySelector('textarea')
-      if (textarea) {
-        textarea.style.height = 'auto'
-      }
-    }, 0)
-
-    try {
-      // 언어 감지
-      const detectedLang = detectLanguage(userQuery)
-
-      // 엄격한 RAG 응답 생성 - 모든 선택된 소스 사용 (다중 소스 지원)
-      const documentContext = selectedSources.length > 0
-        ? selectedSources.map(source => ({
-            name: source.name,
-            fileName: source.name,
-            parsedData: source.parsedData
-          }))
-        : null
-
-      // 이전 대화 기록을 API 형식으로 변환 (GPT ↔ Gemini 전환 시에도 대화 맥락 유지)
-      const conversationHistory = messages.map(msg => ({
-        role: msg.type === 'user' ? 'user' : 'assistant',
-        content: msg.content
-      }))
-
-      const response = await generateStrictRAGResponse(userQuery, documentContext, detectedLang, selectedModel, conversationHistory, systemPromptOverrides)
-
-      // 디버깅: AI 응답 내용 확인
-      console.log('[AI 응답] 내용 미리보기:', response.answer.substring(0, 200))
-      let processedAnswer = response.answer
-      const citationMatches = processedAnswer.match(/[\[\{]\d+[\]\}]|[\[\{]\d+[-–]\d+[\]\}]|<cite page="\d+">/g)
-      console.log('[AI 응답] 인용 패턴 확인:', citationMatches)
-      console.log('[AI 응답] 인용 개수:', citationMatches?.length || 0)
-
-      // 🚨 강제 인용 배지 삽입: AI가 인용을 생성하지 않았을 경우 자동 추가 (최소화)
-      if (selectedSources.length > 0 && selectedSources[0].parsedData?.pageCount) {
-        const pageCount = selectedSources[0].parsedData.pageCount
-
-        if (!citationMatches || citationMatches.length === 0) {
-          console.warn('⚠️ [인용 누락 → 최소 삽입] AI가 인용을 생성하지 않아 대표 페이지 1개만 추가합니다')
-          // 문서 중간 대표 페이지 1개만 추가 (과도한 인용 방지)
-          const representativePage = Math.max(1, Math.floor(pageCount / 2))
-          processedAnswer += ` [${representativePage}]`
-        }
-        // 1-2개 있으면 그대로 두고, 추가하지 않음 (자연스러움 우선)
-      }
-
-      // allSources 데이터 검증 + 페이지 범위 계산
-      let cumulativePageOffset = 0
-      const allSourcesData = selectedSources.map((s, index) => {
-        const pageCount = s.parsedData?.pageCount || s.parsedData?.pageTexts?.length || 0
-        const startPage = cumulativePageOffset + 1
-        const endPage = cumulativePageOffset + pageCount
-        cumulativePageOffset = endPage
-
-        return {
-          id: s.id,
-          name: s.name,
-          fileName: s.parsedData?.fileName || s.name,
-          pageTexts: s.parsedData?.pageTexts || [],
-          pageCount: pageCount,
-          fileType: s.parsedData?.fileType || 'unknown',
-          startPage: startPage,  // 이 파일의 시작 페이지 번호 (누적)
-          endPage: endPage,      // 이 파일의 끝 페이지 번호 (누적)
-          fileIndex: index       // 파일 인덱스
-        }
-      })
-
-      console.log('[allSources 검증] 총', allSourcesData.length, '개 파일, 페이지 데이터:', allSourcesData.map(s => `${s.name}(${s.pageTexts.length}페이지)`).join(', '))
-
-      const aiMessage = {
-        id: Date.now() + 1,
-        type: 'assistant',
-        content: processedAnswer, // 강제 인용 배지가 추가된 버전 사용
-        timestamp: new Date().toISOString(),
-        source: response.source,
-        foundInDocument: response.foundInDocument,
-        matchedKeywords: response.matchedKeywords,
-        isReasoningBased: response.isReasoningBased, // 추론 기반 답변 플래그
-        sourceData: null, // deprecated - allSources 사용
-        allSources: allSourcesData // 다중 파일 지원 (파일ID + 이름 포함)
-      }
-
-      setMessages(prev => {
-        // 🔥 중복 방지: 동일한 ID를 가진 메시지가 이미 있으면 추가하지 않음
-        if (prev.find(m => m.id === aiMessage.id)) {
-          console.warn('[ChatInterface] 중복 AI 응답 감지 - 추가 방지:', aiMessage.id)
-          return prev
-        }
-        return [...prev, aiMessage]
-      })
-    } catch (error) {
-      const errorMessage = {
-        id: Date.now() + 1,
-        type: 'assistant',
-        content: language === 'ko'
-          ? '죄송합니다. 오류가 발생했습니다.'
-          : 'Sorry, an error occurred.',
-        timestamp: new Date().toISOString(),
-        isError: true
-      }
-      setMessages(prev => {
-        // 🔥 중복 방지
-        if (prev.find(m => m.id === errorMessage.id)) {
-          console.warn('[ChatInterface] 중복 에러 메시지 감지 - 추가 방지:', errorMessage.id)
-          return prev
-        }
-        return [...prev, errorMessage]
-      })
-    } finally {
-      setIsTyping(false)
-    }
-  }
-
-  const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSubmit(e)
-    }
-  }
-
-  // 추천 질문 클릭 핸들러
-  const handleSuggestedQuestionClick = (question) => {
-    setInput(question)
-    // 자동으로 질문 제출
-    setTimeout(() => {
-      const fakeEvent = { preventDefault: () => {} }
-      handleSubmit(fakeEvent)
-    }, 100)
-  }
 
   // 메시지 복사 핸들러
   const handleCopyMessage = async (messageId, content) => {
@@ -882,391 +727,324 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
   }
 
-  return (
-    <div className="h-full flex flex-col bg-white">
-      {/* Compact Header */}
-      <div className="px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-gray-900">{t('chat.title')}</h2>
-
-          <div className="flex items-center space-x-3">
-            {/* Model Selector - Compact (3 models) */}
-            <div className="flex bg-gray-100 rounded-md p-0.5">
-            <button
-              onClick={() => onModelChange('instant')}
-              className={`px-3 py-2 rounded text-xs font-medium transition-all ${
-                selectedModel === 'instant'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-              title="GPT-5.2 Chat Latest (빠른 응답)"
-            >
-              GPT-5.2 Instant
-            </button>
-            <button
-              onClick={() => onModelChange('thinking')}
-              className={`px-3 py-2 rounded text-xs font-medium transition-all ${
-                selectedModel === 'thinking'
-                  ? 'bg-white text-purple-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-              title="GPT-5.2 (심층 추론)"
-            >
-              GPT-5.2 Thinking
-            </button>
-            <button
-              onClick={() => onModelChange('gemini')}
-              className={`px-3 py-2 rounded text-xs font-medium transition-all ${
-                selectedModel === 'gemini'
-                  ? 'bg-white text-emerald-600 shadow-sm'
-                  : 'text-gray-600 hover:text-gray-800'
-              }`}
-              title="Gemini 3 Flash Preview (Google AI)"
-            >
-              Gemini 3 Flash
-            </button>
-          </div>
-
-          {/* AI 행동 지침 설정 버튼 */}
-          <button
-            onClick={onToggleSettingsPanel}
-            className={`flex items-center px-3 py-2 rounded text-xs font-medium transition-all ${
-              isSettingsPanelOpen
-                ? 'bg-purple-100 text-purple-700'
-                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-            }`}
-            title={language === 'ko' ? 'AI 행동 지침 설정' : 'AI Behavior Settings'}
-          >
-            {language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}
-          </button>
-        </div>
-        </div>
-      </div>
-
-      {/* Messages Area - NotebookLM 스타일 슬림화 (스크롤바 고정으로 레이아웃 안정화) */}
-      <div className="flex-1 p-5 space-y-3 bg-gray-50" style={{ overflowY: 'scroll' }}>
-        {/* 상단 날짜 표시 */}
-        {messages.length > 0 && messages.some(m => !m.isWelcome) && (
-          <div className="flex justify-center mb-2">
-            <span className="text-xs text-gray-400">
-              {(() => {
-                const firstMessage = messages.find(m => !m.isWelcome)
-                if (firstMessage?.timestamp) {
-                  const date = new Date(firstMessage.timestamp)
-                  const month = date.getMonth() + 1
-                  const day = date.getDate()
-                  const weekdays = language === 'ko'
-                    ? ['일요일', '월요일', '화요일', '수요일', '목요일', '금요일', '토요일']
-                    : ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-                  const weekday = weekdays[date.getDay()]
-                  return language === 'ko'
-                    ? `${month}월 ${day}일 ${weekday}`
-                    : `${weekday}, ${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })}`
-                }
-                return ''
-              })()}
-            </span>
-          </div>
-        )}
-
-        {/* 소스가 없을 때 업로드 안내 화면 */}
-        {selectedSources.length === 0 && messages.filter(m => !m.isWelcome).length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full">
-            <div className="flex flex-col items-center text-center">
-              <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                <Upload className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-700 mb-2">
-                {language === 'ko' ? '시작하려면 소스 추가' : 'Add sources to start'}
-              </h3>
-              <button
-                onClick={onOpenAddSource}
-                className="mt-3 px-5 py-2.5 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 hover:border-gray-400 transition-colors text-sm font-medium text-gray-700 shadow-sm"
-              >
-                {language === 'ko' ? '소스 업로드' : 'Upload sources'}
-              </button>
+  // 📝 개별 메시지 아이템 컴포넌트 (메모이제이션으로 성능 최적화)
+  const MessageItem = React.memo(({ message, language, onPageClick, handleCopyMessage, copiedMessageId, suggestedQuestions, handleSuggestedQuestionClick, renderTextWithCitations }) => {
+    return (
+      <div className={`flex flex-col ${message.type === 'user' ? 'items-end' : 'items-start'}`}>
+        <div className={`flex max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+          {/* Avatar - Compact */}
+          <div className={`flex-shrink-0 ${message.type === 'user' ? 'ml-2' : 'mr-2'}`}>
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${message.type === 'user' ? 'bg-blue-500' : message.isError ? 'bg-red-500' : 'bg-gradient-to-br from-purple-500 to-blue-500'
+              }`}>
+              {message.type === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-white" />}
             </div>
           </div>
-        )}
 
-        {messages.map((message) => (
-          <div
-            key={message.id}
-            className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
-          >
-            <div
-              className={`flex max-w-[85%] ${
-                message.type === 'user' ? 'flex-row-reverse' : 'flex-row'
-              }`}
-            >
-              {/* Avatar - Compact */}
-              <div
-                className={`flex-shrink-0 ${
-                  message.type === 'user' ? 'ml-2' : 'mr-2'
-                }`}
-              >
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    message.type === 'user'
-                      ? 'bg-blue-500'
-                      : message.isError
-                      ? 'bg-red-500'
-                      : 'bg-gradient-to-br from-purple-500 to-blue-500'
-                  }`}
+          {/* Message Content */}
+          <div className="flex-1">
+            <div className={`px-3.5 py-2.5 rounded-xl ${message.type === 'user' ? 'bg-blue-500 text-white' : message.isError ? 'bg-red-50 text-red-800 border border-red-200' : 'bg-white text-gray-900 border border-gray-200 shadow-sm'
+              }`}>
+              <div className="text-[12px] leading-[1.7] prose prose-sm max-w-none markdown-content font-medium">
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    strong: ({ node, ...props }) => (
+                      <span
+                        className="font-medium text-gray-900"
+                        {...props}
+                      />
+                    ),
+                    h3: ({ node, ...props }) => <h3 className="text-[14px] font-black mt-4 mb-2 text-gray-900 border-l-4 border-blue-500 pl-2" {...props} />,
+                    ul: ({ node, ...props }) => <ul className="list-disc list-inside my-2 space-y-1" {...props} />,
+                    ol: ({ node, ...props }) => <ol className="list-decimal list-inside my-2 space-y-1" {...props} />,
+                    li: ({ node, children, ...props }) => {
+                      const allSources = message.allSources || []
+                      const processNodes = (nodes) => {
+                        return React.Children.map(nodes, (child) => {
+                          if (typeof child === 'string') return renderTextWithCitations(child, allSources, onPageClick)
+                          if (React.isValidElement(child) && child.props.children) {
+                            return React.cloneElement(child, {
+                              ...child.props,
+                              children: processNodes(child.props.children)
+                            })
+                          }
+                          return child
+                        })
+                      }
+                      return <li className="ml-2" {...props}><span className="inline">{processNodes(children)}</span></li>
+                    },
+                    p: ({ node, children, ...props }) => {
+                      const allSources = message.allSources || []
+                      const processNodes = (nodes) => {
+                        return React.Children.map(nodes, (child) => {
+                          if (typeof child === 'string') return renderTextWithCitations(child, allSources, onPageClick)
+                          if (React.isValidElement(child) && child.props.children) {
+                            return React.cloneElement(child, {
+                              ...child.props,
+                              children: processNodes(child.props.children)
+                            })
+                          }
+                          return child
+                        })
+                      }
+                      const isInsideList = node?.position?.start?.line && message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
+                      return isInsideList ? <span {...props}>{processNodes(children)}</span> : <p className="my-1.5" {...props}>{processNodes(children)}</p>
+                    }
+                  }}
                 >
-                  {message.type === 'user' ? (
-                    <User className="w-4 h-4 text-white" />
-                  ) : (
-                    <Bot className="w-4 h-4 text-white" />
-                  )}
-                </div>
+                  {message.content}
+                </ReactMarkdown>
               </div>
 
-              {/* Message Content - NotebookLM 스타일 슬림 말풍선 */}
-              <div className="flex-1">
-                <div
-                  className={`px-3.5 py-2.5 rounded-xl ${
-                    message.type === 'user'
-                      ? 'bg-blue-500 text-white'
-                      : message.isError
-                      ? 'bg-red-50 text-red-800 border border-red-200'
-                      : 'bg-white text-gray-700 border border-gray-200 shadow-sm'
-                  }`}
-                >
-                  <div className="text-[11.5px] leading-[1.65] prose prose-sm max-w-none markdown-content">
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      components={{
-                        // 커스텀 컴포넌트 스타일링 - NotebookLM 스타일 (슬림화)
-                        strong: ({node, ...props}) => <strong className="font-bold" style={{fontWeight: 600}} {...props} />,
-                        h3: ({node, ...props}) => <h3 className="text-[13.5px] font-semibold mt-2 mb-1.5" {...props} />,
-                        ul: ({node, ...props}) => <ul className="list-disc list-inside my-1.5 space-y-0.5" {...props} />,
-                        ol: ({node, ...props}) => <ol className="list-decimal list-inside my-1.5 space-y-0.5" {...props} />,
-                        li: ({node, children, ...props}) => {
-                          // 헬퍼 함수: 자식 요소들을 순회하며 문자열만 골라내서 배지로 변환
-                          const processNodes = (nodes) => {
-                            return React.Children.map(nodes, (child) => {
-                              if (typeof child === 'string') {
-                                // 문자열이면 인용구 변환 함수 실행
-                                const allSources = message.allSources || []
-                                return renderTextWithCitations(child, allSources, onPageClick)
-                              }
-                              if (React.isValidElement(child) && child.props.children) {
-                                // 다른 리액트 요소(예: strong, em)라면 그 내부를 다시 탐색 (재귀)
-                                return React.cloneElement(child, {
-                                  ...child.props,
-                                  children: processNodes(child.props.children)
-                                })
-                              }
-                              return child
-                            })
-                          }
-
-                          return (
-                            <li className="ml-2" {...props}>
-                              <span className="inline">
-                                {processNodes(children)}
-                              </span>
-                            </li>
-                          )
-                        },
-                        p: ({node, children, ...props}) => {
-                          // li 안의 p 태그는 inline으로 처리
-                          const isInsideList = node?.position?.start?.line &&
-                                               message.content.split('\n')[node.position.start.line - 1]?.trim().match(/^\d+\.|^[-*]/)
-
-                          // p 태그 내 텍스트에서 [숫자] 패턴을 CitationBadge로 변환
-                          const allSources = message.allSources || []
-                          let processedChildren = children
-
-                          // 문자열일 때만 변환 (ReactMarkdown이 이미 처리했을 수 있음)
-                          if (typeof children === 'string') {
-                            processedChildren = renderTextWithCitations(children, allSources, onPageClick)
-                          } else if (Array.isArray(children)) {
-                            // 배열인 경우 각 요소를 확인하여 문자열만 변환
-                            processedChildren = children.map((child, idx) => {
-                              if (typeof child === 'string') {
-                                return <React.Fragment key={idx}>{renderTextWithCitations(child, allSources, onPageClick)}</React.Fragment>
-                              }
-                              return child
-                            })
-                          }
-
-                          return isInsideList ?
-                            <span {...props}>{processedChildren}</span> :
-                            <p className="my-1" {...props}>{processedChildren}</p>
-                        },
-                        // 텍스트 노드에서도 인용 처리
-                        text: ({node, ...props}) => {
-                          const allSources = message.allSources || []
-                          const text = props.children
-                          if (typeof text === 'string') {
-                            return renderTextWithCitations(text, allSources, onPageClick)
-                          }
-                          return text
-                        }
-                      }}
-                    >
-                      {message.content}
-                    </ReactMarkdown>
+              {/* Source Info */}
+              {message.source && message.foundInDocument && (
+                <div className="mt-2.5 pt-2.5 border-t border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center text-[11px] text-gray-500 font-medium">
+                      <FileText className="w-3.5 h-3.5 mr-1 text-blue-400" />
+                      <span>{language === 'ko' ? '기반 문서' : 'Source Document'}: <span className="text-gray-700 font-bold">{message.source}</span></span>
+                    </div>
+                    {message.isReasoningBased && (
+                      <div className="flex items-center space-x-1 px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full border border-indigo-100">
+                        <Lightbulb className="w-3 h-3" /><span className="text-[10px] font-black">{language === 'ko' ? 'AI 추론' : 'AI Reasoning'}</span>
+                      </div>
+                    )}
                   </div>
-
-                  {/* 문서 참조 정보 - 슬림화 */}
-                  {message.source && message.foundInDocument && (
-                    <div className="mt-2 pt-2 border-t border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center text-[11px] text-gray-500">
-                          <FileText className="w-3 h-3 mr-1" />
-                          <span>
-                            {language === 'ko' ? '출처' : 'Source'}: {message.source}
-                          </span>
-                        </div>
-                        {/* 추론 기반 답변 태그 */}
-                        {message.isReasoningBased && (
-                          <div className="flex items-center space-x-1 px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full">
-                            <Lightbulb className="w-3 h-3" />
-                            <span className="text-[9px] font-medium">
-                              {language === 'ko' ? '맥락 기반 추론' : 'Reasoning'}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      {message.matchedKeywords && message.matchedKeywords.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {message.matchedKeywords.map((keyword, idx) => (
-                            <span
-                              key={idx}
-                              className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-[10px]"
-                            >
-                              {keyword}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* 문서에서 못 찾은 경우 표시 - 슬림화 */}
-                  {message.source && !message.foundInDocument && (
-                    <div className="mt-2 pt-2 border-t border-amber-200">
-                      <div className="flex items-center text-[11px] text-amber-700">
-                        <AlertCircle className="w-3 h-3 mr-1" />
-                        <span>{language === 'ko' ? '문서에서 찾을 수 없음' : 'Not found in document'}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 추천 질문 버튼 (요약 메시지에만 표시) - 슬림화 */}
-                  {message.isSummary && message.hasSuggestedQuestions && suggestedQuestions.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-gray-200">
-                      <div className="flex items-center mb-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-purple-600 mr-1" />
-                        <span className="text-[11px] font-medium text-gray-700">
-                          {language === 'ko' ? '추천 질문' : 'Suggested Questions'}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1.5">
-                        {suggestedQuestions.map((question, idx) => (
-                          <button
-                            key={idx}
-                            onClick={() => handleSuggestedQuestionClick(question)}
-                            className="text-left px-2.5 py-1.5 bg-gradient-to-r from-purple-50 to-blue-50 hover:from-purple-100 hover:to-blue-100 border border-purple-200 rounded-lg text-[12px] text-gray-700 transition-all hover:shadow-sm"
-                          >
-                            {question}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
+              )}
 
-                {/* 복사 버튼 (AI 메시지에만 표시) */}
-                <div className="flex items-center justify-end mt-1 px-1">
-                  {message.type === 'assistant' && (
-                    <button
-                      onClick={() => handleCopyMessage(message.id, message.content)}
-                      className="flex items-center space-x-1 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100"
-                      title={language === 'ko' ? '복사' : 'Copy'}
-                    >
-                      {copiedMessageId === message.id ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-green-500" />
-                          <span className="text-[10px] text-green-500">
-                            {language === 'ko' ? '복사됨' : 'Copied'}
-                          </span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[10px]">
-                            {language === 'ko' ? '복사' : 'Copy'}
-                          </span>
-                        </>
-                      )}
-                    </button>
-                  )}
+              {/* Question Chips - Global per message */}
+              {message.type === 'assistant' && message.suggestedQuestions && message.suggestedQuestions.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-100">
+                  <div className="flex items-center mb-2.5">
+                    <Sparkles className="w-4 h-4 text-blue-600 mr-1.5 animate-pulse" />
+                    <span className="text-[12px] font-black text-gray-900 tracking-tight">{language === 'ko' ? '추천 질문' : 'Suggested Questions'}</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {message.suggestedQuestions.map((q, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSuggestedQuestionClick(q)}
+                        className="px-4 py-1.5 bg-white hover:bg-blue-600 hover:text-white border border-gray-200 hover:border-blue-600 rounded-full text-[12px] font-bold text-gray-700 transition-all shadow-sm hover:shadow-md active:scale-95"
+                      >
+                        {q}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
+            </div>
+
+            {/* Copy Button */}
+            <div className="flex items-center justify-end mt-1 px-1">
+              {message.type === 'assistant' && (
+                <button onClick={() => handleCopyMessage(message.id, message.content)} className="flex items-center space-x-1 text-gray-400 hover:text-gray-600 transition-colors p-1 rounded hover:bg-gray-100">
+                  {copiedMessageId === message.id ? <><Check className="w-3.5 h-3.5 text-green-500" /><span className="text-[10px] text-green-500">{language === 'ko' ? '복사됨' : 'Copied'}</span></> : <><Copy className="w-3.5 h-3.5" /><span className="text-[10px]">{language === 'ko' ? '복사' : 'Copy'}</span></>}
+                </button>
+              )}
             </div>
           </div>
-        ))}
-
-        {/* Typing Indicator - 원형 스피너 */}
-        {isTyping && (
-          <div className="flex justify-center py-4">
-            <svg className="w-8 h-8 animate-spin" viewBox="0 0 50 50">
-              <circle cx="25" cy="25" r="20" fill="none" stroke="#e5e7eb" strokeWidth="4" />
-              <circle cx="25" cy="25" r="20" fill="none" stroke="#9ca3af" strokeWidth="4" strokeLinecap="round" strokeDasharray="80, 200" strokeDashoffset="0">
-                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1.5s" repeatCount="indefinite" />
-              </circle>
-              <circle cx="25" cy="25" r="20" fill="none" stroke="#6b7280" strokeWidth="4" strokeLinecap="round" strokeDasharray="40, 200" strokeDashoffset="-40">
-                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="1s" repeatCount="indefinite" />
-              </circle>
-              <circle cx="25" cy="25" r="20" fill="none" stroke="#374151" strokeWidth="4" strokeLinecap="round" strokeDasharray="20, 200" strokeDashoffset="-80">
-                <animateTransform attributeName="transform" type="rotate" from="0 25 25" to="360 25 25" dur="0.75s" repeatCount="indefinite" />
-              </circle>
-            </svg>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
+        </div>
       </div>
+    )
+  })
 
-      {/* Input Area - Compact */}
+  // 📝 입력창 컴포넌트 (입력 가속화를 위해 상태 분리)
+  const ChatInput = ({ t, language, isTyping, selectedSources, onSubmit }) => {
+    const [localInput, setLocalInput] = useState('')
+
+    const onInternalSubmit = (e) => {
+      e.preventDefault()
+      if (!localInput.trim() || isTyping || selectedSources.length === 0) return
+      onSubmit(localInput)
+      setLocalInput('')
+      // 높이 초기화
+      const textarea = e.target.querySelector('textarea')
+      if (textarea) textarea.style.height = 'auto'
+    }
+
+    const onKeyDown = (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault()
+        onInternalSubmit(e)
+      }
+    }
+
+    return (
       <div className="px-4 py-2.5 border-t border-gray-200 bg-white">
-        <form onSubmit={handleSubmit} className="flex items-stretch space-x-2">
+        <form onSubmit={onInternalSubmit} className="flex items-stretch space-x-2">
           <div className="flex-1 flex items-stretch">
             <textarea
-              value={input}
+              value={localInput}
               onChange={(e) => {
-                if (selectedSources.length === 0) return // 소스 없으면 입력 불가
-                setInput(e.target.value)
-                // 자동 높이 조절
+                setLocalInput(e.target.value)
                 e.target.style.height = 'auto'
                 e.target.style.height = e.target.scrollHeight + 'px'
               }}
-              onKeyDown={handleKeyPress}
-              placeholder={selectedSources.length === 0
-                ? (language === 'ko' ? '시작하려면 출처를 업로드하세요.' : 'Upload sources to start.')
-                : t('chat.placeholder')}
+              onKeyDown={onKeyDown}
+              placeholder={selectedSources.length === 0 ? (language === 'ko' ? '시작하려면 출처를 업로드하세요.' : 'Upload sources to start.') : t('chat.placeholder')}
               disabled={selectedSources.length === 0}
-              className={`w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto box-border ${
-                selectedSources.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''
-              }`}
+              className={`w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto box-border ${selectedSources.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''
+                }`}
               rows="1"
               style={{ minHeight: '44px', maxHeight: '200px', lineHeight: '1.4' }}
             />
           </div>
-          <button
-            type="submit"
-            disabled={!input.trim() || isTyping || selectedSources.length === 0}
-            className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center flex-shrink-0 box-border"
-            style={{ minHeight: '44px', height: 'auto' }}
-          >
+          <button type="submit" disabled={!localInput.trim() || isTyping || selectedSources.length === 0} className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center flex-shrink-0 box-border" style={{ minHeight: '44px', height: 'auto' }}>
             <span className="text-sm font-medium">{t('chat.send')}</span>
           </button>
         </form>
       </div>
+    )
+  }
+
+  // 제출 핸들러 (ChatInput에서 호출됨)
+  const handleChatSubmit = async (query) => {
+    if (!query || !query.trim()) return
+
+    const userMessage = { id: Date.now(), type: 'user', content: query, timestamp: new Date().toISOString() }
+    setMessages(prev => [...prev, userMessage])
+    setIsTyping(true)
+
+    try {
+      const detectedLang = detectLanguage(query)
+      const documentContext = selectedSources.length > 0 ? selectedSources.map(s => ({ name: s.name, fileName: s.name, parsedData: s.parsedData })) : null
+      const conversationHistory = messages.map(msg => ({ role: msg.type === 'user' ? 'user' : 'assistant', content: msg.content }))
+      const response = await generateStrictRAGResponse(query, documentContext, detectedLang, selectedModel, conversationHistory, systemPromptOverrides)
+
+      let processedAnswer = response.answer
+      // [문서번호:페이지번호] 또는 [페이지번호] 형식 모두 체크
+      const citationMatches = processedAnswer.match(/[\[\{]\d+(:\d+)?([-–]\d+)?(,\s*\d+(:\d+)?([-–]\d+)?)*[\]\}]/g)
+
+      // 🚨 강제 인용 배지 삽입: AI가 인용을 생성하지 않았을 경우 자동 추가 (최소화)
+      if (selectedSources.length > 0) {
+        if (!citationMatches || citationMatches.length === 0) {
+          console.warn('⚠️ [인용 누락 → 최소 삽입] AI가 인용을 생성하지 않아 대표 페이지 1개만 추가합니다')
+          // 첫 번째 파일의 1페이지를 대표로 선택 (새로운 [1:1] 형식)
+          processedAnswer += ` [1:1]`
+        }
+      }
+
+      let cumulativePageOffset = 0
+      const allSourcesData = selectedSources.map((s, index) => {
+        const pageCount = s.parsedData?.pageCount || s.parsedData?.pageTexts?.length || 0
+        const startPage = cumulativePageOffset + 1
+        const endPage = cumulativePageOffset + pageCount
+        cumulativePageOffset = endPage
+        return {
+          id: s.id,
+          name: s.name,
+          fileName: s.parsedData?.fileName || s.name,
+          pageTexts: s.parsedData?.pageTexts || [],
+          pageCount,
+          fileType: s.parsedData?.fileType || 'unknown',
+          startPage,
+          endPage,
+          fileIndex: index
+        }
+      })
+
+      const aiMessage = {
+        id: Date.now() + 1,
+        type: 'assistant',
+        content: processedAnswer,
+        timestamp: new Date().toISOString(),
+        source: response.source,
+        foundInDocument: response.foundInDocument,
+        matchedKeywords: response.matchedKeywords,
+        isReasoningBased: response.isReasoningBased,
+        allSources: allSourcesData
+      }
+      setMessages(prev => [...prev, aiMessage])
+
+      // AI 답변을 기반으로 추천 후속 질문 생성
+      try {
+        const followUpQuestions = await generateSuggestedQuestions(
+          { name: 'AI Response', parsedData: { extractedText: processedAnswer } },
+          language
+        )
+        if (followUpQuestions && followUpQuestions.length > 0) {
+          setMessages(prev => prev.map(msg =>
+            msg.id === aiMessage.id ? { ...msg, suggestedQuestions: followUpQuestions.slice(0, 3) } : msg
+          ))
+        }
+      } catch (e) {
+        console.warn('후속 질문 생성 실패:', e)
+      }
+    } catch (error) {
+      console.error(error)
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        type: 'assistant',
+        content: t('errors.default'),
+        timestamp: new Date().toISOString(),
+        isError: true
+      }])
+    } finally {
+      setIsTyping(false)
+    }
+  }
+
+  const handleSuggestedQuestionClick = (question) => {
+    handleChatSubmit(question)
+  }
+
+  return (
+    <div className="h-full flex flex-col bg-white">
+      {/* Header */}
+      <div className="px-4 py-3 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-bold text-gray-900">{t('chat.title')}</h2>
+          <div className="flex items-center space-x-3">
+            <div className="flex bg-gray-100 rounded-md p-0.5">
+              {['instant', 'thinking', 'gemini'].map(m => (
+                <button
+                  key={m}
+                  onClick={() => onModelChange(m)}
+                  className={`px-3 py-2 rounded text-xs font-medium transition-all ${selectedModel === m ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
+                >
+                  {m === 'instant' ? 'GPT 5.2 Instant' : m === 'thinking' ? 'GPT 5.2 Thinking' : 'Gemini 3.0 Flash'}
+                </button>
+              ))}
+            </div>
+            <button onClick={onToggleSettingsPanel} className={`flex items-center px-3 py-2 rounded text-xs font-medium transition-all ${isSettingsPanelOpen ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
+              {language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 p-5 space-y-3 bg-gray-50" style={{ overflowY: 'scroll' }}>
+        {messages.map((m) => (
+          <MessageItem
+            key={m.id}
+            message={m}
+            language={language}
+            onPageClick={onPageClick}
+            handleCopyMessage={handleCopyMessage}
+            copiedMessageId={copiedMessageId}
+            suggestedQuestions={suggestedQuestions}
+            handleSuggestedQuestionClick={handleSuggestedQuestionClick}
+            renderTextWithCitations={renderTextWithCitations}
+          />
+        ))}
+        {isTyping && (
+          <div className="flex justify-center py-4">
+            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Input */}
+      <ChatInput
+        t={t}
+        language={language}
+        isTyping={isTyping}
+        selectedSources={selectedSources}
+        onSubmit={handleChatSubmit}
+      />
     </div>
   )
 }
