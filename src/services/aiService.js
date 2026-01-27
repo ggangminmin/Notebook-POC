@@ -496,7 +496,7 @@ export const generateQuerySuggestions = async (query, language = 'ko') => {
 export const generateStrictRAGResponse = async (query, documentContext, language = 'ko', selectedModel = 'thinking', conversationHistory = [], systemPromptOverrides = []) => {
   try {
     // 1. 일상 대화 모드 - 문서 없이도 응답 가능
-    if (isSmallTalk(query)) {
+    if (isMeaninglessQuery(query)) {
       const baseCasualPrompt = language === 'ko'
         ? '당신은 친절한 AI 어시스턴트입니다. 사용자와 자연스럽고 따뜻하게 대화하세요. 간단명료하게 답변하되, 지나치게 길지 않게 해주세요.'
         : 'You are a friendly AI assistant. Have a natural and warm conversation with the user. Keep your responses concise and not too long.'
