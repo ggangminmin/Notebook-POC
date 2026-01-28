@@ -10,10 +10,13 @@
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
+    "@hwp.js/parser": "^0.0.4-alpha.0",
     "@langchain/core": "^1.1.17",
     "@langchain/openai": "^1.2.3",
+    "@ohah/hwpjs": "^0.1.0-rc.3",
     "@supabase/supabase-js": "^2.90.1",
     "docx": "^9.5.1",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.263.1",
     "mammoth": "^1.11.0",
     "pdfjs-dist": "^5.4.449",

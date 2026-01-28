@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight, FileSpreadsheet, File } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
-import { parseFileContent, fetchWebMetadata } from '../utils/fileParser'
+import { parseFileContent, fetchWebMetadata, virtualizeText } from '../utils/fileParser'
 import { performFastResearch, performDeepResearch } from '../services/webSearchService'
 import Tooltip from './Tooltip'
 import WebSearchPopup from './WebSearchPopup'
@@ -251,24 +251,31 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
         }
       }
 
-      // 웹 소스를 파일 소스와 동일한 형식으로 변환
-      const webSources = result.sources.map((source, index) => ({
-        id: `web_${Date.now()}_${index}`,
-        name: source.title,
-        type: 'web',
-        url: source.url,
-        uploadedAt: new Date().toISOString(),
-        parsedData: {
-          extractedText: source.text,
-          metadata: {
-            title: source.title,
-            url: source.url,
-            searchQuery: searchQuery,
-            researchType: researchType,
-            report: result.report // Deep Research인 경우에만 존재
+      // 웹 소스를 파일 소스와 동일한 형식으로 변환 (가상 페이지 적용)
+      const webSources = result.sources.map((source, index) => {
+        const virtualization = virtualizeText(source.extractedText)
+
+        return {
+          id: `web_${Date.now()}_${index}`,
+          name: source.title,
+          type: 'web',
+          url: source.url,
+          uploadedAt: new Date().toISOString(),
+          parsedData: {
+            extractedText: source.extractedText,
+            summary: source.summary,
+            pageCount: virtualization.pageCount,
+            pageTexts: virtualization.pageTexts,
+            metadata: {
+              title: source.title,
+              url: source.url,
+              searchQuery: searchQuery,
+              researchType: researchType,
+              report: result.report
+            }
           }
         }
-      }))
+      })
 
       // Deep Research 리포트가 있으면 별도 소스로 추가
       if (result.report) {
@@ -605,7 +612,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                   ref={fileInputRef}
                   type="file"
                   multiple
-                  accept=".pdf,.txt,.doc,.docx"
+                  accept=".pdf,.txt,.doc,.docx,.hwp,.hwpx"
                   onChange={handleFileSelect}
                   className="hidden"
                 />

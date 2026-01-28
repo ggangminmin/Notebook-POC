@@ -1,12 +1,38 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
+import JSZip from 'jszip'
+import { parse as parseHWP } from '@hwp.js/parser'
 
 // PDF.js worker 설정 - 로컬 워커 사용
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url
 ).toString()
+
+// 📄 텍스트 가상 페이지 분할 (약 2000자 단위)
+export const virtualizeText = (text, pageSize = 2000) => {
+  if (!text) return { pageCount: 1, pageTexts: [] }
+
+  const trimmedText = text.trim()
+  const pageTexts = []
+
+  for (let i = 0; i < trimmedText.length; i += pageSize) {
+    const pageNum = Math.floor(i / pageSize) + 1
+    const content = trimmedText.substring(i, i + pageSize)
+    pageTexts.push({
+      pageNumber: pageNum,
+      text: content,
+      wordCount: content.split(/\s+/).length,
+      thumbnail: null
+    })
+  }
+
+  return {
+    pageCount: pageTexts.length || 1,
+    pageTexts: pageTexts
+  }
+}
 
 // PDF 페이지를 이미지로 변환 (썸네일용 - 회전 정보 정규화 + 고해상도)
 const renderPDFPageToImage = async (page, scale = 0.6) => {
@@ -247,6 +273,97 @@ const extractPDFText = async (file) => {
   }
 }
 
+// HWPX 파일에서 텍스트 추출 (ZIP + XML)
+const extractHWPXText = async (file) => {
+  try {
+    console.log('[HWPX 추출] 시작:', file.name, 'Size:', file.size)
+    const arrayBuffer = await file.arrayBuffer()
+    const zip = await JSZip.loadAsync(arrayBuffer)
+
+    // Contents 폴더 내의 section*.xml 파일들을 순회하며 텍스트 추출
+    let fullText = ''
+    const sectionFiles = Object.keys(zip.files).filter(name => name.startsWith('Contents/section') && name.endsWith('.xml'))
+
+    // 섹션 순서대로 정렬 (section0.xml, section1.xml ...)
+    sectionFiles.sort((a, b) => {
+      const numA = parseInt(a.match(/\d+/)[0])
+      const numB = parseInt(b.match(/\d+/)[0])
+      return numA - numB
+    })
+
+    console.log('[HWPX 추출] 발견된 섹션:', sectionFiles)
+
+    for (const fileName of sectionFiles) {
+      const xmlContent = await zip.files[fileName].async('text')
+      const parser = new DOMParser()
+      const xmlDoc = parser.parseFromString(xmlContent, 'text/xml')
+
+      // <hp:t> 태그 내의 텍스트가 실제 본문 내용임
+      const textNodes = xmlDoc.getElementsByTagName('hp:t')
+      let sectionText = ''
+      for (let i = 0; i < textNodes.length; i++) {
+        sectionText += textNodes[i].textContent + ' '
+      }
+      fullText += sectionText + '\n\n'
+    }
+
+    const { pageCount, pageTexts } = virtualizeText(fullText)
+
+    return {
+      text: fullText,
+      pageCount,
+      pageTexts,
+      pageImages: []
+    }
+  } catch (error) {
+    console.error('[HWPX 추출] 오류:', error)
+    throw new Error('HWPX 파일을 읽을 수 없습니다.')
+  }
+}
+
+// HWP 파일에서 텍스트 추출 (@hwp.js/parser 사용)
+const extractHWPText = async (file) => {
+  try {
+    console.log('[HWP 추출] 시작:', file.name, 'Size:', file.size)
+    const arrayBuffer = await file.arrayBuffer()
+
+    // @hwp.js/parser 사용
+    const hwpDoc = parseHWP(arrayBuffer)
+    let fullText = ''
+
+    // 섹션 -> 문단 -> 글자 순으로 순회하며 텍스트 추출
+    hwpDoc.sections.forEach(section => {
+      section.paragraphs.forEach(paragraph => {
+        // paragraph.chars는 반복 가능한 객체 (CharList)
+        for (const char of paragraph.chars) {
+          if (char && typeof char.toString === 'function') {
+            const charStr = char.toString()
+            if (charStr) {
+              fullText += charStr
+            }
+          }
+        }
+        fullText += '\n'
+      })
+      fullText += '\n'
+    })
+
+    console.log('[HWP 추출] 텍스트 추출 완료, 길이:', fullText.length)
+
+    const { pageCount, pageTexts } = virtualizeText(fullText)
+
+    return {
+      text: fullText,
+      pageCount,
+      pageTexts,
+      pageImages: []
+    }
+  } catch (error) {
+    console.error('[HWP 추출] 오류:', error)
+    throw new Error('HWP 파일을 읽을 수 없습니다. (지원되지 않는 버전이거나 손상된 파일일 수 있습니다.)')
+  }
+}
+
 // 파일 내용을 파싱하여 구조화된 JSON으로 변환
 export const parseFileContent = async (file) => {
   return new Promise(async (resolve, reject) => {
@@ -378,6 +495,44 @@ export const parseFileContent = async (file) => {
         })
 
         resolve(parsedData)
+      } else if (file.name.endsWith('.hwpx')) {
+        // HWPX 파일 (한글 신버전)
+        console.log('[파일 파싱] HWPX 파일 감지:', file.name)
+        const hwpxData = await extractHWPXText(file)
+
+        parsedData = {
+          fileType: 'hwp',
+          fileName: file.name,
+          fileSize: file.size,
+          content: hwpxData.text.substring(0, 500) + '...',
+          extractedText: hwpxData.text,
+          pageCount: hwpxData.pageCount,
+          pageTexts: hwpxData.pageTexts,
+          metadata: {
+            format: 'HWPX',
+            pages: hwpxData.pageCount
+          }
+        }
+        resolve(parsedData)
+      } else if (file.name.endsWith('.hwp')) {
+        // HWP 파일 (한글 구버전)
+        console.log('[파일 파싱] HWP 파일 감지:', file.name)
+        const hwpData = await extractHWPText(file)
+
+        parsedData = {
+          fileType: 'hwp',
+          fileName: file.name,
+          fileSize: file.size,
+          content: hwpData.text.substring(0, 500) + '...',
+          extractedText: hwpData.text,
+          pageCount: hwpData.pageCount,
+          pageTexts: hwpData.pageTexts,
+          metadata: {
+            format: 'HWP',
+            pages: hwpData.pageCount
+          }
+        }
+        resolve(parsedData)
       } else if (file.type.includes('sheet') || file.type.includes('excel') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         // Excel 파일 - 실제 내용 추출
         console.log('[파일 파싱] Excel 파일 감지:', file.name)
@@ -496,6 +651,11 @@ export const fetchWebMetadata = async (url) => {
         imageCount: 5
       }
     }
+
+    // 가상 페이지 추가
+    const virtualization = virtualizeText(metadata.extractedText)
+    metadata.pageCount = virtualization.pageCount
+    metadata.pageTexts = virtualization.pageTexts
 
     return metadata
   } catch (error) {

@@ -2,6 +2,27 @@
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const TAVILY_API_KEY = import.meta.env.VITE_TAVILY_API_KEY // 선택사항
 
+// ⚡ 타임아웃이 포함된 Fetch 유틸리티
+const fetchWithTimeout = async (url, options = {}, timeout = 30000) => {
+  const controller = new AbortController()
+  const id = setTimeout(() => controller.abort(), timeout)
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    })
+    clearTimeout(id)
+    return response
+  } catch (error) {
+    clearTimeout(id)
+    if (error.name === 'AbortError') {
+      throw new Error('요청 시간이 초과되었습니다 (Timeout)')
+    }
+    throw error
+  }
+}
+
 // 텍스트 청킹: 긴 텍스트를 의미 있는 단위로 분할 (약 500자)
 const chunkText = (text, chunkSize = 500) => {
   const chunks = []
@@ -80,7 +101,7 @@ ${text.substring(0, 3000)}
 - Exclude ads, menus, footer content
 - Include important numbers, dates, names`
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -95,7 +116,7 @@ ${text.substring(0, 3000)}
         temperature: 0.3,
         max_tokens: 300
       })
-    })
+    }, 45000) // 요약은 최대 45초
 
     const data = await response.json()
     return data.choices[0].message.content.trim()
@@ -105,81 +126,63 @@ ${text.substring(0, 3000)}
   }
 }
 
-// 웹 페이지 텍스트 추출 + 청킹 + 필터링 (개선된 버전)
-const fetchWebPageContent = async (url, query = '', useSmartExtraction = true) => {
+// 🌐 Jina AI Reader를 사용한 본문 추출 (직접 요청 시도 후 실패 시 프록시 사용)
+const fetchWebPageContent = async (url, query = '', useSmartExtraction = false) => {
   try {
-    console.log(`[WebSearch] 웹 페이지 크롤링 시작: ${url}`)
+    console.log(`[WebSearch] Jina Reader 본문 추출 시도: ${url}`);
+    const jinaUrl = `https://r.jina.ai/${url}`;
 
-    // CORS 우회를 위한 프록시 서버 사용 (무료 대안)
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+    let jinaContent = '';
 
-    const response = await fetch(proxyUrl)
-    const data = await response.json()
+    // 1. 직접 추출 시도 (가장 빠름)
+    try {
+      const response = await fetchWithTimeout(jinaUrl, {
+        headers: { 'Accept': 'text/plain' }
+      }, 15000); // 15초 제한
 
-    if (!data.contents) {
-      throw new Error('웹 페이지 내용을 가져올 수 없습니다.')
+      if (response.ok) {
+        jinaContent = await response.text();
+      }
+    } catch (directError) {
+      console.warn('[WebSearch] 직접 추출 실패, 프록시 전환:', directError.message);
     }
 
-    // HTML에서 텍스트 추출
-    const parser = new DOMParser()
-    const doc = parser.parseFromString(data.contents, 'text/html')
+    // 2. 실패 시 프록시 자동 전환 (allorigins 또는 다른 안정적인 프록시)
+    if (!jinaContent) {
+      const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`;
+      const response = await fetchWithTimeout(proxyUrl, {}, 20000); // 20초 제한
 
-    // 불필요한 요소 제거 (강화된 클리닝)
-    const unwantedSelectors = [
-      'script', 'style', 'nav', 'footer', 'header',
-      'aside', 'iframe', '.ad', '.advertisement', '.cookie-banner',
-      '.social-share', '.related-articles', '#comments'
-    ]
-    unwantedSelectors.forEach(selector => {
-      doc.querySelectorAll(selector).forEach(el => el.remove())
-    })
+      if (response.ok) {
+        const proxyData = await response.json();
+        jinaContent = proxyData.contents;
+      }
+    }
 
-    // 본문 텍스트 추출
-    const bodyText = doc.body?.innerText || doc.body?.textContent || ''
+    if (!jinaContent || jinaContent.trim().length < 50) {
+      throw new Error('내용을 가져오지 못했습니다.');
+    }
 
-    // 불필요한 공백 제거
-    let cleanedText = bodyText
-      .replace(/\n{3,}/g, '\n\n')
-      .replace(/\s{2,}/g, ' ')
-      .replace(/[\u200B-\u200D\uFEFF]/g, '') // 보이지 않는 문자 제거
-      .trim()
+    const titleMatch = jinaContent.match(/^#\s+(.*)$/m);
+    const title = titleMatch ? titleMatch[1].trim() : url;
+    let finalText = jinaContent;
 
-    console.log(`[WebSearch] 추출된 텍스트 길이: ${cleanedText.length}자`)
-
-    let finalText = cleanedText
-
-    // 스마트 추출 모드: 청킹 + 필터링
-    if (useSmartExtraction && query && cleanedText.length > 1500) {
-      console.log(`[WebSearch] 스마트 추출 모드 활성화 - 관련 청크 선택`)
-
-      // 1. 텍스트를 청크로 분할
-      const chunks = chunkText(cleanedText, 500)
-
-      // 2. 쿼리와 가장 관련성 높은 청크 선택 (상위 5개)
-      const relevantChunks = selectRelevantChunks(chunks, query, 5)
-
-      // 3. 선택된 청크 합치기
-      finalText = relevantChunks.map(chunk => chunk.text).join('\n\n')
-
-      console.log(`[WebSearch] 선택된 청크: ${relevantChunks.length}개, 최종 길이: ${finalText.length}자`)
+    if (useSmartExtraction && query && jinaContent.length > 3000) {
+      const chunks = chunkText(jinaContent, 800);
+      const relevantChunks = selectRelevantChunks(chunks, query, 5);
+      finalText = relevantChunks.map(chunk => chunk.text).join('\n\n---\n\n');
     }
 
     return {
       url,
-      text: finalText.substring(0, 3000), // 최대 3,000자 (축소)
-      fullText: cleanedText, // 원본 텍스트 보관
-      title: doc.title || url,
-      success: true
-    }
+      extractedText: finalText, // 🔥 text 대신 extractedText 사용 (표준화)
+      fullText: jinaContent,
+      title: title,
+      success: true,
+      mode: 'jina'
+    };
   } catch (error) {
-    console.error('[WebSearch] 크롤링 오류:', error)
-    return {
-      url,
-      text: '',
-      title: url,
-      success: false,
-      error: error.message
-    }
+    console.error('[WebSearch] 크롤링 실패:', error);
+    return { url, extractedText: '', title: url, success: false, error: error.message };
   }
 }
 
@@ -193,7 +196,7 @@ const searchWithTavily = async (query, maxResults = 5) => {
   try {
     console.log('[WebSearch] Tavily API 호출 - Context 모드')
 
-    const response = await fetch('https://api.tavily.com/search', {
+    const response = await fetchWithTimeout('https://api.tavily.com/search', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -204,11 +207,11 @@ const searchWithTavily = async (query, maxResults = 5) => {
         max_results: maxResults,
         search_depth: 'advanced', // 심층 검색
         include_answer: false, // 답변 포함 X (컨텍스트만)
-        include_raw_content: false, // 전체 본문 X
+        include_raw_content: true, // 전체 본문 O (사용자 요청: 전체 내용 가져오기)
         include_domains: [], // 모든 도메인
         exclude_domains: [] // 제외할 도메인 없음
       })
-    })
+    }, 25000)
 
     const data = await response.json()
 
@@ -225,11 +228,11 @@ const searchWithTavily = async (query, maxResults = 5) => {
       return { success: false, reason: 'api_error', error: data.error, results: null }
     }
 
-    // Tavily는 자동으로 관련성 높은 snippet과 context만 반환
+    // Tavily는 기본 snippet 외에 raw_content가 있으면 이를 우선 사용 (전체 내용 수집용)
     const results = (data.results || []).map(result => ({
       url: result.url,
       title: result.title,
-      content: result.content, // Tavily가 추출한 핵심 컨텍스트 (snippet)
+      content: result.raw_content || result.content, // raw_content 우선 사용 (전체 내용)
       score: result.score || 0 // 관련성 점수
     }))
 
@@ -432,7 +435,7 @@ export const performFastResearch = async (query, language = 'ko') => {
           return {
             url: result.url,
             title: result.title,
-            text: result.content, // Tavily의 관련 컨텍스트
+            extractedText: result.content, // Tavily의 관련 컨텍스트
             summary, // GPT 요약
             success: true
           }
@@ -460,16 +463,16 @@ export const performFastResearch = async (query, language = 'ko') => {
 
     console.log('[WebSearch] 추천 URL:', urls)
 
-    // 4. 각 URL에서 콘텐츠 크롤링 (스마트 추출 모드)
-    const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url, query, true))
+    // 4. 각 URL에서 콘텐츠 크롤링 (전체 내용 수집 모드)
+    const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url, query, false))
     const results = await Promise.all(crawlPromises)
 
     // 5. 성공한 결과만 필터링 + GPT 요약
-    const successfulResults = results.filter(r => r.success && r.text.length > 100)
+    const successfulResults = results.filter(r => r.success && (r.extractedText?.length > 100))
 
     const sources = await Promise.all(
       successfulResults.map(async (result) => {
-        const summary = await summarizeWebPage(result.text, query, language)
+        const summary = await summarizeWebPage(result.extractedText, query, language)
         return {
           ...result,
           summary
@@ -531,7 +534,7 @@ export const performDeepResearch = async (query, language = 'ko', onProgress) =>
           return {
             url: result.url,
             title: result.title,
-            text: result.content,
+            extractedText: result.content,
             summary,
             success: true
           }
@@ -547,14 +550,14 @@ export const performDeepResearch = async (query, language = 'ko', onProgress) =>
 
       onProgress?.(40, language === 'ko' ? `${urls.length}개 페이지 크롤링 중...` : `Crawling ${urls.length} pages...`)
 
-      const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url, query, true))
+      const crawlPromises = urls.slice(0, 5).map(url => fetchWebPageContent(url, query, false))
       const results = await Promise.all(crawlPromises)
 
-      const successfulResults = results.filter(r => r.success && r.text.length > 100)
+      const successfulResults = results.filter(r => r.success && (r.extractedText?.length > 100))
 
       sources = await Promise.all(
         successfulResults.map(async (result) => {
-          const summary = await summarizeWebPage(result.text, query, language)
+          const summary = await summarizeWebPage(result.extractedText, query, language)
           return {
             ...result,
             summary
@@ -567,7 +570,7 @@ export const performDeepResearch = async (query, language = 'ko', onProgress) =>
 
     // 3. GPT-4o로 종합 리포트 생성 (요약된 내용 기반)
     const combinedText = sources
-      .map(s => `[출처: ${s.title}]\n**요약:** ${s.summary}\n**상세:** ${s.text.substring(0, 500)}`)
+      .map(s => `[출처: ${s.title}]\n**요약:** ${s.summary}\n**상세:** ${s.extractedText?.substring(0, 500)}`)
       .join('\n\n---\n\n')
 
     const reportPrompt = language === 'ko'
@@ -600,7 +603,7 @@ ${combinedText.substring(0, 10000)}
 
 Write in markdown format.`
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -618,7 +621,7 @@ Write in markdown format.`
         temperature: 0.5,
         max_tokens: 3000
       })
-    })
+    }, 90000) // 리포트 생성은 최대 90초
 
     const data = await response.json()
     const report = data.choices[0].message.content
@@ -653,7 +656,7 @@ export const addWebSource = async (url) => {
     return {
       url: result.url,
       title: result.title,
-      text: result.text,
+      extractedText: result.extractedText,
       success: true
     }
   } catch (error) {
