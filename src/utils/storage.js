@@ -10,8 +10,13 @@ const BUCKET_NAME = 'notebook-files'; // Supabase Storage 버킷 이름
 const sanitizeNotebookForStorage = (notebook) => {
   console.log('[Sanitize] 저장 전 데이터 정제 시작:', notebook.id);
 
+  if (!notebook.sources) {
+    console.log('[Sanitize] 소스 없음, 정제 중단');
+    return notebook;
+  }
+
   // sources 배열에서 썸네일 및 Base64 이미지 제거
-  const sanitizedSources = (notebook.sources || []).map(source => {
+  const sanitizedSources = notebook.sources.map(source => {
     const sanitized = { ...source };
 
     // parsedData 내의 무거운 데이터 제거
@@ -37,9 +42,13 @@ const sanitizeNotebookForStorage = (notebook) => {
   };
 
   // 데이터 크기 계산 (대략적)
-  const dataSize = JSON.stringify(sanitizedNotebook).length;
-  const dataSizeMB = (dataSize / (1024 * 1024)).toFixed(2);
-  console.log('[Sanitize] 정제 후 데이터 크기:', dataSizeMB, 'MB');
+  try {
+    const dataSize = JSON.stringify(sanitizedNotebook).length;
+    const dataSizeMB = (dataSize / (1024 * 1024)).toFixed(2);
+    console.log('[Sanitize] 정제 후 데이터 크기:', dataSizeMB, 'MB');
+  } catch (e) {
+    console.warn('[Sanitize] 크기 계산 실패 (순환 참조 등)');
+  }
 
   return sanitizedNotebook;
 };
@@ -151,50 +160,88 @@ export const getNotebookById = async (id) => {
 
 // 노트북 저장/업데이트
 export const saveNotebook = async (notebook) => {
+  if (!notebook || !notebook.id) {
+    console.error('[Storage] 유효하지 않은 노트북 데이터:', notebook);
+    return notebook;
+  }
+
   try {
-    // 🔥 먼저 로컬 DB에 즉시 저장 (사용자 경험 최적화)
+    // 🔥 [STEP 1] 로컬 DB에 즉시 강제 저장 (가장 중요)
+    // 정제되지 않은 원본 데이터를 먼저 저장하여 데이터 유실 원천 차단
     await localDB.localSaveNotebook(notebook);
-    console.log('[Storage] 로컬 DB 저장 완료');
+    console.log('[Storage] 📍 1단계: 로컬 DB 즉시 저장 완료 (Data Loss Prevention)');
 
-    // 데이터 정제
-    const sanitizedNotebook = sanitizeNotebookForStorage(notebook);
+    // 🔥 [STEP 2] 클라우드 동기화 (Background-like Process)
+    // 이 작업이 실패하거나 늦어져도 로컬 데이터는 이미 안전함
+    const syncProcess = async () => {
+      try {
+        console.log('[Supabase] 🔄 2단계: 클라우드 동기화 시작...');
+        const sanitizedNotebook = sanitizeNotebookForStorage(notebook);
 
-    // Supabase 동기화 (비동기로 진행되지만 await 하여 완료 보장)
-    const notebookData = {
-      id: sanitizedNotebook.id,
-      title: sanitizedNotebook.title || 'Untitled Notebook',
-      emoji: sanitizedNotebook.emoji || '📝',
-      created_at: sanitizedNotebook.createdAt || new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      selected_model: sanitizedNotebook.selectedModel || 'gpt-5.1-instant',
-      system_prompt_overrides: Array.isArray(sanitizedNotebook.systemPromptOverrides)
-        ? sanitizedNotebook.systemPromptOverrides
-        : [],
-      analyzed_source_ids: sanitizedNotebook.analyzedSourceIds || []
+        const notebookData = {
+          id: sanitizedNotebook.id,
+          title: sanitizedNotebook.title || 'Untitled Notebook',
+          emoji: sanitizedNotebook.emoji || '📝',
+          created_at: sanitizedNotebook.createdAt || new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          selected_model: sanitizedNotebook.selectedModel || 'gpt-5.1-instant',
+          system_prompt_overrides: Array.isArray(sanitizedNotebook.systemPromptOverrides)
+            ? sanitizedNotebook.systemPromptOverrides
+            : [],
+          analyzed_source_ids: sanitizedNotebook.analyzedSourceIds || []
+        };
+
+        const { error: notebookError } = await supabase
+          .from('notebooks')
+          .upsert(notebookData, { onConflict: 'id' });
+
+        if (notebookError) throw notebookError;
+
+        if (sanitizedNotebook.messages) {
+          await saveNotebookMessages(sanitizedNotebook.id, sanitizedNotebook.messages);
+        }
+
+        if (sanitizedNotebook.sources && sanitizedNotebook.sources.length > 0) {
+          await saveNotebookSources(sanitizedNotebook.id, sanitizedNotebook.sources);
+        }
+
+        console.log('[Supabase] ✅ 클라우드 동기화 최종 완료');
+      } catch (syncError) {
+        console.warn('[Supabase] ⚠️ 클라우드 동기화 실패 (로컬 데이터는 안전함):', syncError.message);
+      }
     };
 
-    const { error: notebookError } = await supabase
-      .from('notebooks')
-      .upsert(notebookData, { onConflict: 'id' });
+    // 동기화 실행 (await 하지 않음으로써 사용자 경험 향상, 단 페이지 이탈 시에는 보장 필요)
+    syncProcess();
 
-    if (notebookError) throw notebookError;
-
-    // 메시지 및 소스 동기화
-    if (sanitizedNotebook.messages) {
-      await saveNotebookMessages(sanitizedNotebook.id, sanitizedNotebook.messages);
-    }
-    if (sanitizedNotebook.sources) {
-      await saveNotebookSources(sanitizedNotebook.id, sanitizedNotebook.sources);
-    }
-
-    console.log('[Supabase] ✅ 클라우드 동기화 완료:', sanitizedNotebook.id);
-    return sanitizedNotebook;
+    return notebook;
   } catch (error) {
-    console.error('[Storage] ❌ 저장/동기화 중 오류:', error);
-    // 로컬에는 저장되었을 것이므로 일단 진행 가능
+    console.error('[Storage] ❌ 치명적 저장 오류:', error);
     return notebook;
   }
 };
+
+// Supabase에서만 노트북 정보 가져오기 (내부용)
+async function getNotebookByIdFromSupabase(id) {
+  const { data, error } = await supabase.from('notebooks').select('*').eq('id', id).single();
+  if (error || !data) return null;
+
+  const messages = await getNotebookMessages(id);
+  const sources = await getNotebookSources(id);
+
+  return {
+    id: data.id,
+    title: data.title,
+    emoji: data.emoji,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+    selectedModel: data.selected_model,
+    systemPromptOverrides: Array.isArray(data.system_prompt_overrides) ? data.system_prompt_overrides : [],
+    analyzedSourceIds: data.analyzed_source_ids || [],
+    messages,
+    sources
+  };
+}
 
 // 노트북 메시지 가져오기
 export const getNotebookMessages = async (notebookId) => {
@@ -306,6 +353,7 @@ export const getNotebookSources = async (notebookId) => {
           type: source.type,
           size: source.size,
           file: file,
+          file_path: source.file_path, // 🔥 이 필드가 누락되어 re-upload 문제 발생했음
           fileBuffer: null, // Supabase에서는 fileBuffer 불필요
           fileMetadata: {
             name: source.name,

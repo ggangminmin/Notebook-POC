@@ -102,6 +102,9 @@ function AppContent() {
     console.log('[App] 현재 노트북 데이터 저장 시작:', currentNotebook.id)
 
     try {
+      console.log('[App] 저장 시도 중인 소스 개수:', sources.length)
+      console.log('[App] 소스 ID 목록:', sources.map(s => s.id))
+
       // 1. 소스 업데이트
       await updateNotebookSources(currentNotebook.id, sources)
 

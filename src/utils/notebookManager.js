@@ -256,7 +256,18 @@ export const updateNotebookIcon = (id, newIcon) => {
 }
 
 // 노트북의 소스 업데이트 (파일 추가/제거)
-export const updateNotebookSources = (id, sources) => {
+export const updateNotebookSources = async (id, sources) => {
+  // 🛑 안전 장치: 새로운 소스 목록이 비어있는데 기존 소스가 있었다면 업데이트 차단
+  try {
+    const currentNotebook = await storage.getNotebookById(id);
+    if (sources.length === 0 && currentNotebook?.sources?.length > 0) {
+      console.warn('[notebookManager] 🛑 빈 소스 목록으로 업데이트 시도 차단 (데이터 보호)');
+      return currentNotebook;
+    }
+  } catch (e) {
+    console.error('[notebookManager] 안전 체크 실패:', e);
+  }
+
   return updateNotebook(id, { sources })
 }
 
