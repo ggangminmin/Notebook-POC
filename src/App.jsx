@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import SourcePanel from './components/SourcePanel'
+import SystemPromptPanel from './components/SystemPromptPanel'
 import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
 import PDFViewer from './components/PDFViewer'
@@ -40,6 +41,8 @@ function AppContent() {
   const [previousSourceId, setPreviousSourceId] = useState(null) // 이전 선택 파일 ID (지침 초기화 감지용)
   const [analyzedSourceIds, setAnalyzedSourceIds] = useState([]) // 이미 분석한 파일 ID 목록
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false) // 소스 추가 모달 열림 상태
+  const [isPromptModalOpen, setIsPromptModalOpen] = useState(false) // AI 지침 설정 모달 상태
+  const [isSourcePanelCollapsed, setIsSourcePanelCollapsed] = useState(false) // 소스 패널 접힘 상태
 
   // 초기 마운트 감지 (useRef) - 각 자동 저장마다 별도로 관리
   const isInitialMountSources = React.useRef(true)
@@ -613,7 +616,32 @@ function AppContent() {
     console.log('[App.jsx] 최종 로컬 페이지 번호:', localPageNumber)
     console.log('═══════════════════════════════════════════════════════')
 
-    // PDF가 아닌 파일일 경우 (Word, Excel, TXT, JSON 등) - 텍스트 미리보기 표시
+    // 🌐 웹 검색 소스인 경우 - 텍스트 미리보기 모드(페이지 네비게이션 지원)로 표시
+    if (fileType === 'web' || targetFile?.type === 'web' || targetFile?.parsedData?.fileType === 'web') {
+      console.log('[App.jsx] 🌐 웹 소스 인용 클릭 - 텍스트 미리보기 모드로 표시')
+
+      // 우측 패널이 닫혀있으면 자동으로 열기
+      if (!isSettingsPanelOpen) {
+        console.log('[App.jsx] ✅ 우측 패널 자동 열기')
+        setIsSettingsPanelOpen(true)
+      }
+
+      setRightPanelState({
+        mode: 'text-preview', // 페이지 네비게이션이 가능한 텍스트 뷰어 모드 사용
+        highlightSectionIndex: localPageNumber,
+        targetFile: targetFile
+      })
+
+      setTargetPage(localPageNumber)
+
+      setTimeout(() => {
+        setTargetPage(null)
+      }, 500)
+
+      return
+    }
+
+    // PDF가 아닌 일반 텍스트 파일일 경우 (Word, Excel, TXT, JSON 등) - 텍스트 미리보기 표시
     if (fileType !== 'pdf') {
       console.log('[App.jsx] 📄 텍스트 파일 인용 클릭 - 우측 패널에 텍스트 표시. 파일 타입:', fileType)
 
@@ -623,23 +651,17 @@ function AppContent() {
         setIsSettingsPanelOpen(true)
       }
 
-      // 해당 "페이지 번호"를 섹션 인덱스로 간주
-      // 우측 패널을 텍스트 뷰어 모드로 전환 (전체 문서 표시 + 해당 섹션 하이라이트)
-      // 🔥 targetFile 전달로 파일 스위칭 지원
       setRightPanelState({
         mode: 'text-preview',
-        highlightSectionIndex: localPageNumber, // 하이라이트할 섹션 (로컬 페이지 번호)
-        targetFile: targetFile // 대상 파일 설정
+        highlightSectionIndex: localPageNumber,
+        targetFile: targetFile
       })
 
-      // targetPage 설정 (DataPreview가 감지하여 스크롤 실행)
       setTargetPage(localPageNumber)
       console.log('[App.jsx] ✅ 우측 패널 → 텍스트 뷰어 모드, 섹션', localPageNumber, '으로 스크롤')
 
-      // targetPage 리셋 (다음 클릭을 위해)
       setTimeout(() => {
         setTargetPage(null)
-        console.log('[App.jsx] 🔄 targetPage 리셋 완료')
       }, 500)
 
       return
@@ -697,8 +719,11 @@ function AppContent() {
 
       {/* Main Content - 반응형 레이아웃 (토글형 우측 패널) */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Sources (20%) - 파일 업로드 패널 */}
-        <div className="border-r border-gray-200 bg-white overflow-hidden" style={{ width: '20%' }}>
+        {/* Left Panel - Sources (파일 업로드 패널) */}
+        <div
+          className="border-r border-gray-200 bg-white overflow-hidden transition-all duration-300 ease-in-out"
+          style={{ width: isSourcePanelCollapsed ? '64px' : '20%' }}
+        >
           <SourcePanel
             sources={sources}
             onAddSources={handleAddSources}
@@ -707,13 +732,19 @@ function AppContent() {
             onDeleteSource={handleDeleteSource}
             isAddModalOpen={isAddSourceModalOpen}
             onAddModalChange={setIsAddSourceModalOpen}
+            isCollapsed={isSourcePanelCollapsed}
+            onToggleCollapse={() => setIsSourcePanelCollapsed(!isSourcePanelCollapsed)}
           />
         </div>
 
-        {/* Center Panel - Chat Interface (동적 너비: 80% or 45%) */}
+        {/* Center Panel - Chat Interface (동적 너비) */}
         <div
           className="bg-white overflow-hidden border-r border-gray-200 transition-all duration-300 ease-in-out"
-          style={{ width: isSettingsPanelOpen ? '45%' : '80%' }}
+          style={{
+            width: isSettingsPanelOpen
+              ? (isSourcePanelCollapsed ? 'calc(100% - 64px - 35%)' : '45%')
+              : (isSourcePanelCollapsed ? 'calc(100% - 64px)' : '80%')
+          }}
         >
           <ChatInterface
             selectedSources={selectedSources}
@@ -722,18 +753,11 @@ function AppContent() {
             systemPromptOverrides={systemPromptOverrides}
             onChatUpdate={handleChatUpdate}
             onPageClick={handlePageClick}
-            isSettingsPanelOpen={isSettingsPanelOpen}
-            onToggleSettingsPanel={() => {
-              setIsSettingsPanelOpen(!isSettingsPanelOpen)
-              // 설정 패널을 열 때 mode를 'natural'로 설정 (AI 지침 패널)
-              if (!isSettingsPanelOpen) {
-                setRightPanelState({ mode: 'natural', pdfPage: null })
-              }
-            }}
             initialMessages={currentNotebook?.messages || []}
             analyzedSourceIds={analyzedSourceIds}
             onAnalyzedSourcesUpdate={handleAnalyzedSourcesUpdate}
             onOpenAddSource={() => setIsAddSourceModalOpen(true)}
+            onTogglePromptModal={() => setIsPromptModalOpen(true)}
           />
         </div>
 
@@ -759,6 +783,16 @@ function AppContent() {
           </div>
         )}
       </div>
+
+      {/* AI 행동 지침 설정 모달 (팝업 형식) */}
+      {isPromptModalOpen && (
+        <SystemPromptPanel
+          language={language}
+          onSystemPromptUpdate={setSystemPromptOverrides}
+          currentOverrides={systemPromptOverrides}
+          onClose={() => setIsPromptModalOpen(false)}
+        />
+      )}
 
       {/* PDF 뷰어 모달 */}
       {pdfViewerState.isOpen && (

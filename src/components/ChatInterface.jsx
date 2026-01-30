@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import React from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check, Upload } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check, Upload, ChevronDown, ArrowUp, ChevronRight } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -10,9 +10,10 @@ import CitationBadge from './CitationBadge'
 // ChatGPT 로고 SVG 컴포넌트
 const ChatGPTLogo = ({ className, isActive }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <path d="M22.2819 9.8211C23.5136 9.8211 24.5103 8.82445 24.5103 7.59277C24.5103 6.36109 23.5136 5.36445 22.2819 5.36445C21.0503 5.36445 20.0536 6.36109 20.0536 7.59277C20.0536 8.82445 21.0503 9.8211 22.2819 9.8211Z" fill={isActive ? "currentColor" : "#6B7280"} />
-    <path d="M12 2C6.477 2 2 6.477 2 12C2 17.523 6.477 22 12 22C17.523 22 22 17.523 22 12C22 6.477 17.523 2 12 2ZM12 20C7.589 20 4 16.411 4 12C4 7.589 7.589 4 12 4C16.411 4 20 7.589 20 12C20 16.411 16.411 20 12 20Z" fill={isActive ? "currentColor" : "#6B7280"} />
-    <circle cx="12" cy="12" r="6" fill={isActive ? "currentColor" : "#6B7280"} />
+    <path
+      d="M22.28 9.82c-.15 0-.3-.02-.45-.06a5.59 5.59 0 0 0-4.04-4.88c-.14-.04-.3-.06-.45-.06-.15 0-.3-.02-.45-.06A5.59 5.59 0 0 0 12.8 1.83c-.15 0-.3.02-.45.06-.15 0-.3-.02-.45-.06A5.59 5.59 0 0 0 7.85 4.82c-.15 0-.3.02-.45.06a5.59 5.59 0 0 0-4.04 4.88c-.15.04-.3.06-.45.06-.15 0-.3.02-.45.06a5.59 5.59 0 0 0 2.95 5.52c.15.04.3.06.45.06.15 0 .3.02.45.06a5.59 5.59 0 0 0 4.04 4.88c.15.04.3.06.45.06.15 0 .3.02.45.06a5.59 5.59 0 0 0 4.04-2.95c.15-.04.3-.06.45-.06.15 0 .3-.02.45-.06a5.59 5.59 0 0 0 4.04-4.88c.15-.04.3-.06.45-.06.15 0 .3-.02.45-.06a5.59 5.59 0 0 0-2.95-5.52Zm-10.28 10.7a3.57 3.57 0 0 1-2.61-1.12l.14-.08 4.2-2.42c.17-.1.27-.28.27-.47V10.5l1.64.94c.05.03.08.08.08.14v4.92a3.6 3.6 0 0 1-3.72 4.02ZM5.23 16.7a3.57 3.57 0 0 1-.09-2.85l.14.08 4.2 2.42c.17.1.38.1.55 0l5.44-3.14V15.1c0 .06-.03.11-.08.14l-4.26 2.46a3.6 3.6 0 0 1-5.9-1.1Zm-.1-10.8a3.57 3.57 0 0 1 2.52-1.73v.16l0 4.84c0 .19.1.37.27.47l5.44 3.14-1.64.94a.16.16 0 0 1-.16 0L7.3 11.26a3.6 3.6 0 0 1-2.17-5.36Zm9.8-1.55a3.57 3.57 0 0 1 2.61 1.12l-.14.08-4.2 2.42c-.17.1-.27.28-.27.47v5.93l-1.64-.94a.16.16 0 0 1-.08-.14V8.37a3.6 3.6 0 0 1 3.72-4.02ZM18.77 7.3a3.57 3.57 0 0 1 .09 2.85l-.14-.08-4.2-2.42c-.17-.1-.38-.1-.55 0l-5.44 3.14V8.9c0-.06.03-.11.08-.14L12.87 6.3a3.6 3.6 0 0 1 5.9 1ZM18.87 18.1a3.57 3.57 0 0 1-2.52 1.73v-.16l0-4.84c0-.19-.1-.37-.27-.47l-5.44-3.14 1.64-.94a.16.16 0 0 1 .16 0l4.26 2.46a3.6 3.6 0 0 1 2.17 5.36ZM12 13.73l-3.04-1.75v-3.5L12 6.72l3.04 1.75v3.5L12 13.73Z"
+      fill={isActive ? "#10a37f" : "#6B7280"}
+    />
   </svg>
 )
 
@@ -21,17 +22,19 @@ const GeminiLogo = ({ className, isActive }) => (
   <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
       <linearGradient id="gemini-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%" stopColor="#4285F4" />
-        <stop offset="50%" stopColor="#9B72CB" />
-        <stop offset="100%" stopColor="#D96570" />
+        <stop offset="0%" stopColor="#4F46E5" />
+        <stop offset="50%" stopColor="#9333EA" />
+        <stop offset="100%" stopColor="#EF4444" />
       </linearGradient>
     </defs>
-    <path d="M12 2L3 7V17L12 22L21 17V7L12 2Z" fill={isActive ? "url(#gemini-gradient)" : "#6B7280"} />
-    <path d="M12 8L8 10.5V15.5L12 18L16 15.5V10.5L12 8Z" fill="white" opacity="0.3" />
+    <path
+      d="M12 3c.17 0 .3.13.3.3v1.4c0 .17-.13.3-.3.3s-.3-.13-.3-.3V3.3c0-.17.13-.3.3-.3Zm0 15c.17 0 .3.13.3.3v1.4c0 .17-.13.3-.3.3s-.3-.13-.3-.3v-1.4c0-.17.13-.3.3-.3Zm7.5-7.5c.17 0 .3.13.3.3h1.4c.17 0 .3-.13.3-.3s-.13-.3-.3-.3h-1.4c-.17 0-.3.13-.3.3ZM4.5 12c.17 0 .3.13.3.3H3.4c-.17 0-.3-.13-.3-.3s.13-.3.3-.3h1.4c.17 0 .3.13.3.3Zm12.02-5.52a.3.3 0 0 1 .42 0l1 1a.3.3 0 0 1-.42.42l-1-1a.3.3 0 0 1 0-.42ZM6.48 16.52a.3.3 0 0 1 .42 0l1 1a.3.3 0 0 1-.42.42l-1-1a.3.3 0 0 1 0-.42Zm0-10a.3.3 0 0 1 0-.42l1-1a.3.3 0 0 1 .42.42l-1 1a.3.3 0 0 1-.42 0Zm11.04 11.04a.3.3 0 0 1 0-.42l1-1a.3.3 0 0 1 .42.42l-1 1a.3.3 0 0 1-.42 0ZM12 6.5C12 6.5 12.5 10 16 12C12.5 14 12 17.5 12 17.5C12 17.5 11.5 14 8 12C11.5 10 12 6.5 12 6.5Z"
+      fill={isActive ? "url(#gemini-gradient)" : "#6B7280"}
+    />
   </svg>
 )
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], isSettingsPanelOpen = false, onToggleSettingsPanel, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], onTogglePromptModal, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource }) => {
   // 초기 메시지 설정 (노트북에서 불러온 데이터 또는 빈 배열)
   // initialMessages의 allSources 데이터가 누락된 경우를 대비하여 재계산
   const processInitialMessages = () => {
@@ -79,6 +82,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   const [isTyping, setIsTyping] = useState(false)
   const [suggestedQuestions, setSuggestedQuestions] = useState([])
   const [copiedMessageId, setCopiedMessageId] = useState(null)
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const messagesEndRef = useRef(null)
   const prevSourceIdsRef = useRef('') // 이전 소스 ID 추적 (무한 루프 방지)
   const hasAnalyzedRef = useRef(false) // 분석 실행 여부 추적
@@ -773,6 +777,38 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                       }
                       return <li className="ml-2" {...props}><span className="inline">{processNodes(children)}</span></li>
                     },
+                    td: ({ node, children, ...props }) => {
+                      const allSources = message.allSources || []
+                      const processNodes = (nodes) => {
+                        return React.Children.map(nodes, (child) => {
+                          if (typeof child === 'string') return renderTextWithCitations(child, allSources, onPageClick)
+                          if (React.isValidElement(child) && child.props.children) {
+                            return React.cloneElement(child, {
+                              ...child.props,
+                              children: processNodes(child.props.children)
+                            })
+                          }
+                          return child
+                        })
+                      }
+                      return <td className="border border-gray-200 px-3 py-1.5" {...props}>{processNodes(children)}</td>
+                    },
+                    th: ({ node, children, ...props }) => {
+                      const allSources = message.allSources || []
+                      const processNodes = (nodes) => {
+                        return React.Children.map(nodes, (child) => {
+                          if (typeof child === 'string') return renderTextWithCitations(child, allSources, onPageClick)
+                          if (React.isValidElement(child) && child.props.children) {
+                            return React.cloneElement(child, {
+                              ...child.props,
+                              children: processNodes(child.props.children)
+                            })
+                          }
+                          return child
+                        })
+                      }
+                      return <th className="border border-gray-200 px-3 py-1.5 bg-gray-50 font-bold" {...props}>{processNodes(children)}</th>
+                    },
                     p: ({ node, children, ...props }) => {
                       const allSources = message.allSources || []
                       const processNodes = (nodes) => {
@@ -871,28 +907,35 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     return (
-      <div className="px-4 py-2.5 border-t border-gray-200 bg-white">
-        <form onSubmit={onInternalSubmit} className="flex items-stretch space-x-2">
-          <div className="flex-1 flex items-stretch">
+      <div className="px-6 py-6 bg-[#F3F6FA] flex-shrink-0">
+        <form onSubmit={onInternalSubmit} className="max-w-full mx-auto relative group">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 focus-within:border-slate-300 focus-within:ring-4 focus-within:ring-slate-50 transition-all flex items-center px-4 py-2 min-h-[56px]">
             <textarea
               value={localInput}
               onChange={(e) => {
                 setLocalInput(e.target.value)
                 e.target.style.height = 'auto'
-                e.target.style.height = e.target.scrollHeight + 'px'
+                e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px'
               }}
               onKeyDown={onKeyDown}
-              placeholder={selectedSources.length === 0 ? (language === 'ko' ? '시작하려면 출처를 업로드하세요.' : 'Upload sources to start.') : t('chat.placeholder')}
-              disabled={selectedSources.length === 0}
-              className={`w-full px-3 py-2.5 text-[13px] border border-gray-300 rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent overflow-y-auto box-border ${selectedSources.length === 0 ? 'bg-gray-50 text-gray-400 cursor-not-allowed' : ''
-                }`}
+              placeholder={language === 'ko' ? '입력을 시작하세요' : 'Type a message'}
+              className="flex-1 text-[15px] bg-transparent border-none focus:outline-none focus:ring-0 resize-none py-2 leading-relaxed text-slate-700 custom-scrollbar placeholder:text-slate-400"
               rows="1"
-              style={{ minHeight: '44px', maxHeight: '200px', lineHeight: '1.4' }}
+              style={{ minHeight: '24px', maxHeight: '200px' }}
             />
+            <div className="flex items-center space-x-3 ml-2 shrink-0">
+              <span className="text-[13px] font-medium text-slate-400">
+                {language === 'ko' ? `소스 ${selectedSources.length}개` : `${selectedSources.length} Sources`}
+              </span>
+              <button
+                type="submit"
+                disabled={!localInput.trim() || isTyping || selectedSources.length === 0}
+                className="w-9 h-9 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all disabled:opacity-30 active:scale-95"
+              >
+                <ChevronRight className="w-5 h-5 translate-x-0.5" strokeWidth={2.5} />
+              </button>
+            </div>
           </div>
-          <button type="submit" disabled={!localInput.trim() || isTyping || selectedSources.length === 0} className="px-4 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center flex-shrink-0 box-border" style={{ minHeight: '44px', height: 'auto' }}>
-            <span className="text-sm font-medium">{t('chat.send')}</span>
-          </button>
         </form>
       </div>
     )
@@ -992,49 +1035,101 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   return (
     <div className="h-full flex flex-col bg-white">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200">
-        <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-gray-900">{t('chat.title')}</h2>
-          <div className="flex items-center space-x-3">
-            <div className="flex bg-gray-100 rounded-md p-0.5">
-              {['instant', 'thinking', 'gemini'].map(m => (
-                <button
-                  key={m}
-                  onClick={() => onModelChange(m)}
-                  className={`px-3 py-2 rounded text-xs font-medium transition-all ${selectedModel === m ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-600 hover:text-gray-800'}`}
-                >
-                  {m === 'instant' ? 'GPT 5.2 Instant' : m === 'thinking' ? 'GPT 5.2 Thinking' : 'Gemini 3.0 Flash'}
-                </button>
-              ))}
-            </div>
-            <button onClick={onToggleSettingsPanel} className={`flex items-center px-3 py-2 rounded text-xs font-medium transition-all ${isSettingsPanelOpen ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}>
-              {language === 'ko' ? 'AI 지침 설정' : 'AI Settings'}
+      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
+        <div className="flex items-center justify-end space-x-4">
+          <div className="relative">
+            <button
+              onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+              className="flex items-center space-x-2 px-3 py-1.5 transition-all duration-200"
+            >
+              <span className="text-[15px] font-bold text-slate-700 tracking-tight">
+                {selectedModel === 'instant' ? 'GPT-5.2 Instant' : selectedModel === 'thinking' ? 'GPT-5.2 Pro' : 'Gemini-3.0 Flash'}
+              </span>
+              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isModelMenuOpen ? 'rotate-180' : ''}`} />
             </button>
+
+            {/* 드롭다운 메뉴 (텍스트 전용) */}
+            {isModelMenuOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setIsModelMenuOpen(false)}
+                />
+                <div className="absolute top-full right-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-scale-in origin-top-right">
+                  {[
+                    { id: 'instant', name: 'GPT-5.2 Instant' },
+                    { id: 'thinking', name: 'GPT-5.2 Pro' },
+                    { id: 'gemini', name: 'Gemini-3.0 Flash' }
+                  ].map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => {
+                        onModelChange(m.id)
+                        setIsModelMenuOpen(false)
+                      }}
+                      className={`w-full flex items-center px-5 py-3 transition-colors ${selectedModel === m.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                    >
+                      <span className={`text-[14px] font-bold ${selectedModel === m.id ? 'text-blue-600' : 'text-slate-600'}`}>
+                        {m.name}
+                      </span>
+                      {selectedModel === m.id && (
+                        <div className="ml-auto w-2 h-2 bg-blue-500 rounded-full" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
+
+          <button
+            onClick={onTogglePromptModal}
+            className="flex items-center h-10 px-5 rounded-2xl text-[13px] font-bold transition-all border-2 border-purple-200 text-purple-700 hover:border-purple-300 hover:bg-purple-50"
+          >
+            {language === 'ko' ? 'AI 지침 설정' : 'AI Guidelines'}
+          </button>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 p-5 space-y-3 bg-gray-50" style={{ overflowY: 'scroll' }}>
-        {messages.map((m) => (
-          <MessageItem
-            key={m.id}
-            message={m}
-            language={language}
-            onPageClick={onPageClick}
-            handleCopyMessage={handleCopyMessage}
-            copiedMessageId={copiedMessageId}
-            suggestedQuestions={suggestedQuestions}
-            handleSuggestedQuestionClick={handleSuggestedQuestionClick}
-            renderTextWithCitations={renderTextWithCitations}
-          />
-        ))}
-        {isTyping && (
-          <div className="flex justify-center py-4">
-            <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+      <div className="flex-1 flex flex-col bg-[#F3F6FA] overflow-y-auto">
+        {messages.length === 0 && selectedSources.length === 0 ? (
+          <div className="flex-1 flex flex-col items-center justify-center space-y-10 animate-fade-in py-20 px-6">
+            <h1 className="text-4xl font-black text-slate-800 tracking-tighter text-center">
+              {language === 'ko' ? '시작하려면 소스 추가' : 'Add sources to start'}
+            </h1>
+            <button
+              onClick={onOpenAddSource}
+              className="px-10 h-14 bg-white border border-gray-300 rounded-[14px] hover:bg-gray-50 transition-all font-bold text-slate-800 text-[16px] shadow-sm active:scale-95"
+            >
+              {language === 'ko' ? '소스 업로드' : 'Upload Sources'}
+            </button>
+          </div>
+        ) : (
+          <div className="p-6 space-y-6">
+            {messages.map((m) => (
+              <MessageItem
+                key={m.id}
+                message={m}
+                language={language}
+                onPageClick={onPageClick}
+                handleCopyMessage={handleCopyMessage}
+                copiedMessageId={copiedMessageId}
+                suggestedQuestions={suggestedQuestions}
+                handleSuggestedQuestionClick={handleSuggestedQuestionClick}
+                renderTextWithCitations={renderTextWithCitations}
+              />
+            ))}
+            {isTyping && (
+              <div className="flex justify-start">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                  <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}
