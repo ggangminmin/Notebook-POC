@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
-import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight, FileSpreadsheet, File, PanelLeft } from 'lucide-react'
+import { Plus, FileText, Upload, X, Globe, Search, Sparkles, Loader2, BookOpen, ExternalLink, ChevronDown, ChevronRight, FileSpreadsheet, File, PanelLeft, Link, ClipboardType, History, ArrowLeft, Youtube, FileUp } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { parseFileContent, fetchWebMetadata, virtualizeText } from '../utils/fileParser'
 import { performFastResearch, performDeepResearch } from '../services/webSearchService'
 import Tooltip from './Tooltip'
 import WebSearchPopup from './WebSearchPopup'
 
-const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange, isCollapsed, onToggleCollapse }) => {
+const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange, isCollapsed, onToggleCollapse, showNotification }) => {
   const [showAddModal, setShowAddModal] = useState(false)
 
   // 외부에서 모달 열림 상태 제어
@@ -19,6 +19,12 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   // 모달 상태 변경 시 부모에게 알림
   const handleModalChange = (isOpen) => {
     setShowAddModal(isOpen)
+    if (!isOpen) {
+      setModalView('main')
+      setWebsiteInput('')
+      setTextInput('')
+      setTextTitle('')
+    }
     if (onAddModalChange) {
       onAddModalChange(isOpen)
     }
@@ -33,6 +39,11 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const [searchProgress, setSearchProgress] = useState({ percent: 0, message: '' })
   const [isSearchPopupOpen, setIsSearchPopupOpen] = useState(false)
   const [expandedSourceIds, setExpandedSourceIds] = useState(new Set()) // 펼쳐진 소스 ID 추적
+  const [modalView, setModalView] = useState('main') // 'main', 'website', 'text'
+  const [websiteInput, setWebsiteInput] = useState('')
+  const [textInput, setTextInput] = useState('')
+  const [textTitle, setTextTitle] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const fileInputRef = useRef(null)
   const { t, language } = useLanguage()
 
@@ -40,10 +51,27 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
   const getFileIconAndColor = (source) => {
     // 웹 소스
     if (source.type === 'web') {
+      const isYouTube = source.url && (source.url.includes('youtube.com') || source.url.includes('youtu.be'))
+      if (isYouTube) {
+        return {
+          icon: Youtube,
+          bgColor: 'bg-red-50',
+          iconColor: 'text-red-500'
+        }
+      }
       return {
         icon: Globe,
         bgColor: 'bg-blue-100',
         iconColor: 'text-blue-600'
+      }
+    }
+
+    // 복사된 텍스트
+    if (source.type === 'text') {
+      return {
+        icon: ClipboardType,
+        bgColor: 'bg-purple-100',
+        iconColor: 'text-purple-600'
       }
     }
 
@@ -107,9 +135,29 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
     })
   }
 
+  const processFiles = async (filesList) => {
+    const files = Array.from(filesList)
+
+    // 파일 개수 제한 체크 (기존 소스 + 추가할 소스)
+    if (sources.length + files.length > 10) {
+      showNotification?.(
+        language === 'ko' ? '파일 추가 제한' : 'File Limit Exceeded',
+        language === 'ko' ? `최대 10개의 소스까지만 추가할 수 있습니다. (현재: ${sources.length}개 / 추가 시도: ${files.length}개)` : `You can only add up to 10 sources. (Current: ${sources.length} / Attempted: ${files.length})`,
+        'error'
+      );
+      return false
+    }
+    return files
+  }
+
   const handleFileSelect = async (e) => {
     console.log('파일 선택 이벤트 발생:', e.target.files)
-    const files = Array.from(e.target.files)
+    const files = await processFiles(e.target.files)
+    if (!files) {
+      e.target.value = ''
+      return
+    }
+
     if (files.length > 0) {
       console.log('선택된 파일:', files.map(f => f.name))
       const parsedSources = await Promise.all(
@@ -140,10 +188,11 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
               }
             }
           } catch (error) {
-            const parsingErrorMsg = language === 'ko'
-              ? `파일 "${file.name}" 파싱 실패: ${error.message}`
-              : `Failed to parse file "${file.name}": ${error.message}`
-            alert(parsingErrorMsg)
+            showNotification?.(
+              language === 'ko' ? '파일 파싱 실패' : 'Parsing Failed',
+              language === 'ko' ? `파일 "${file.name}"을(를) 읽는 중 오류가 발생했습니다.` : `Error reading file "${file.name}".`,
+              'error'
+            );
             return null
           }
         })
@@ -161,6 +210,72 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
     e.target.value = ''
   }
 
+  const handleDragOver = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+
+  const handleDragEnter = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (modalView === 'main') {
+      setIsDragging(true)
+    }
+  }
+
+  const handleDragLeave = (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+
+  const handleDrop = async (e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+
+    if (modalView !== 'main') return
+
+    const files = await processFiles(e.dataTransfer.files)
+    if (!files || files.length === 0) return
+
+    console.log('드롭된 파일:', files.map(f => f.name))
+    const parsedSources = await Promise.all(
+      files.map(async (file) => {
+        try {
+          console.log('파일 파싱 시작:', file.name)
+          const parsedData = await parseFileContent(file)
+          const fileBuffer = await file.arrayBuffer()
+
+          return {
+            id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name: file.name,
+            type: 'file',
+            file: {
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              lastModified: file.lastModified,
+              data: fileBuffer
+            },
+            uploadedAt: new Date().toISOString(),
+            parsedData: parsedData,
+            selected: true
+          }
+        } catch (error) {
+          console.error(`Error parsing ${file.name}:`, error)
+          return null
+        }
+      })
+    )
+
+    const validSources = parsedSources.filter(s => s !== null)
+    if (validSources.length > 0) {
+      onAddSources(validSources)
+      handleModalChange(false)
+    }
+  }
+
   const handleAddFileClick = () => {
     console.log('파일 추가 버튼 클릭, fileInputRef:', fileInputRef.current)
     if (fileInputRef.current) {
@@ -170,38 +285,87 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
     }
   }
 
-  const handleUrlSubmit = async () => {
-    if (!urlInput.trim()) {
-      setUrlError(t('sources.urlRequired') || 'URL을 입력해주세요.')
+  const handleWebsiteSubmit = async () => {
+    const urls = websiteInput.split(/[\n\s]+/).filter(url => url.trim())
+    if (urls.length === 0) return
+
+    // 개수 제한 체크
+    if (sources.length + urls.length > 10) {
+      showNotification?.(
+        language === 'ko' ? '파일 추가 제한' : 'File Limit Exceeded',
+        language === 'ko' ? `최대 10개의 소스까지만 추가할 수 있습니다. (현재: ${sources.length}개)` : `You can only add up to 10 sources. (Current: ${sources.length})`,
+        'error'
+      );
       return
     }
 
     setIsLoadingUrl(true)
-    setUrlError('')
+    const newSources = []
 
     try {
-      const metadata = await fetchWebMetadata(urlInput.trim())
-      const newSource = {
-        id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        name: metadata.metadata?.title || metadata.domain,
-        type: 'web',
-        url: urlInput.trim(),
-        uploadedAt: new Date().toISOString(),
-        parsedData: metadata
+      for (const url of urls) {
+        try {
+          const metadata = await fetchWebMetadata(url.trim())
+          newSources.push({
+            id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            name: metadata.metadata?.title || metadata.domain || url,
+            type: 'web',
+            url: url.trim(),
+            uploadedAt: new Date().toISOString(),
+            parsedData: metadata
+          })
+        } catch (err) {
+          console.error(`Failed to fetch ${url}:`, err)
+        }
       }
 
-      onAddSources([newSource])
-      handleModalChange(false)
-      setUrlInput('')
-      setUrlError('')
-    } catch (error) {
-      setUrlError(error.message || t('errors.urlFetch'))
+      if (newSources.length > 0) {
+        onAddSources(newSources)
+        handleModalChange(false)
+      } else {
+        setUrlError(language === 'ko' ? 'URL을 처리할 수 없습니다.' : 'Failed to process URLs.')
+      }
     } finally {
       setIsLoadingUrl(false)
     }
   }
 
-  // 웹 검색 핸들러 (팝업 열기)
+  const handleTextSubmit = () => {
+    if (!textInput.trim()) return
+
+    // 개수 제한 체크
+    if (sources.length + 1 > 10) {
+      showNotification?.(
+        language === 'ko' ? '파일 추가 제한' : 'File Limit Exceeded',
+        language === 'ko' ? '최대 10개의 소스까지만 추가할 수 있습니다.' : 'You can only add up to 10 sources.',
+        'error'
+      );
+      return
+    }
+
+    const { pageCount, pageTexts } = virtualizeText(textInput)
+
+    const newSource = {
+      id: `source_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name: textTitle.trim() || (language === 'ko' ? '복사된 텍스트' : 'Copied Text'),
+      type: 'text',
+      uploadedAt: new Date().toISOString(),
+      parsedData: {
+        fileType: 'text',
+        extractedText: textInput,
+        pageCount,
+        pageTexts,
+        metadata: {
+          title: textTitle.trim() || (language === 'ko' ? '복사된 텍스트' : 'Copied Text'),
+          type: 'text'
+        }
+      }
+    }
+
+    onAddSources([newSource])
+    handleModalChange(false)
+  }
+
   const handleWebSearchClick = () => {
     if (!searchQuery.trim()) return
     setIsSearchPopupOpen(true)
@@ -492,7 +656,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                 onChange={toggleAll}
                 className="w-4 h-4 rounded border-gray-300 text-[#9B4DEE] focus:ring-[#9B4DEE]"
               />
-              <span className="ml-2 text-[12px] font-bold text-slate-500 uppercase tracking-tighter">
+              <span className="ml-2 text-sm font-bold text-slate-500 uppercase tracking-tighter">
                 {t('sources.allSources')}
               </span>
             </div>
@@ -531,20 +695,6 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                             className="mt-0.5 w-3 h-3 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
                           />
 
-                          {/* Expand/Collapse Button */}
-                          {hasSummary && (
-                            <button
-                              onClick={() => toggleExpand(source.id)}
-                              className="flex-shrink-0 mt-0.5 p-0.5 rounded hover:bg-gray-200 transition-colors"
-                            >
-                              {isExpanded ? (
-                                <ChevronDown className="w-3 h-3 text-gray-600" />
-                              ) : (
-                                <ChevronRight className="w-3 h-3 text-gray-600" />
-                              )}
-                            </button>
-                          )}
-
                           <div
                             className="flex-shrink-0 cursor-pointer"
                             onClick={() => onToggleSource(source.id)}
@@ -567,7 +717,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                             className="flex-1 min-w-0 cursor-pointer"
                             onClick={() => onToggleSource(source.id)}
                           >
-                            <p className="text-xs font-medium text-gray-900 truncate leading-tight" title={source.name}>
+                            <p className="text-sm font-medium text-gray-900 truncate leading-tight" title={source.name}>
                               {source.name}
                             </p>
                             <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={source.url || ''}>
@@ -623,33 +773,88 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
       {/* Add Source Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={() => handleModalChange(false)}>
-          <div className="bg-white rounded-lg p-6 max-w-lg w-full mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">{t('sources.addSource')}</h3>
-              <button
-                onClick={() => handleModalChange(false)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-[2px] flex items-center justify-center z-[100] animate-in fade-in duration-200" onClick={() => handleModalChange(false)}>
+          <div
+            className={`bg-[#f9fbfd] rounded-3xl shadow-2xl transition-all duration-300 overflow-hidden ${modalView === 'main' ? 'max-w-2xl w-full' : 'max-w-lg w-full'
+              }`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {modalView === 'main' ? (
+              /* Image 1: Main Source Selection */
+              <div className="p-8">
+                <div className="flex justify-between items-start mb-6">
+                  <h2 className="text-2xl font-semibold text-gray-800 tracking-tight">
+                    {language === 'ko' ? '소스 추가' : 'Add Source'}
+                  </h2>
+                  <button onClick={() => handleModalChange(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors text-gray-400">
+                    <X className="w-6 h-6" />
+                  </button>
+                </div>
 
-            {/* File Upload Content */}
-            <div className="space-y-4">
-              <div className="space-y-3">
-                <button
-                  onClick={handleAddFileClick}
-                  className="w-full p-4 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors flex flex-col items-center justify-center space-y-2"
+
+
+                {/* Drop Zone / Action Buttons */}
+                <div
+                  onDragOver={handleDragOver}
+                  onDragEnter={handleDragEnter}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`relative py-24 px-10 border-2 border-dashed rounded-[2rem] flex flex-col items-center justify-center space-y-12 transition-all duration-300 ${isDragging
+                    ? 'border-blue-500 bg-blue-50/50 scale-[1.02] shadow-lg'
+                    : 'border-gray-200 bg-gray-50/50'
+                    }`}
                 >
-                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Upload className="w-6 h-6 text-blue-600" />
+                  <span className={`font-medium text-lg transition-colors ${isDragging ? 'text-blue-600' : 'text-gray-400'}`}>
+                    {isDragging
+                      ? (language === 'ko' ? '여기에 놓으세요' : 'Drop here')
+                      : (language === 'ko' ? '또는 파일 드롭' : 'Or drop files')}
+                  </span>
+
+                  <div className="grid grid-cols-3 gap-6 w-full max-w-2xl">
+                    <button
+                      onClick={handleAddFileClick}
+                      className="flex flex-col items-center justify-center p-3 space-y-2 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-orange-50 flex items-center justify-center group-hover:bg-orange-100 transition-colors">
+                        <FileUp className="w-5 h-5 text-orange-500" />
+                      </div>
+                      <span className="text-[13px] font-medium text-gray-700 whitespace-nowrap">
+                        {language === 'ko' ? '파일 업로드' : 'File Upload'}
+                      </span>
+                    </button>
+
+                    <button
+                      onClick={() => setModalView('website')}
+                      className="flex flex-col items-center justify-center p-3 space-y-2 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                        <div className="flex items-center -space-x-1">
+                          <Link className="w-4 h-4 text-blue-500" />
+                          <Youtube className="w-4 h-4 text-red-500" />
+                        </div>
+                      </div>
+                      <span className="text-[13px] font-medium text-gray-700 whitespace-nowrap">
+                        {language === 'ko' ? '웹사이트' : 'Website'}
+                      </span>
+                    </button>
+
+
+
+                    <button
+                      onClick={() => setModalView('text')}
+                      className="flex flex-col items-center justify-center p-3 space-y-2 rounded-2xl bg-white border border-gray-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all group"
+                    >
+                      <div className="w-10 h-10 rounded-full bg-gray-50 flex items-center justify-center group-hover:bg-gray-100 transition-colors">
+                        <ClipboardType className="w-5 h-5 text-gray-600" />
+                      </div>
+                      <span className="text-[13px] font-medium text-gray-700 whitespace-nowrap">
+                        {language === 'ko' ? '복사된 텍스트' : 'Copied Text'}
+                      </span>
+                    </button>
                   </div>
-                  <div className="text-center">
-                    <p className="font-medium text-gray-900">{t('sources.uploadFile')}</p>
-                    <p className="text-xs text-gray-500 mt-1">{t('sources.uploadFileDesc')}</p>
-                  </div>
-                </button>
+                </div>
+
+
 
                 <input
                   ref={fileInputRef}
@@ -660,7 +865,134 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                   className="hidden"
                 />
               </div>
-            </div>
+            ) : modalView === 'website' ? (
+              /* Image 2: Website URL Input */
+              <div className="flex flex-col h-full bg-white rounded-3xl overflow-hidden shadow-2xl transition-all duration-300 transform scale-100">
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-50/50 to-transparent">
+                  <div className="flex items-center space-x-4">
+                    <button
+                      onClick={() => setModalView('main')}
+                      className="p-2.5 rounded-full hover:bg-gray-100 transition-all text-gray-600 active:scale-95 shadow-sm"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <h3 className="text-xl font-bold text-gray-800 tracking-tight">
+                      {language === 'ko' ? '웹사이트 및 YouTube URL' : 'Website & YouTube URL'}
+                    </h3>
+                  </div>
+                  <button onClick={() => handleModalChange(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar no-scrollbar" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+                  <p className="text-[15px] text-gray-600 leading-relaxed font-medium">
+                    {language === 'ko'
+                      ? '에이전트 챗봇에 소스로 업로드할 웹사이트 및 YouTube URL을 아래에 붙여넣으세요 (최대 10개)'
+                      : 'Copy and paste the URL of a website or YouTube video below to upload as a source to Agent Chatbot (Max 10).'}
+                  </p>
+
+                  <div className="relative group">
+                    <div className="absolute -inset-0.5 bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl opacity-10 group-focus-within:opacity-20 transition-opacity blur" />
+                    <textarea
+                      value={websiteInput}
+                      onChange={(e) => setWebsiteInput(e.target.value)}
+                      placeholder={language === 'ko' ? '링크를 붙여넣으세요.' : 'Paste links here.'}
+                      className="relative w-full h-48 p-5 text-[15px] border border-gray-200 rounded-2xl focus:outline-none focus:ring-0 focus:border-blue-400 bg-white shadow-inner resize-none transition-all placeholder:text-gray-300"
+                    />
+                  </div>
+
+                  <ul className="space-y-2 ml-1">
+                    {[
+                      language === 'ko' ? '여러 URL을 추가하려면 공백이나 줄 바꿈으로 구분하세요.' : 'Separate multiple URLs with spaces or newlines.',
+                      language === 'ko' ? '현재는 웹사이트에 표시되는 텍스트만 가져옵니다.' : 'Currently, only the visible text is extracted.',
+                      language === 'ko' ? '유료 기사는 지원되지 않습니다.' : 'Paid articles are not supported.',
+                      language === 'ko' ? '현재는 YouTube의 텍스트 스크립트만 가져옵니다.' : 'Only YouTube transcripts are captured.',
+                      language === 'ko' ? '공개 YouTube 동영상만 지원됩니다.' : 'Only public YouTube videos are supported.'
+                    ].map((item, idx) => (
+                      <li key={idx} className="flex items-start text-[12.5px] text-gray-500 space-x-2">
+                        <span className="mt-1 w-1 h-1 bg-gray-300 rounded-full flex-shrink-0" />
+                        <span>{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div className="p-6 bg-gray-50/50 border-t border-gray-100 flex justify-end">
+                  <button
+                    disabled={!websiteInput.trim() || isLoadingUrl}
+                    onClick={handleWebsiteSubmit}
+                    className="px-8 py-3 bg-gray-900 text-white rounded-full font-bold text-[15px] hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-all shadow-lg active:scale-98"
+                  >
+                    {isLoadingUrl ? (
+                      <div className="flex items-center space-x-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>{language === 'ko' ? '가져오는 중...' : 'Fetching...'}</span>
+                      </div>
+                    ) : (
+                      language === 'ko' ? '삽입' : 'Insert'
+                    )}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              /* Image 3: Copied Text Input */
+              <div className="flex flex-col h-full bg-white rounded-3xl overflow-hidden shadow-2xl transition-all duration-300">
+                <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-purple-50/50 to-transparent">
+                  <div className="flex items-center space-x-4">
+                    <button
+                      onClick={() => setModalView('main')}
+                      className="p-2.5 rounded-full hover:bg-gray-100 transition-all text-gray-600 active:scale-95 shadow-sm"
+                    >
+                      <ArrowLeft className="w-5 h-5" />
+                    </button>
+                    <h3 className="text-xl font-bold text-gray-800 tracking-tight">
+                      {language === 'ko' ? '복사한 텍스트 붙여넣기' : 'Paste Copied Text'}
+                    </h3>
+                  </div>
+                  <button onClick={() => handleModalChange(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-colors">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-8 space-y-6">
+                  <p className="text-[15px] text-gray-600 leading-relaxed font-medium">
+                    {language === 'ko'
+                      ? '에이전트 챗봇에 소스로 업로드할 복사한 텍스트를 아래에 붙여넣으세요 (최대 10개)'
+                      : 'Paste the text you want to upload as a source to Agent Chatbot below (Max 10).'}
+                  </p>
+
+                  <div className="space-y-4">
+                    <input
+                      type="text"
+                      placeholder={language === 'ko' ? '제목 (선택사항)' : 'Title (Optional)'}
+                      value={textTitle}
+                      onChange={(e) => setTextTitle(e.target.value)}
+                      className="w-full px-5 py-3 text-[15px] border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-100 focus:border-purple-400 transition-all"
+                    />
+                    <div className="relative group">
+                      <div className="absolute -inset-0.5 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl opacity-10 group-focus-within:opacity-20 transition-opacity blur" />
+                      <textarea
+                        value={textInput}
+                        onChange={(e) => setTextInput(e.target.value)}
+                        placeholder={language === 'ko' ? '여기에 텍스트를 붙여넣으세요.' : 'Paste your text here.'}
+                        className="relative w-full h-64 p-5 text-[15px] border border-gray-200 rounded-2xl focus:outline-none focus:ring-0 focus:border-purple-400 bg-white shadow-inner resize-none transition-all placeholder:text-gray-300 custom-scrollbar"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-6 bg-gray-50/50 border-t border-gray-100 flex justify-end">
+                  <button
+                    disabled={!textInput.trim()}
+                    onClick={handleTextSubmit}
+                    className="px-8 py-3 bg-gray-900 text-white rounded-full font-bold text-[15px] hover:bg-gray-800 disabled:bg-gray-200 disabled:text-gray-400 transition-all shadow-lg active:scale-98"
+                  >
+                    {language === 'ko' ? '삽입' : 'Insert'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

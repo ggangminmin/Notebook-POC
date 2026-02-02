@@ -5,6 +5,7 @@ import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
 import PDFViewer from './components/PDFViewer'
 import Dashboard from './components/Dashboard'
+import Notification from './components/Notification'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import pdfViewerController from './utils/pdfViewerController'
 import {
@@ -43,6 +44,24 @@ function AppContent() {
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false) // 소스 추가 모달 열림 상태
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false) // AI 지침 설정 모달 상태
   const [isSourcePanelCollapsed, setIsSourcePanelCollapsed] = useState(false) // 소스 패널 접힘 상태
+
+  // 알림(Notification) 상태
+  const [notification, setNotification] = useState({
+    isVisible: false,
+    message: '',
+    subMessage: '',
+    type: 'success'
+  })
+
+  // 알림 표시 함수
+  const showNotification = useCallback((message, subMessage = '', type = 'success') => {
+    setNotification({
+      isVisible: true,
+      message,
+      subMessage,
+      type
+    })
+  }, [])
 
   // 초기 마운트 감지 (useRef) - 각 자동 저장마다 별도로 관리
   const isInitialMountSources = React.useRef(true)
@@ -690,9 +709,8 @@ function AppContent() {
   }, [selectedSources, rightPanelState.mode, isSettingsPanelOpen])
 
 
-  // 대시보드 뷰
   if (currentView === 'dashboard') {
-    return <Dashboard onNotebookSelect={handleNotebookSelect} />
+    return <Dashboard onNotebookSelect={handleNotebookSelect} showNotification={showNotification} />
   }
 
   // 채팅 뷰
@@ -734,6 +752,7 @@ function AppContent() {
             onAddModalChange={setIsAddSourceModalOpen}
             isCollapsed={isSourcePanelCollapsed}
             onToggleCollapse={() => setIsSourcePanelCollapsed(!isSourcePanelCollapsed)}
+            showNotification={showNotification}
           />
         </div>
 
@@ -779,6 +798,7 @@ function AppContent() {
               systemPromptOverrides={systemPromptOverrides}
               targetPage={targetPage}
               onClose={() => setIsSettingsPanelOpen(false)}
+              showNotification={showNotification}
             />
           </div>
         )}
@@ -788,11 +808,35 @@ function AppContent() {
       {isPromptModalOpen && (
         <SystemPromptPanel
           language={language}
-          onSystemPromptUpdate={setSystemPromptOverrides}
+          onSystemPromptUpdate={(overrides) => {
+            setSystemPromptOverrides(overrides);
+            if (overrides.length > 0) {
+              showNotification(
+                language === 'ko' ? 'AI 지침 적용 완료' : 'AI Guidelines Applied',
+                language === 'ko' ? '새로운 지침이 시스템에 반영되었습니다.' : 'New guidelines have been applied to the system.'
+              );
+            } else {
+              showNotification(
+                language === 'ko' ? 'AI 지침 초기화' : 'AI Guidelines Reset',
+                language === 'ko' ? '지침이 초기 상태로 돌아갔습니다.' : 'Guidelines have been reset to default.',
+                'info'
+              );
+            }
+          }}
           currentOverrides={systemPromptOverrides}
           onClose={() => setIsPromptModalOpen(false)}
         />
       )}
+
+      {/* 전역 알림 컴포넌트 */}
+      <Notification
+        isVisible={notification.isVisible}
+        message={notification.message}
+        subMessage={notification.subMessage}
+        type={notification.type}
+        language={language}
+        onClose={() => setNotification(prev => ({ ...prev, isVisible: false }))}
+      />
 
       {/* PDF 뷰어 모달 */}
       {pdfViewerState.isOpen && (

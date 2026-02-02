@@ -502,8 +502,9 @@ export const generateStrictRAGResponse = async (query, documentContext, language
         : 'You are a friendly AI assistant. Have a natural and warm conversation with the user. Keep your responses concise and not too long.'
 
       // 사용자 정의 지침 병합 (일상 대화 모드에서도 적용)
-      const customGuidelines = systemPromptOverrides.length > 0
-        ? systemPromptOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
+      const activeOverrides = systemPromptOverrides.filter(o => o.isActive !== false)
+      const customGuidelines = activeOverrides.length > 0
+        ? activeOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
         : ''
 
       const casualPrompt = customGuidelines + baseCasualPrompt
@@ -554,13 +555,32 @@ export const generateStrictRAGResponse = async (query, documentContext, language
       let docContent = ''
 
       if (pageTexts.length > 0) {
-        // 각 문서별로 1페이지부터 시작
+        // PDF 등 이미 페이지 분할된 문서
         docContent = pageTexts.map(page =>
           `[페이지 ${page.pageNumber}]\n${page.text}`
         ).join('\n\n')
       } else if (extractedText.trim().length >= 10) {
-        // 텍스트/기타 문서: 가상의 1페이지 할당
-        docContent = `[페이지 1]\n${extractedText}`
+        // 🌐 웹 소스 또는 텍스트 문서: 약 2000자 단위로 가상 페이지 할당
+        const virtualPageSize = 2000
+        const text = extractedText.trim()
+        const virtualPages = []
+
+        for (let i = 0; i < text.length; i += virtualPageSize) {
+          const pageNum = Math.floor(i / virtualPageSize) + 1
+          const pageText = text.substring(i, i + virtualPageSize)
+          virtualPages.push(`[페이지 ${pageNum}]\n${pageText}`)
+        }
+
+        docContent = virtualPages.join('\n\n')
+
+        // 원본 데이터에도 가상 페이지 정보 주입 (UI 네비게이션용)
+        if (!doc.parsedData.pageTexts || doc.parsedData.pageTexts.length === 0) {
+          doc.parsedData.pageTexts = virtualPages.map((text, idx) => ({
+            pageNumber: idx + 1,
+            text: text.replace(`[페이지 ${idx + 1}]\n`, '')
+          }))
+          doc.parsedData.pageCount = virtualPages.length
+        }
       }
 
       if (docContent) {
@@ -620,8 +640,9 @@ export const generateStrictRAGResponse = async (query, documentContext, language
     })
 
     // 사용자 정의 지침 병합 (systemPromptOverrides가 있으면 기본 프롬프트 앞에 추가)
-    const customGuidelines = systemPromptOverrides.length > 0
-      ? systemPromptOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
+    const activeOverrides = systemPromptOverrides.filter(o => o.isActive !== false)
+    const customGuidelines = activeOverrides.length > 0
+      ? activeOverrides.map(override => override.content).join('\n\n') + '\n\n---\n\n'
       : ''
 
     // Universal Document Analyzer 시스템 프롬프트 (문서 종류 무관 맥락 기반 자율 분석)

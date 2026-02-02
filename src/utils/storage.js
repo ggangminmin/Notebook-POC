@@ -347,29 +347,41 @@ export const getNotebookSources = async (notebookId) => {
           }
         }
 
+        // 🔥 중요: parsedData 복원 로직 개선 (웹 소스 및 텍스트 소스 대응)
+        const isWeb = source.type === 'web';
+        const pageData = source.page_texts;
+
+        const parsedData = (pageData || source.extracted_text) ? {
+          fileType: source.file_type || (isWeb ? 'web' : 'pdf'),
+          fileName: source.file_name || source.name,
+          fileSize: source.file_size || source.size,
+          extractedText: source.extracted_text || '',
+          // 🔥 웹 소스인 경우 저장된 구조에서 items 추출, 아니면 그대로 사용
+          pageTexts: isWeb ? (pageData?.items || []) : (pageData || []),
+          numPages: source.page_count || 0,
+          pageCount: source.page_count || 0,
+          pageImages: [],
+          // 🔥 웹 소스 전용 요약 및 메타데이터 복원
+          summary: isWeb ? pageData?.summary : null,
+          metadata: isWeb ? (pageData?.metadata || {}) : {
+            title: source.file_name || source.name
+          }
+        } : null;
+
         return {
           id: source.id,
           name: source.name,
           type: source.type,
           size: source.size,
           file: file,
-          file_path: source.file_path, // 🔥 이 필드가 누락되어 re-upload 문제 발생했음
-          fileBuffer: null, // Supabase에서는 fileBuffer 불필요
+          file_path: source.file_path,
+          fileBuffer: null,
           fileMetadata: {
             name: source.name,
             type: source.type,
             size: source.size
           },
-          parsedData: source.page_texts ? {
-            fileType: source.file_type || 'pdf',
-            fileName: source.file_name || source.name,
-            fileSize: source.file_size || source.size,
-            extractedText: source.extracted_text || '',
-            pageTexts: source.page_texts,
-            numPages: source.page_count || 0,
-            pageCount: source.page_count || 0,
-            pageImages: [] // 썸네일은 저장하지 않음
-          } : null
+          parsedData: parsedData
         };
       })
     );
@@ -451,8 +463,13 @@ export const saveNotebookSources = async (notebookId, sources) => {
         uploaded_at: new Date().toISOString(),
         file_path: filePath,
         page_count: source.parsedData?.numPages || source.parsedData?.pageCount || null,
-        page_texts: source.parsedData?.pageTexts || null,
-        file_type: source.parsedData?.fileType || null,
+        // 🔥 page_texts에 요약 정보도 함께 저장 (별도 컬럼 없을 경우 대비)
+        page_texts: source.type === 'web' ? {
+          summary: source.parsedData?.summary || null,
+          metadata: source.parsedData?.metadata || {},
+          items: source.parsedData?.pageTexts || []
+        } : (source.parsedData?.pageTexts || null),
+        file_type: source.parsedData?.fileType || source.type || null,
         file_name: source.parsedData?.fileName || source.name,
         file_size: source.parsedData?.fileSize || source.size || 0,
         extracted_text: source.parsedData?.extractedText || null

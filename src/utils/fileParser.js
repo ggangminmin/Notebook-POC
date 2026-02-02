@@ -594,22 +594,135 @@ export const formatFileSize = (bytes) => {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
 }
 
-// 웹 URL에서 메타데이터 추출
+// 유튜브 자막 추출 전용 함수
+const getYoutubeTranscript = async (videoId) => {
+  try {
+    console.log(`[Youtube] 자막 추출 시도: ${videoId}`)
+
+    // 1. 유튜브 비디오 페이지에서 자막 설정 정보 추출 시도
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(videoUrl)}`
+
+    const response = await fetch(proxyUrl)
+    if (!response.ok) return null
+
+    const data = await response.json()
+    const html = data.contents
+
+    // ytInitialPlayerResponse 객체 찾기
+    const regex = /ytInitialPlayerResponse\s*=\s*({.+?});/
+    const match = html.match(regex)
+    if (!match) return null
+
+    const playerResponse = JSON.parse(match[1])
+    const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks
+
+    if (!captionTracks || captionTracks.length === 0) {
+      console.warn('[Youtube] 자막 트랙을 찾을 수 없습니다.')
+      return null
+    }
+
+    // 한국어 자막 우선, 없으면 첫 번째 자막 선택
+    const track = captionTracks.find(t => t.languageCode === 'ko') ||
+      captionTracks.find(t => t.languageCode === 'en') ||
+      captionTracks[0]
+
+    console.log(`[Youtube] 사용될 자막 언어: ${track.languageCode}`)
+
+    // 2. 실제 자막 텍스트 가져오기 (XML/JSON3 형식)
+    const transcriptProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(track.baseUrl + '&fmt=json3')}`
+    const transcriptRes = await fetch(transcriptProxyUrl)
+    if (!transcriptRes.ok) return null
+
+    const transcriptData = await transcriptRes.json()
+    const transcriptJson = JSON.parse(transcriptData.contents)
+
+    // 텍스트 조각들을 합쳐 하나의 본문으로 생성
+    const transcriptText = transcriptJson.events
+      .filter(event => event.segs)
+      .map(event => event.segs.map(s => s.utf8).join(''))
+      .join(' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    return transcriptText
+  } catch (error) {
+    console.error('[Youtube] 자막 추출 중 상세 오류:', error)
+    return null
+  }
+}
+
+// 웹 URL에서 메타데이터 추출 (실제 크롤링 시도)
 export const fetchWebMetadata = async (url) => {
   try {
-    // URL 유효성 검사
     const urlObj = new URL(url)
+    const isYouTube = urlObj.hostname.includes('youtube.com') || urlObj.hostname.includes('youtu.be')
+    let videoId = null
 
-    // CORS 프록시를 사용하거나 백엔드 API를 통해 메타데이터를 가져와야 함
-    // 현재는 시뮬레이션 데이터를 반환
+    if (isYouTube) {
+      if (urlObj.hostname.includes('youtube.com')) {
+        videoId = urlObj.searchParams.get('v')
+      } else if (urlObj.hostname.includes('youtu.be')) {
+        videoId = urlObj.pathname.slice(1)
+      }
+    }
 
-    // 실제 구현 시: fetch를 통해 HTML을 가져온 후 메타 태그 파싱
-    // const response = await fetch(url)
-    // const html = await response.text()
-    // const parser = new DOMParser()
-    // const doc = parser.parseFromString(html, 'text/html')
+    console.log(`[fileParser] 웹 URL 크롤링 시작 (${isYouTube ? 'YouTube' : 'Web'}): ${url}`)
 
-    // 시뮬레이션 데이터 생성
+    let extractedText = ""
+    let title = `${urlObj.hostname}의 웹페이지`
+
+    // 1. YouTube 전용 특화 처리
+    if (isYouTube && videoId) {
+      // A. 제목 가져오기 (oEmbed)
+      try {
+        const oembedUrl = `https://noembed.com/embed?url=${encodeURIComponent(url)}`
+        const response = await fetch(oembedUrl)
+        if (response.ok) {
+          const data = await response.json()
+          if (data.title) title = data.title
+        }
+      } catch (e) {
+        console.warn('[fileParser] YouTube oEmbed 실패')
+      }
+
+      // B. 자막 추출 시도 (강력한 신규 엔진)
+      const transcript = await getYoutubeTranscript(videoId)
+      if (transcript && transcript.length > 50) {
+        extractedText = `# 영상 제목: ${title}\n\n## 유튜브 자막 내용\n\n${transcript}`
+        console.log('[fileParser] 유튜브 자막 추출 성공!')
+      }
+    }
+
+    // 2. 일반 웹 크롤링 또는 유튜브 자막 실패 시 대체 시도 (Jina Reader)
+    if (!extractedText) {
+      const jinaUrl = `https://r.jina.ai/${url}`
+      try {
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(jinaUrl)}`
+        const response = await fetch(proxyUrl)
+        if (response.ok) {
+          const data = await response.json()
+          const content = data.contents
+          if (content && content.length > 200 && !content.includes('Captcha')) {
+            extractedText = content
+            if (title.includes(urlObj.hostname)) {
+              const titleMatch = content.match(/^#\s+(.*)$/m)
+              if (titleMatch) title = titleMatch[1].trim()
+            }
+          }
+        }
+      } catch (err) {
+        console.error('[fileParser] 대체 크롤링 실패:', err)
+      }
+    }
+
+    // 최종 결과 구성
+    if (!extractedText) {
+      extractedText = isYouTube
+        ? `영상 제목: ${title}\n\nURL: ${url}\n\n유튜브 자막을 자동으로 가져오지 못했습니다. 본문 아래의 영상 플레이어에서 직접 영상을 시청하거나 브라우저에서 '자막 보기'를 이용해주세요.`
+        : `웹페이지 제목: ${title}\n\nURL: ${url}\n\n내용을 가져오는데 실패했습니다. 비공개 사이트이거나 크롤링이 차단되었을 수 있습니다.`
+    }
+
     const metadata = {
       fileType: 'web',
       url: url,
@@ -617,39 +730,13 @@ export const fetchWebMetadata = async (url) => {
       protocol: urlObj.protocol,
       fetchedAt: new Date().toISOString(),
       metadata: {
-        title: `${urlObj.hostname}의 웹페이지`,
-        description: '이 웹페이지는 다양한 정보를 포함하고 있습니다. 실제 구현에서는 메타 태그에서 추출됩니다.',
-        author: 'Unknown',
-        keywords: ['AI', '기술', '문서', '분석'],
+        title: title,
+        description: extractedText.substring(0, 300).replace(/\n/g, ' ') + '...',
+        author: isYouTube ? 'YouTube Creator' : 'Unknown',
         language: 'ko',
         publishedDate: new Date().toISOString()
       },
-      content: {
-        headings: [
-          'AI 기반 문서 분석 시스템',
-          '주요 기능',
-          '기술 스택',
-          '사용 방법'
-        ],
-        paragraphs: [
-          '본 시스템은 첨단 AI 기술을 활용하여 문서를 자동으로 분석하고 이해합니다.',
-          '사용자가 업로드한 문서나 웹 페이지의 내용을 파싱하여 구조화된 데이터로 변환합니다.',
-          '자연어 처리 기술을 통해 문서의 핵심 내용을 추출하고 질의응답을 지원합니다.',
-          '다양한 파일 형식(PDF, Word, Excel, TXT, JSON)을 지원하며, 웹 URL로부터 직접 정보를 가져올 수 있습니다.'
-        ],
-        links: [
-          { text: 'GitHub', url: 'https://github.com' },
-          { text: 'Documentation', url: `${url}/docs` },
-          { text: 'API Reference', url: `${url}/api` }
-        ]
-      },
-      extractedText: `웹페이지 제목: ${urlObj.hostname}의 웹페이지\n\nURL: ${url}\n\n주요 내용:\n\nAI 기반 문서 분석 시스템\n본 시스템은 첨단 AI 기술을 활용하여 문서를 자동으로 분석하고 이해합니다.\n\n주요 기능\n사용자가 업로드한 문서나 웹 페이지의 내용을 파싱하여 구조화된 데이터로 변환합니다.\n자연어 처리 기술을 통해 문서의 핵심 내용을 추출하고 질의응답을 지원합니다.\n\n기술 스택\n- React 18\n- Vite\n- Tailwind CSS\n- 자연어 처리 AI\n\n사용 방법\n1. 파일을 업로드하거나 웹 URL을 입력합니다\n2. 시스템이 자동으로 내용을 분석합니다\n3. 채팅 인터페이스를 통해 질문을 입력합니다\n4. AI가 문서 내용을 기반으로 답변을 제공합니다`,
-      stats: {
-        wordCount: 250,
-        paragraphCount: 8,
-        linkCount: 3,
-        imageCount: 5
-      }
+      extractedText: extractedText
     }
 
     // 가상 페이지 추가
@@ -660,7 +747,7 @@ export const fetchWebMetadata = async (url) => {
     return metadata
   } catch (error) {
     console.error('URL 메타데이터 추출 오류:', error)
-    throw new Error('유효하지 않은 URL입니다.')
+    throw new Error('유효하지 않은 URL이거나 요청이 거부되었습니다.')
   }
 }
 

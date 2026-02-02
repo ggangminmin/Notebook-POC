@@ -15,7 +15,7 @@ const MAX_NOTEBOOKS = 50 // 최대 노트북 개수
 const NOTEBOOKS_PER_PAGE = 12 // 페이지당 노트북 개수 (4x3 그리드)
 const MAX_PAGES = 5 // 최대 페이지 수
 
-const Dashboard = ({ onNotebookSelect }) => {
+const Dashboard = ({ onNotebookSelect, showNotification }) => {
   const [notebooks, setNotebooks] = useState([])
   const [searchQuery, setSearchQuery] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
@@ -88,11 +88,14 @@ const Dashboard = ({ onNotebookSelect }) => {
 
   // 새 노트북 생성 핸들러
   const handleCreateNotebook = async () => {
-    // 최대 개수 체크
     if (notebooks.length >= MAX_NOTEBOOKS) {
-      alert(language === 'ko'
-        ? `노트북은 최대 ${MAX_NOTEBOOKS}개까지 생성할 수 있습니다.`
-        : `You can create up to ${MAX_NOTEBOOKS} notebooks.`)
+      showNotification?.(
+        language === 'ko' ? '노트북 생성 제한' : 'Notebook Limit Reached',
+        language === 'ko'
+          ? `노트북은 최대 ${MAX_NOTEBOOKS}개까지 생성할 수 있습니다.`
+          : `You can create up to ${MAX_NOTEBOOKS} notebooks.`,
+        'error'
+      );
       return
     }
 
@@ -246,8 +249,8 @@ const Dashboard = ({ onNotebookSelect }) => {
                   key={page}
                   onClick={() => handlePageChange(page)}
                   className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${currentPage === page
-                      ? 'bg-blue-500 text-white shadow-sm'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                     }`}
                 >
                   {page}

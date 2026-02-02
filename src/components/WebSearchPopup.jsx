@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { X, Search, Sparkles, Loader2 } from 'lucide-react'
+import { X, Search, Sparkles, Loader2, ArrowLeft } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import { isMeaninglessQuery } from '../services/aiService'
 import { recommendationChain } from '../lib/recommendation'
@@ -97,131 +97,130 @@ const WebSearchPopup = ({ isOpen, onClose, initialQuery, documentContext, onStar
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+            {/* Backdrop */}
             <div
-                className="absolute inset-0 bg-slate-900/60 backdrop-blur-[2px] transition-opacity duration-300 animate-in fade-in"
+                className="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in"
                 onClick={onClose}
             />
 
-            <div className="relative bg-[#ffffff] w-full max-w-4xl rounded-[32px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.2)] overflow-hidden animate-in fade-in zoom-in slide-in-from-bottom-8 duration-500 flex flex-col max-h-[92vh] border border-white/20">
+            {/* Modal Container */}
+            <div className="relative bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-blue-100 overflow-hidden animate-in fade-in zoom-in slide-in-from-bottom-8 duration-500 flex flex-col max-h-[90vh]">
+                <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-white p-8 flex flex-col h-full overflow-y-auto custom-scrollbar">
 
-                {/* Header */}
-                <div className="px-10 py-6 border-b border-gray-100 flex items-center justify-between bg-white">
-                    <div className="flex items-center space-x-4">
-                        <div className="p-2.5 bg-blue-600 rounded-xl shadow-lg shadow-blue-100 flex items-center justify-center">
-                            <Sparkles className="w-4 h-4 text-white" />
+                    {/* Header */}
+                    <div className="flex items-center justify-between mb-8 flex-shrink-0">
+                        <div className="flex items-center space-x-4">
+                            <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-100">
+                                <Sparkles className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-800 tracking-tight">
+                                    {language === 'ko' ? 'AI 웹 검색' : 'AI Web Search'}
+                                </h3>
+                                <p className="text-[13px] text-blue-600 font-medium">
+                                    {language === 'ko' ? 'AI가 추천하는 질문으로 깊이 있는 리서치를 시작해보세요.' : 'Start in-depth research with AI-recommended questions.'}
+                                </p>
+                            </div>
                         </div>
-                        <h3 className="text-lg font-black text-gray-900 tracking-tight">
-                            {language === 'ko' ? 'AI 웹 검색' : 'AI Web Search'}
-                        </h3>
+                        <button
+                            onClick={onClose}
+                            className="p-2 hover:bg-white/60 rounded-full transition-colors text-slate-400"
+                        >
+                            <X className="w-7 h-7" />
+                        </button>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="p-2 hover:bg-gray-100 rounded-lg transition-all text-gray-400 hover:text-gray-900"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
 
-                <div className="p-10 space-y-8 overflow-y-auto custom-scrollbar">
-
-                    {/* Search Term Input Area */}
-                    <div className="space-y-4">
-                        <div className="flex items-center space-x-2 px-1">
-                            <div className="w-1 h-3.5 bg-blue-600 rounded-full" />
-                            <span className="text-[11px] font-black text-gray-500 tracking-wider">
-                                {language === 'ko' ? '검색 키워드 입력' : 'SEARCH KEYWORD'}
-                            </span>
-                        </div>
+                    {/* Search Input Area */}
+                    <div className="mb-10 flex-shrink-0">
+                        <p className="text-sm text-slate-500 mb-4 font-bold">
+                            {language === 'ko' ? '검색 키워드 입력' : 'Search Keyword'}
+                        </p>
                         <div className="relative group flex items-center">
                             <input
                                 type="text"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyDown={handleKeyDown}
-                                placeholder={language === 'ko' ? '리서치하고 싶은 주제나 궁금한 내용을 구체적으로 입력해보세요' : 'Enter a specific topic or question you want to research'}
-                                className="w-full pl-6 pr-14 py-4 bg-gray-50/50 border border-gray-200 rounded-2xl focus:border-blue-500 focus:bg-white focus:ring-4 focus:ring-blue-50/30 transition-all outline-none font-bold text-gray-900 text-[15px] placeholder:text-gray-400"
+                                placeholder={language === 'ko' ? '리서치하고 싶은 주제를 입력해보세요' : 'Enter a topic to research'}
+                                className="w-full pl-6 pr-14 py-4 bg-white border-2 border-blue-50 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all outline-none font-bold text-gray-800 text-[15px] shadow-sm placeholder:text-gray-300"
                             />
                             <button
                                 onClick={() => loadSuggestions(searchQuery)}
-                                className="absolute right-4 p-2 text-gray-400 hover:text-blue-600 transition-colors"
+                                className="absolute right-4 p-2 text-blue-400 hover:text-blue-600 transition-colors"
                             >
-                                <Search className="w-5 h-5" />
+                                <Search className="w-6 h-6" />
                             </button>
                         </div>
                     </div>
 
                     {/* AI Suggestions List */}
-                    <div className="space-y-5 pb-6">
-                        <div className="flex items-center justify-between px-1">
-                            <div className="flex items-center space-x-2">
-                                <div className="w-1 h-3.5 bg-blue-600 rounded-full" />
-                                <span className="text-[11px] font-black text-gray-500 tracking-wider">
-                                    {language === 'ko' ? 'AI 추천 질문' : 'AI SUGGESTED QUESTIONS'}
-                                </span>
-                            </div>
+                    <div className="flex-grow min-h-0 flex flex-col">
+                        <div className="flex items-center justify-between mb-4 px-1">
+                            <p className="text-sm text-slate-500 font-bold">
+                                {language === 'ko' ? 'AI 추천 질문' : 'AI Suggested Questions'}
+                            </p>
                             {isLoadingSuggestions && (
                                 <div className="flex items-center space-x-2">
-                                    <Loader2 className="w-3 h-3 animate-spin text-blue-600" />
-                                    <span className="text-[10px] text-blue-600 font-black">AI 분석 중</span>
+                                    <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
+                                    <span className="text-[11px] text-blue-600 font-bold">AI 분석 중...</span>
                                 </div>
                             )}
                         </div>
 
                         {isMeaningless ? (
-                            <div className="flex flex-col items-center justify-center py-20 space-y-4 bg-gray-50/30 rounded-[32px] border border-dashed border-gray-200">
-                                <Search className="w-8 h-8 text-gray-200" />
+                            <div className="flex-grow flex flex-col items-center justify-center py-12 space-y-4 bg-white/50 rounded-[32px] border border-dashed border-blue-100">
+                                <Search className="w-10 h-10 text-blue-100" />
                                 <div className="text-center">
-                                    <p className="text-sm text-gray-600 font-bold tracking-tight">상세 키워드를 입력해 주세요</p>
-                                    <p className="text-[11px] text-gray-400 font-medium mt-1">입력하신 내용이 구체적일수록 정확한 추천 질문이 생성됩니다.</p>
+                                    <p className="text-base text-slate-600 font-bold tracking-tight">상세 키워드를 입력해 주세요</p>
+                                    <p className="text-[13px] text-slate-400 font-medium mt-1">구체적인 키워드일수록 더 나은 추천 질문이 생성됩니다.</p>
                                 </div>
                             </div>
                         ) : (
-                            <div className="grid gap-3.5">
+                            <div className="space-y-4">
                                 {(isLoadingSuggestions ? [1, 2, 3, 4] : suggestedQuestions).map((item, idx) => (
-                                    <div
+                                    <button
                                         key={idx}
+                                        disabled={isLoadingSuggestions}
                                         onClick={() => !isLoadingSuggestions && item && handleStartSearch(item)}
-                                        className={`flex items-stretch space-x-4 transition-all duration-300 ${isLoadingSuggestions ? 'pointer-events-none' : 'cursor-pointer'}`}
-                                    >
-                                        <div className={`flex-shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center font-black text-[14px] transition-all
-                                            ${isLoadingSuggestions
-                                                ? 'bg-gray-100 border-gray-100 text-gray-300 animate-pulse'
-                                                : 'bg-white border-gray-100 text-blue-600 shadow-sm'
+                                        className={`w-full group relative flex items-center p-5 rounded-2xl border transition-all duration-300 text-left ${isLoadingSuggestions
+                                            ? 'bg-white/50 border-blue-50 animate-pulse'
+                                            : 'bg-white border-blue-50 hover:border-blue-500 hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-0.5'
                                             }`}
-                                        >
-                                            {idx + 1}
+                                    >
+                                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 mr-5 transition-colors ${isLoadingSuggestions
+                                            ? 'bg-gray-100'
+                                            : 'bg-blue-50 group-hover:bg-blue-600'
+                                            }`}>
+                                            <span className={`text-[14px] font-bold transition-colors ${isLoadingSuggestions ? 'text-gray-300' : 'text-blue-600 group-hover:text-white'
+                                                }`}>
+                                                {idx + 1}
+                                            </span>
                                         </div>
 
-                                        <div className="flex-1 relative flex items-stretch">
-                                            <div className={`absolute -left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 rotate-[-45deg] z-0 transition-all
-                                                ${isLoadingSuggestions
-                                                    ? 'bg-gray-50'
-                                                    : 'bg-blue-50/50 border-l border-t border-blue-50'
-                                                }`}
-                                            />
-                                            <div className={`relative z-10 w-full px-6 py-4 rounded-xl rounded-tl-sm transition-all flex items-center min-h-[56px] border
-                                                ${isLoadingSuggestions
-                                                    ? 'bg-gray-50 border-gray-100 animate-pulse'
-                                                    : 'bg-blue-50/20 border-blue-50/50 hover:bg-blue-600 hover:border-blue-600 hover:shadow-lg hover:shadow-blue-100 text-gray-700'
-                                                } group`}
-                                            >
-                                                {isLoadingSuggestions ? (
-                                                    <div className="w-full bg-gray-200/50 h-3 rounded-full animate-pulse" />
-                                                ) : (
-                                                    <p className="font-bold text-[14px] transition-colors whitespace-nowrap overflow-hidden text-ellipsis group-hover:text-white">
-                                                        {item}
-                                                    </p>
-                                                )}
-                                            </div>
+                                        <div className="flex-grow min-w-0">
+                                            {isLoadingSuggestions ? (
+                                                <div className="h-4 bg-gray-100 rounded-full w-3/4" />
+                                            ) : (
+                                                <p className="text-[15px] font-bold text-slate-700 leading-relaxed truncate group-hover:text-slate-900">
+                                                    {item}
+                                                </p>
+                                            )}
                                         </div>
-                                    </div>
+
+                                        {!isLoadingSuggestions && (
+                                            <div className="ml-4 opacity-0 group-hover:opacity-100 transition-all transform translate-x-2 group-hover:translate-x-0">
+                                                <ArrowLeft className="w-5 h-5 text-blue-500 rotate-180" />
+                                            </div>
+                                        )}
+                                    </button>
                                 ))}
                             </div>
                         )}
                     </div>
-                </div>
 
-                <div className="h-6 bg-gradient-to-t from-gray-50/30 to-transparent flex-shrink-0" />
+                    {/* Bottom Padding */}
+                    <div className="h-4 flex-shrink-0" />
+                </div>
             </div>
         </div>
     )

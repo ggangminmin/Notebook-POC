@@ -1,3 +1,5 @@
+@import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,11 +11,10 @@ html {
 
 body {
   margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  font-family: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.01em;
 }
 
 /* 채팅창 텍스트 선명도 최적화 (NotebookLM 스타일) */
@@ -60,6 +61,24 @@ code {
   background: #888;
 }
 
+/* Chat Input 전용 커스텀 스크롤바 */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 10px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
 /* 스크롤바 항상 표시로 레이아웃 흔들림 방지 (스크롤 가능한 요소에만 적용) */
 .overflow-y-scroll,
 [style*="overflowY: 'scroll'"] {
@@ -67,23 +86,23 @@ code {
 }
 
 /* NotebookLM 스타일 마크다운 리스트 (한 줄로 표시) */
-.markdown-content ol > li > p,
-.markdown-content ul > li > p {
+.markdown-content ol>li>p,
+.markdown-content ul>li>p {
   display: inline;
   margin: 0;
 }
 
-.markdown-content ol > li,
-.markdown-content ul > li {
+.markdown-content ol>li,
+.markdown-content ul>li {
   margin-bottom: 0.25rem;
 }
 
-.markdown-content ol > li::marker {
+.markdown-content ol>li::marker {
   font-weight: 400;
 }
 
 /* 리스트 아이템 안의 모든 블록 요소를 인라인으로 */
-.markdown-content li > * {
+.markdown-content li>* {
   display: inline;
 }
 
@@ -93,6 +112,7 @@ code {
     opacity: 0;
     transform: translateY(-8px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -114,6 +134,7 @@ code {
     transform: translateX(100%);
     opacity: 0;
   }
+
   to {
     transform: translateX(0);
     opacity: 1;
@@ -122,4 +143,36 @@ code {
 
 .animate-slide-in {
   animation: slideInFromRight 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 모달 스케일 인 애니메이션 */
+@keyframes scaleIn {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s cubic-bezier(0, 0, 0.2, 1);
+}
+
+/* 페이드 인 애니메이션 */
+@keyframes fadeInSimple {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInSimple 0.3s ease-out;
 }
