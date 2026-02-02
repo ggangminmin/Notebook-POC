@@ -6,6 +6,13 @@ import { performFastResearch, performDeepResearch } from '../services/webSearchS
 import Tooltip from './Tooltip'
 import WebSearchPopup from './WebSearchPopup'
 
+// 📄 한글(HWP) 파일 전용 커스텀 아이콘
+const HwpIcon = ({ className }) => (
+  <div className={`flex items-center justify-center font-black ${className}`} style={{ fontSize: '11px', lineHeight: 1, paddingTop: '1px' }}>
+    한
+  </div>
+)
+
 const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange, isCollapsed, onToggleCollapse, showNotification }) => {
   const [showAddModal, setShowAddModal] = useState(false)
 
@@ -112,6 +119,13 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
           icon: File,
           bgColor: 'bg-purple-50',
           iconColor: 'text-purple-600'
+        }
+      case 'hwp':
+      case 'hwpx':
+        return {
+          icon: HwpIcon,
+          bgColor: 'bg-blue-50',
+          iconColor: 'text-blue-500'
         }
       default:
         return {
@@ -390,7 +404,7 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
 
       if (researchType === 'fast') {
         // Fast Research
-        setSearchProgress({ percent: 20, message: language === 'ko' ? 'GPT가 추천 URL 생성 중...' : 'GPT generating recommended URLs...' })
+        setSearchProgress({ percent: 20, message: language === 'ko' ? '에이전트가 정보를 탐색 중입니다...' : 'Agent is searching for information...' })
         result = await performFastResearch(finalSearchQuery, language)
 
         // Tavily 크레딧 소진 경고 표시
