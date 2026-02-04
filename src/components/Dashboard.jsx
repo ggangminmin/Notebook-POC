@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Search, LogOut, Plus } from 'lucide-react'
+import { Search, Plus } from 'lucide-react'
 import { useLanguage } from '../contexts/LanguageContext'
 import NotebookCard from './NotebookCard'
 import {
@@ -152,31 +152,7 @@ const Dashboard = ({ onNotebookSelect, showNotification }) => {
   }
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* 헤더 */}
-      <header className="bg-white border-b border-gray-100 sticky top-0 z-10">
-        <div className="px-6 py-3">
-          <div className="flex items-center justify-between">
-            {/* 타이틀 - 클릭 시 새로고침 */}
-            <h1
-              onClick={() => window.location.reload()}
-              className="text-base font-semibold text-gray-900 cursor-pointer hover:text-gray-700 transition-colors"
-              style={{ fontFamily: 'Pretendard, Inter, sans-serif' }}
-            >
-              AI 에이전트 허브
-            </h1>
-
-            {/* 우측: 로그아웃 */}
-            <button
-              className="flex items-center space-x-1.5 px-3 py-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors text-sm"
-              title="로그아웃"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </header>
-
+    <div className="flex-1 flex flex-col bg-white">
       {/* 메인 컨텐츠 */}
       <main className="flex-1 flex flex-col max-w-6xl mx-auto px-8 py-8 w-full">
         {/* 검색창 - 그리드 바로 위 */}

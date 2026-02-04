@@ -3,14 +3,19 @@ import { useState } from 'react'
 /**
  * NotebookLM 스타일 인용 배지 컴포넌트 (동그란 숫자 아이콘)
  */
-const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage, pageContent, sourceId, localPageNumber, sourceName }) => {
+const CitationBadge = ({ pageNumber, onPageClick, startPage, endPage, pageContent, sourceId, localPageNumber, sourceName, time, onTimeClick }) => {
   // 범위 인용인지 확인
   const isRange = startPage && endPage && startPage !== endPage
-  const displayText = isRange ? `${startPage}-${endPage}` : pageNumber
+  const displayText = time || (isRange ? `${startPage}-${endPage}` : pageNumber)
 
   const handleClick = (e) => {
     e.preventDefault()
     e.stopPropagation()
+
+    if (time && onTimeClick) {
+      onTimeClick(time, sourceId)
+      return
+    }
 
     const targetPage = isRange ? startPage : pageNumber
     const targetLocalPage = localPageNumber || targetPage

@@ -5,6 +5,7 @@ import ChatInterface from './components/ChatInterface'
 import DataPreview from './components/DataPreview'
 import PDFViewer from './components/PDFViewer'
 import Dashboard from './components/Dashboard'
+import Agents from './components/Agents'
 import Notification from './components/Notification'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import pdfViewerController from './utils/pdfViewerController'
@@ -19,6 +20,7 @@ import {
 } from './utils/notebookManager'
 import { migrateFromIndexedDB } from './utils/storage'
 import { testSupabaseConnection } from './utils/supabaseClient'
+import { ChevronLeft, User, LogOut, ChevronDown, MessageSquare, Zap } from 'lucide-react'
 
 function AppContent() {
   // 언어 설정
@@ -38,6 +40,7 @@ function AppContent() {
   const [chatHistory, setChatHistory] = useState([]) // 실시간 대화 이력 (JSON 데이터 동기화용)
   const [lastSyncTime, setLastSyncTime] = useState(null) // 마지막 동기화 시간
   const [targetPage, setTargetPage] = useState(null) // PDF 뷰어 페이지 이동 타겟
+  const [targetTime, setTargetTime] = useState(null) // 유튜브 영상 시간 이동 타겟
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false) // AI 설정 패널 토글
   const [previousSourceId, setPreviousSourceId] = useState(null) // 이전 선택 파일 ID (지침 초기화 감지용)
   const [analyzedSourceIds, setAnalyzedSourceIds] = useState([]) // 이미 분석한 파일 ID 목록
@@ -637,12 +640,22 @@ function AppContent() {
 
     // 🌐 웹 검색 소스인 경우 - 텍스트 미리보기 모드(페이지 네비게이션 지원)로 표시
     if (fileType === 'web' || targetFile?.type === 'web' || targetFile?.parsedData?.fileType === 'web') {
-      console.log('[App.jsx] 🌐 웹 소스 인용 클릭 - 텍스트 미리보기 모드로 표시')
+      console.log('[App.jsx] 🌐 웹 소스 인용 클릭 - 텍스트 미리보기 모드 또는 유튜브 이동')
 
       // 우측 패널이 닫혀있으면 자동으로 열기
       if (!isSettingsPanelOpen) {
         console.log('[App.jsx] ✅ 우측 패널 자동 열기')
         setIsSettingsPanelOpen(true)
+      }
+
+      // 유튜브 영상인 경우 시간 이동 로직으로 토스
+      const isYouTube = targetFile?.url?.includes('youtube.com') || targetFile?.url?.includes('youtu.be') ||
+        targetFile?.parsedData?.url?.includes('youtube.com') || targetFile?.parsedData?.url?.includes('youtu.be')
+
+      if (isYouTube) {
+        // localPageNumber를 청크 ID로 전달
+        handleTimeClick(localPageNumber.toString(), sourceId)
+        return
       }
 
       setRightPanelState({
@@ -708,101 +721,199 @@ function AppContent() {
     }, 500)
   }, [selectedSources, rightPanelState.mode, isSettingsPanelOpen])
 
+  // 시간 인용 클릭 핸들러
+  const handleTimeClick = useCallback((time, sourceId) => {
+    console.log('[App.jsx] 🕒 시간 인용 클릭:', time, '소스 ID:', sourceId)
 
-  if (currentView === 'dashboard') {
-    return <Dashboard onNotebookSelect={handleNotebookSelect} showNotification={showNotification} />
-  }
+    // 대상 파일 찾기
+    const targetFile = selectedSources.find(s => s.id === sourceId) || selectedSources[0]
 
-  // 채팅 뷰
+    // 우측 패널이 닫혀있으면 자동으로 열기
+    if (!isSettingsPanelOpen) {
+      setIsSettingsPanelOpen(true)
+    }
+
+    // 아티클 모드(또는 유튜브 뷰어)로 전환
+    setRightPanelState({
+      mode: 'article',
+      targetFile: targetFile
+    })
+
+    // 대상 시간 설정
+    setTargetTime(time)
+
+    // 리셋
+    setTimeout(() => {
+      setTargetTime(null)
+    }, 500)
+  }, [selectedSources, isSettingsPanelOpen])
+
+
+  // 공통 레이아웃 (헤더 포함)
   return (
     <div className="flex flex-col h-screen bg-gray-50">
-      {/* Top Header - 심플한 네비게이션 */}
-      <div className="px-6 py-3 bg-white border-b border-gray-200">
-        <div className="flex items-center">
-          {/* 에이전트 챗봇 - 대시보드로 돌아가기 */}
-          <button
-            onClick={handleBackToDashboard}
-            className="text-base font-semibold text-gray-900 hover:text-gray-600 transition-colors"
-            style={{ fontFamily: 'Pretendard, Inter, sans-serif' }}
-          >
-            {language === 'ko' ? '에이전트 챗봇' : 'Agent Chatbot'}
-          </button>
+      {/* Top Header - Premium Dark Navigation Bar */}
+      <div className="h-16 bg-[#121212] border-b border-white/5 flex items-center px-6 flex-shrink-0 z-50">
+        {/* Left: Logo (Occupies left third) */}
+        <div className="flex-1 flex justify-start">
+          <div className="flex items-center group cursor-pointer" onClick={handleBackToDashboard}>
+            {/* Custom Stylized Symbol from Image (Reduced size for better balance) */}
+            <div className="mr-3 flex items-center">
+              <svg width="30" height="22" viewBox="0 0 42 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                {/* 1. Left Circle */}
+                <circle cx="8" cy="22" r="5" fill="white" fillOpacity="0.95" />
 
-          {/* 노트북 제목 */}
-          <span className="ml-3 text-base text-gray-600" style={{ fontFamily: 'Pretendard, Inter, sans-serif' }}>
-            {currentNotebook?.title || t('app.title')}
-          </span>
-        </div>
-      </div>
+                {/* 2. Middle Diagonal Pill */}
+                <path d="M12.5 25.5C11.5 24.5 11.5 22.8 12.5 21.8L22.5 10.8C23.5 9.8 25.2 9.8 26.2 10.8L28.2 12.8C29.2 13.8 29.2 15.5 28.2 16.5L18.2 27.5C17.2 28.5 15.5 28.5 14.5 27.5L12.5 25.5Z" fill="white" />
 
-      {/* Main Content - 반응형 레이아웃 (토글형 우측 패널) */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Sources (파일 업로드 패널) */}
-        <div
-          className="border-r border-gray-200 bg-white overflow-hidden transition-all duration-300 ease-in-out"
-          style={{ width: isSourcePanelCollapsed ? '64px' : '20%' }}
-        >
-          <SourcePanel
-            sources={sources}
-            onAddSources={handleAddSources}
-            selectedSourceIds={selectedSourceIds}
-            onToggleSource={handleToggleSource}
-            onDeleteSource={handleDeleteSource}
-            isAddModalOpen={isAddSourceModalOpen}
-            onAddModalChange={setIsAddSourceModalOpen}
-            isCollapsed={isSourcePanelCollapsed}
-            onToggleCollapse={() => setIsSourcePanelCollapsed(!isSourcePanelCollapsed)}
-            showNotification={showNotification}
-          />
-        </div>
-
-        {/* Center Panel - Chat Interface (동적 너비) */}
-        <div
-          className="bg-white overflow-hidden border-r border-gray-200 transition-all duration-300 ease-in-out"
-          style={{
-            width: isSettingsPanelOpen
-              ? (isSourcePanelCollapsed ? 'calc(100% - 64px - 35%)' : '45%')
-              : (isSourcePanelCollapsed ? 'calc(100% - 64px)' : '80%')
-          }}
-        >
-          <ChatInterface
-            selectedSources={selectedSources}
-            selectedModel={selectedModel}
-            onModelChange={setSelectedModel}
-            systemPromptOverrides={systemPromptOverrides}
-            onChatUpdate={handleChatUpdate}
-            onPageClick={handlePageClick}
-            initialMessages={currentNotebook?.messages || []}
-            analyzedSourceIds={analyzedSourceIds}
-            onAnalyzedSourcesUpdate={handleAnalyzedSourcesUpdate}
-            onOpenAddSource={() => setIsAddSourceModalOpen(true)}
-            onTogglePromptModal={() => setIsPromptModalOpen(true)}
-          />
-        </div>
-
-        {/* Right Panel - AI 설정 패널 (토글형, 35%) */}
-        {isSettingsPanelOpen && (
-          <div
-            className="bg-gradient-to-b from-gray-50 to-gray-100 overflow-hidden transition-all duration-300 ease-in-out animate-slide-in"
-            style={{ width: '35%' }}
-          >
-            <DataPreview
-              selectedFile={rightPanelState.targetFile || selectedSources[0]}
-              rightPanelState={rightPanelState}
-              onPanelModeChange={(mode) => setRightPanelState({ mode, pdfPage: null })}
-              onUpdateData={handleUpdateSourceData}
-              onUpdateName={handleUpdateSourceName}
-              onSystemPromptUpdate={setSystemPromptOverrides}
-              chatHistory={chatHistory}
-              lastSyncTime={lastSyncTime}
-              systemPromptOverrides={systemPromptOverrides}
-              targetPage={targetPage}
-              onClose={() => setIsSettingsPanelOpen(false)}
-              showNotification={showNotification}
-            />
+                {/* 3. Right Vertical Pill */}
+                <path d="M31 24V8C31 4.7 33.7 2 37 2C40.3 2 43 4.7 43 8V24C43 27.3 40.3 30 37 30C33.7 30 31 27.3 31 24Z" fill="white" />
+              </svg>
+            </div>
+            <span className="text-white font-bold text-[20px] tracking-tight leading-none">Agent Hub</span>
           </div>
-        )}
+        </div>
+
+        {/* Center: Navigation (Centered in the bar) */}
+        <div className="hidden lg:flex items-center space-x-1">
+          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
+            Chat AI
+          </button>
+          <button
+            onClick={() => setCurrentView('dashboard')}
+            className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'dashboard' || currentView === 'chat' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
+          >
+            에이전트 챗봇
+          </button>
+          <button
+            onClick={() => setCurrentView('agents')}
+            className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'agents' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
+          >
+            에이전트
+          </button>
+          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
+            크레딧 충전
+          </button>
+          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
+            FAQ
+          </button>
+          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
+            고객지원
+          </button>
+          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
+            관리자
+          </button>
+        </div>
+
+        {/* Right: User Section (Occupies right third) */}
+        <div className="flex-1 flex justify-end items-center space-x-5">
+          <div className="hidden sm:flex flex-col items-end text-right">
+            <span className="text-sm font-bold text-gray-200 leading-none">admin@test.com</span>
+            <span className="text-[11px] text-gray-500 mt-1 font-medium bg-gray-800/50 px-2 py-0.5 rounded-md">플랫폼 관리자</span>
+          </div>
+
+          <div className="flex items-center space-x-2 border-l border-white/10 pl-5">
+            <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#1A1A1A] hover:bg-[#252525] border border-white/5 text-gray-400 hover:text-white transition-all shadow-sm">
+              <User className="w-5 h-5" />
+            </button>
+            <button
+              onClick={handleBackToDashboard}
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 transition-all shadow-sm"
+              title={language === 'ko' ? '로그아웃' : 'Logout'}
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       </div>
+
+      {currentView === 'dashboard' ? (
+        <div className="flex-1 overflow-y-auto">
+          <Dashboard onNotebookSelect={handleNotebookSelect} showNotification={showNotification} />
+        </div>
+      ) : currentView === 'agents' ? (
+        <Agents />
+      ) : (
+        <>
+          {/* Sub Header: Notebook Title Bar */}
+          <div className="h-11 bg-white border-b border-gray-200 flex items-center px-6 flex-shrink-0 z-40">
+            <h2 className="text-[15px] font-bold text-slate-700 tracking-tight">
+              {currentNotebook?.title || (language === 'ko' ? '새노트' : 'New Notebook')}
+            </h2>
+          </div>
+
+          {/* Main Content - 반응형 레이아웃 (토글형 우측 패널) */}
+          <div className="flex flex-1 overflow-hidden">
+            {/* Left Panel - Sources (파일 업로드 패널) */}
+            <div
+              className="border-r border-gray-200 bg-white overflow-hidden transition-all duration-300 ease-in-out"
+              style={{ width: isSourcePanelCollapsed ? '64px' : '20%' }}
+            >
+              <SourcePanel
+                sources={sources}
+                onAddSources={handleAddSources}
+                selectedSourceIds={selectedSourceIds}
+                onToggleSource={handleToggleSource}
+                onDeleteSource={handleDeleteSource}
+                isAddModalOpen={isAddSourceModalOpen}
+                onAddModalChange={setIsAddSourceModalOpen}
+                isCollapsed={isSourcePanelCollapsed}
+                onToggleCollapse={() => setIsSourcePanelCollapsed(!isSourcePanelCollapsed)}
+                showNotification={showNotification}
+              />
+            </div>
+
+            {/* Center Panel - Chat Interface (동적 너비) */}
+            <div
+              className="bg-white overflow-hidden border-r border-gray-200 transition-all duration-300 ease-in-out"
+              style={{
+                width: isSettingsPanelOpen
+                  ? (isSourcePanelCollapsed ? 'calc(100% - 64px - 35%)' : '45%')
+                  : (isSourcePanelCollapsed ? 'calc(100% - 64px)' : '80%')
+              }}
+            >
+              <ChatInterface
+                selectedSources={selectedSources}
+                selectedModel={selectedModel}
+                onModelChange={setSelectedModel}
+                systemPromptOverrides={systemPromptOverrides}
+                onChatUpdate={handleChatUpdate}
+                onPageClick={handlePageClick}
+                onTimeClick={handleTimeClick}
+                initialMessages={currentNotebook?.messages || []}
+                analyzedSourceIds={analyzedSourceIds}
+                onAnalyzedSourcesUpdate={handleAnalyzedSourcesUpdate}
+                onOpenAddSource={() => setIsAddSourceModalOpen(true)}
+                onTogglePromptModal={() => setIsPromptModalOpen(true)}
+              />
+            </div>
+
+            {/* Right Panel - AI 설정 패널 (토글형, 35%) */}
+            {isSettingsPanelOpen && (
+              <div
+                className="bg-gradient-to-b from-gray-50 to-gray-100 overflow-hidden transition-all duration-300 ease-in-out animate-slide-in"
+                style={{ width: '35%' }}
+              >
+                <DataPreview
+                  selectedFile={rightPanelState.targetFile || selectedSources[0]}
+                  rightPanelState={rightPanelState}
+                  onPanelModeChange={(mode) => setRightPanelState({ mode, pdfPage: null })}
+                  onUpdateData={handleUpdateSourceData}
+                  onUpdateName={handleUpdateSourceName}
+                  onSystemPromptUpdate={setSystemPromptOverrides}
+                  chatHistory={chatHistory}
+                  lastSyncTime={lastSyncTime}
+                  systemPromptOverrides={systemPromptOverrides}
+                  targetPage={targetPage}
+                  targetTime={targetTime}
+                  onClose={() => setIsSettingsPanelOpen(false)}
+                  showNotification={showNotification}
+                />
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       {/* AI 행동 지침 설정 모달 (팝업 형식) */}
       {isPromptModalOpen && (

@@ -661,7 +661,9 @@ export const generateStrictRAGResponse = async (query, documentContext, language
 
 **✨ 시각적 강조 및 인용 규칙 (필수)**
 - **핵심 지표 및 중요 정보**: 강조 없이 일반 텍스트로 작성하세요. 불필요한 굵게(Bold) 처리를 절대 하지 마세요.
-- **인라인 시테이션 활성화**: 모든 주요 주장이나 설명이 끝나는 지점에 반드시 \`[문서번호:페이지번호]\`를 추가하세요. (예: ...라고 파악됩니다 [1:5].)
+- **인라인 시테이션 활성화**: 모든 주요 주장이나 설명이 끝나는 지점에 반드시 인용 부호를 추가하세요.
+  * **일반 문서**: \`[문서번호:페이지번호]\` 형식 (예: ...라고 파악됩니다 [1:5].)
+  * **유튜브 영상**: \`[문서번호:청크ID]\` 형식 (예: 이 부분에서... [1:5].) 각 청크 시작 부분에 명시된 ID를 사용하세요.
   * **문서번호**: 제공된 문서 리스트의 순서 (1, 2, 3...)
   * **페이지번호**: 해당 문서 내의 로컬 페이지 번호 (각 문서마다 1부터 시작)
   * 예시: 1번 문서의 5페이지는 \`[1:5]\`, 2번 문서의 12페이지는 \`[2:12]\`
@@ -734,13 +736,11 @@ ${documentText}
 - Lists of 3+ items must use bullet points
 - **List Format Rule**: Write number/symbol and text on the same line like "1. **Introduction**" or "- **Key Point**" (no line breaks)
 
-- **🔴 Absolute Rule: Always include citation badges in [DocIndex:PageNumber] format!**
-- **Format**: \`[Document_Number:Local_Page_Number]\`
+- **🔴 Absolute Rule: Always include citation badges!**
+- **Format for Documents**: \`[Document_Number:Local_Page_Number]\`
   - Document 1, Page 5: [1:5]
-  - Document 2, Page 12: [2:12]
-  - Range (same doc): [1:5-8]
-  - Multiple pages (same doc): [1:3, 7]
-  - Multiple documents: [1:5, 2:12]
+- **Format for YouTube Videos**: \`[Document_Number:ChunkID]\`
+  - Document 1, Chunk 5: [1:5]
 - **Page numbering**: Each document starts from Page 1. Use the local page number found in "[페이지 N]" markers within each source.
 - **🚨 ALWAYS CITATION: Forced Citation Generation Rules (No Exceptions)**:
   - **Every answer must include citation badges in [DocIndex:PageNumber] format**

@@ -594,60 +594,22 @@ export const formatFileSize = (bytes) => {
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i]
 }
 
-// 유튜브 자막 추출 전용 함수
-const getYoutubeTranscript = async (videoId) => {
+// 유튜브 자막 추출 전용 함수 (Python 백엔드 호출)
+const getYoutubeTranscript = async (url) => {
   try {
-    console.log(`[Youtube] 자막 추출 시도: ${videoId}`)
+    console.log(`[Youtube] 자막 추출 시도 (Python Backend): ${url}`)
 
-    // 1. 유튜브 비디오 페이지에서 자막 설정 정보 추출 시도
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(videoUrl)}`
-
-    const response = await fetch(proxyUrl)
-    if (!response.ok) return null
-
-    const data = await response.json()
-    const html = data.contents
-
-    // ytInitialPlayerResponse 객체 찾기
-    const regex = /ytInitialPlayerResponse\s*=\s*({.+?});/
-    const match = html.match(regex)
-    if (!match) return null
-
-    const playerResponse = JSON.parse(match[1])
-    const captionTracks = playerResponse?.captions?.playerCaptionsTracklistRenderer?.captionTracks
-
-    if (!captionTracks || captionTracks.length === 0) {
-      console.warn('[Youtube] 자막 트랙을 찾을 수 없습니다.')
+    // 로컬 Python 서버 호출
+    const response = await fetch(`http://localhost:8000/transcript?video_url=${encodeURIComponent(url)}`)
+    if (!response.ok) {
+      console.warn('[Youtube] Python 백엔드 호출 실패, 기본 크롤링으로 전환')
       return null
     }
 
-    // 한국어 자막 우선, 없으면 첫 번째 자막 선택
-    const track = captionTracks.find(t => t.languageCode === 'ko') ||
-      captionTracks.find(t => t.languageCode === 'en') ||
-      captionTracks[0]
-
-    console.log(`[Youtube] 사용될 자막 언어: ${track.languageCode}`)
-
-    // 2. 실제 자막 텍스트 가져오기 (XML/JSON3 형식)
-    const transcriptProxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(track.baseUrl + '&fmt=json3')}`
-    const transcriptRes = await fetch(transcriptProxyUrl)
-    if (!transcriptRes.ok) return null
-
-    const transcriptData = await transcriptRes.json()
-    const transcriptJson = JSON.parse(transcriptData.contents)
-
-    // 텍스트 조각들을 합쳐 하나의 본문으로 생성
-    const transcriptText = transcriptJson.events
-      .filter(event => event.segs)
-      .map(event => event.segs.map(s => s.utf8).join(''))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    return transcriptText
+    const data = await response.json()
+    return data
   } catch (error) {
-    console.error('[Youtube] 자막 추출 중 상세 오류:', error)
+    console.error('[Youtube] 자막 추출 중 오류:', error)
     return null
   }
 }
@@ -671,9 +633,10 @@ export const fetchWebMetadata = async (url) => {
 
     let extractedText = ""
     let title = `${urlObj.hostname}의 웹페이지`
+    let youtubeData = null
 
     // 1. YouTube 전용 특화 처리
-    if (isYouTube && videoId) {
+    if (isYouTube) {
       // A. 제목 가져오기 (oEmbed)
       try {
         const oembedUrl = `https://noembed.com/embed?url=${encodeURIComponent(url)}`
@@ -686,11 +649,12 @@ export const fetchWebMetadata = async (url) => {
         console.warn('[fileParser] YouTube oEmbed 실패')
       }
 
-      // B. 자막 추출 시도 (강력한 신규 엔진)
-      const transcript = await getYoutubeTranscript(videoId)
-      if (transcript && transcript.length > 50) {
-        extractedText = `# 영상 제목: ${title}\n\n## 유튜브 자막 내용\n\n${transcript}`
-        console.log('[fileParser] 유튜브 자막 추출 성공!')
+      // B. 자막 추출 시도 (Python 백엔드)
+      youtubeData = await getYoutubeTranscript(url)
+      if (youtubeData && youtubeData.formatted_document) {
+        // 본문 텍스트 생성 (타임스탬프가 포함된 형식 사용)
+        extractedText = `# 영상 제목: ${title}\n\n## 유튜브 자막 내용 (스크립트)\n\n${youtubeData.formatted_document}`
+        console.log('[fileParser] 유튜브 자막 추출 성공 (Python)!')
       }
     }
 
@@ -736,7 +700,8 @@ export const fetchWebMetadata = async (url) => {
         language: 'ko',
         publishedDate: new Date().toISOString()
       },
-      extractedText: extractedText
+      extractedText: extractedText,
+      youtubeData: youtubeData // 타임스탬프 정보 포함
     }
 
     // 가상 페이지 추가

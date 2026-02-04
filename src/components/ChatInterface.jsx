@@ -34,7 +34,7 @@ const GeminiLogo = ({ className, isActive }) => (
   </svg>
 )
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, systemPromptOverrides = [], onTogglePromptModal, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, onTimeClick, systemPromptOverrides = [], onTogglePromptModal, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource }) => {
   // 초기 메시지 설정 (노트북에서 불러온 데이터 또는 빈 배열)
   // initialMessages의 allSources 데이터가 누락된 경우를 대비하여 재계산
   const processInitialMessages = () => {
@@ -369,8 +369,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       items.forEach((item, idx) => {
         // [문서번호:페이지번호] 형식 체크 (예: 1:5, 2:10-12)
         const multiDocMatch = item.match(/^(\d+)\s*:\s*(.+)$/)
+        // 시간 인용 체크 (예: 1:1:23) - 두 번째 파트에 콜론이 포함된 경우만 시간으로 간주
+        const timeMatch = item.match(/^(\d+)\s*:\s*(\d+:\d+(:?\d+)*)$/)
 
-        if (multiDocMatch) {
+        if (multiDocMatch && !timeMatch) {
           const docIdx = parseInt(multiDocMatch[1]) - 1
           const pagePart = multiDocMatch[2].trim()
 
@@ -427,6 +429,22 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
               />
             )
           }
+        }
+        // 시간 인용 처리 (예: [1:1:23] -> 1번 문서의 1분 23초)
+        else if (timeMatch) {
+          const docIdx = parseInt(timeMatch[1]) - 1
+          const timeStr = timeMatch[2]
+          const targetFile = allSources[docIdx] || allSources[0]
+
+          parts.push(
+            <CitationBadge
+              key={`citation-${match.index}-${idx}-time-${docIdx}-${timeStr}`}
+              time={timeStr}
+              onTimeClick={onTimeClick}
+              sourceId={targetFile?.id}
+              sourceName={targetFile?.name}
+            />
+          )
         }
         // 하위 호환성 또는 단일 문서용 (기존 로직 유지하되 현재는 로컬 페이지로 간주)
         else {
@@ -732,7 +750,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   }
 
   // 📝 개별 메시지 아이템 컴포넌트 (메모이제이션으로 성능 최적화)
-  const MessageItem = React.memo(({ message, language, onPageClick, handleCopyMessage, copiedMessageId, suggestedQuestions, handleSuggestedQuestionClick, renderTextWithCitations }) => {
+  const MessageItem = React.memo(({ message, language, onPageClick, onTimeClick, handleCopyMessage, copiedMessageId, suggestedQuestions, handleSuggestedQuestionClick, renderTextWithCitations }) => {
     return (
       <div className={`flex flex-col ${message.type === 'user' ? 'items-end' : 'items-start'}`}>
         <div className={`flex max-w-[85%] ${message.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -886,7 +904,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   })
 
   // 📝 입력창 컴포넌트 (입력 가속화를 위해 상태 분리)
-  const ChatInput = ({ t, language, isTyping, selectedSources, onSubmit }) => {
+  const ChatInput = ({ t, language, isTyping, selectedSources, onSubmit, selectedModel, onModelChange, onTogglePromptModal, isModelMenuOpen, setIsModelMenuOpen }) => {
     const [localInput, setLocalInput] = useState('')
 
     const onInternalSubmit = (e) => {
@@ -907,9 +925,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     return (
-      <div className="px-6 py-6 bg-[#F3F6FA] flex-shrink-0">
-        <form onSubmit={onInternalSubmit} className="max-w-full mx-auto relative group">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 focus-within:border-slate-300 focus-within:ring-4 focus-within:ring-slate-50 transition-all flex items-center px-4 py-2 min-h-[56px]">
+      <div className="px-6 py-8 bg-[#F3F6FA] flex-shrink-0 flex justify-center">
+        <form onSubmit={onInternalSubmit} className="w-full max-w-5xl relative group">
+          <div className="bg-white rounded-[28px] shadow-xl border border-slate-100 focus-within:border-blue-200 focus-within:ring-8 focus-within:ring-blue-50/50 transition-all flex flex-col p-4">
+            {/* 상단: 입력 영역 */}
             <textarea
               value={localInput}
               onChange={(e) => {
@@ -918,21 +937,74 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px'
               }}
               onKeyDown={onKeyDown}
-              placeholder={language === 'ko' ? '입력을 시작하세요' : 'Type a message'}
-              className="flex-1 text-[15px] bg-transparent border-none focus:outline-none focus:ring-0 resize-none py-2 leading-relaxed text-slate-700 custom-scrollbar placeholder:text-slate-400"
+              placeholder={language === 'ko' ? 'Chat Agent에게 물어보기' : 'Ask Chat Agent...'}
+              className="w-full text-[16px] bg-transparent border-none focus:outline-none focus:ring-0 resize-none py-1.5 leading-relaxed text-slate-700 custom-scrollbar placeholder:text-slate-400"
               rows="1"
-              style={{ minHeight: '24px', maxHeight: '200px' }}
+              style={{ minHeight: '36px', maxHeight: '200px' }}
             />
-            <div className="flex items-center space-x-3 ml-2 shrink-0">
-              <span className="text-[13px] font-medium text-slate-400">
-                {language === 'ko' ? `소스 ${selectedSources.length}개` : `${selectedSources.length} Sources`}
-              </span>
+
+            {/* 하단: 컨트롤 영역 */}
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-50">
+              <div className="flex items-center space-x-6">
+                {/* 모델 선택 */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
+                    className="flex items-center space-x-2 text-slate-700 hover:text-slate-900 transition-colors px-1 py-1"
+                  >
+                    <span className="text-[14px] font-bold tracking-tight">
+                      {selectedModel === 'instant' ? 'GPT-5.2 Instant' : selectedModel === 'thinking' ? 'GPT-5.2 Pro' : 'Gemini-3.0 Flash'}
+                    </span>
+                    <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isModelMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* 드롭다운 메뉴 (위쪽으로 필터됨) */}
+                  {isModelMenuOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setIsModelMenuOpen(false)} />
+                      <div className="absolute bottom-full left-0 mb-3 w-52 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-scale-in origin-bottom-left">
+                        {[
+                          { id: 'instant', name: 'GPT-5.2 Instant' },
+                          { id: 'thinking', name: 'GPT-5.2 Pro' },
+                          { id: 'gemini', name: 'Gemini-3.0 Flash' }
+                        ].map(m => (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => {
+                              onModelChange(m.id)
+                              setIsModelMenuOpen(false)
+                            }}
+                            className={`w-full flex items-center px-5 py-3 transition-colors ${selectedModel === m.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
+                          >
+                            <span className={`text-[14px] font-bold ${selectedModel === m.id ? 'text-blue-600' : 'text-slate-600'}`}>
+                              {m.name}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* AI 지침 설정 링크 */}
+                <button
+                  type="button"
+                  onClick={onTogglePromptModal}
+                  className="text-[14px] font-bold text-slate-500 hover:text-blue-600 transition-colors"
+                >
+                  {language === 'ko' ? 'AI 지침 설정' : 'AI Guidelines'}
+                </button>
+              </div>
+
+              {/* 전송 버튼 */}
               <button
                 type="submit"
                 disabled={!localInput.trim() || isTyping || selectedSources.length === 0}
-                className="w-9 h-9 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-full flex items-center justify-center transition-all disabled:opacity-30 active:scale-95"
+                className="w-10 h-10 bg-slate-900 hover:bg-slate-800 text-white rounded-full flex items-center justify-center transition-all disabled:opacity-20 active:scale-95 shadow-md"
               >
-                <ChevronRight className="w-5 h-5 translate-x-0.5" strokeWidth={2.5} />
+                <ArrowUp className="w-5 h-5" strokeWidth={3} />
               </button>
             </div>
           </div>
@@ -956,14 +1028,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
       const response = await generateStrictRAGResponse(query, documentContext, detectedLang, selectedModel, conversationHistory, systemPromptOverrides)
 
       let processedAnswer = response.answer
-      // [문서번호:페이지번호] 또는 [페이지번호] 형식 모두 체크
       const citationMatches = processedAnswer.match(/[\[\{]\d+(:\d+)?([-–]\d+)?(,\s*\d+(:\d+)?([-–]\d+)?)*[\]\}]/g)
 
-      // 🚨 강제 인용 배지 삽입: AI가 인용을 생성하지 않았을 경우 자동 추가 (최소화)
       if (selectedSources.length > 0) {
         if (!citationMatches || citationMatches.length === 0) {
           console.warn('⚠️ [인용 누락 → 최소 삽입] AI가 인용을 생성하지 않아 대표 페이지 1개만 추가합니다')
-          // 첫 번째 파일의 1페이지를 대표로 선택 (새로운 [1:1] 형식)
           processedAnswer += ` [1:1]`
         }
       }
@@ -996,11 +1065,11 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
         foundInDocument: response.foundInDocument,
         matchedKeywords: response.matchedKeywords,
         isReasoningBased: response.isReasoningBased,
-        allSources: allSourcesData
+        allSources: allSourcesData,
+        suggestedQuestions: response.suggestedQuestions || []
       }
       setMessages(prev => [...prev, aiMessage])
 
-      // AI 답변을 기반으로 추천 후속 질문 생성
       try {
         const followUpQuestions = await generateSuggestedQuestions(
           { name: 'AI Response', parsedData: { extractedText: processedAnswer } },
@@ -1028,118 +1097,99 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
   }
 
+  // 자동 스크롤
+  useEffect(() => {
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, isTyping])
+
   const handleSuggestedQuestionClick = (question) => {
     handleChatSubmit(question)
   }
 
   return (
-    <div className="h-full flex flex-col bg-white">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-gray-100 flex-shrink-0">
-        <div className="flex items-center justify-end space-x-4">
-          <div className="relative">
-            <button
-              onClick={() => setIsModelMenuOpen(!isModelMenuOpen)}
-              className="flex items-center space-x-2 px-3 py-1.5 transition-all duration-200"
-            >
-              <span className="text-[15px] font-bold text-slate-700 tracking-tight">
-                {selectedModel === 'instant' ? 'GPT-5.2 Instant' : selectedModel === 'thinking' ? 'GPT-5.2 Pro' : 'Gemini-3.0 Flash'}
-              </span>
-              <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${isModelMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            {/* 드롭다운 메뉴 (텍스트 전용) */}
-            {isModelMenuOpen && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setIsModelMenuOpen(false)}
-                />
-                <div className="absolute top-full right-0 mt-2 w-52 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-scale-in origin-top-right">
-                  {[
-                    { id: 'instant', name: 'GPT-5.2 Instant' },
-                    { id: 'thinking', name: 'GPT-5.2 Pro' },
-                    { id: 'gemini', name: 'Gemini-3.0 Flash' }
-                  ].map(m => (
-                    <button
-                      key={m.id}
-                      onClick={() => {
-                        onModelChange(m.id)
-                        setIsModelMenuOpen(false)
-                      }}
-                      className={`w-full flex items-center px-5 py-3 transition-colors ${selectedModel === m.id ? 'bg-blue-50' : 'hover:bg-gray-50'}`}
-                    >
-                      <span className={`text-[14px] font-bold ${selectedModel === m.id ? 'text-blue-600' : 'text-slate-600'}`}>
-                        {m.name}
-                      </span>
-                      {selectedModel === m.id && (
-                        <div className="ml-auto w-2 h-2 bg-blue-500 rounded-full" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-
-          <button
-            onClick={onTogglePromptModal}
-            className="flex items-center h-10 px-5 rounded-2xl text-[13px] font-bold transition-all border-2 border-purple-200 text-purple-700 hover:border-purple-300 hover:bg-purple-50"
-          >
-            {language === 'ko' ? 'AI 지침 설정' : 'AI Guidelines'}
-          </button>
-        </div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 flex flex-col bg-[#F3F6FA] overflow-y-auto">
+    <div className="h-full flex flex-col bg-white overflow-hidden">
+      {/* Messages & Input Area */}
+      <div className="flex-1 flex flex-col bg-[#F3F6FA] relative overflow-hidden">
         {messages.length === 0 && selectedSources.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center space-y-10 animate-fade-in py-20 px-6">
-            <h1 className="text-4xl font-black text-slate-800 tracking-tighter text-center">
-              {language === 'ko' ? '시작하려면 소스 추가' : 'Add sources to start'}
-            </h1>
-            <button
-              onClick={onOpenAddSource}
-              className="px-10 h-14 bg-white border border-gray-300 rounded-[14px] hover:bg-gray-50 transition-all font-bold text-slate-800 text-[16px] shadow-sm active:scale-95"
-            >
-              {language === 'ko' ? '소스 업로드' : 'Upload Sources'}
-            </button>
+          <div className="flex-1 flex flex-col items-center justify-center p-6 pb-32">
+            <div className="w-full max-w-5xl flex flex-col items-center space-y-6">
+              <h1 className="text-4xl font-black text-slate-800 tracking-tighter text-center">
+                {language === 'ko' ? '시작하려면 소스 추가' : 'Add sources to start'}
+              </h1>
+              <button
+                onClick={onOpenAddSource}
+                className="px-10 h-14 bg-white border border-gray-300 rounded-[14px] hover:bg-gray-50 transition-all font-bold text-slate-800 text-[16px] shadow-sm active:scale-95"
+              >
+                {language === 'ko' ? '소스 업로드' : 'Upload Sources'}
+              </button>
+
+              {/* 중앙으로 올라온 입력창 */}
+              <div className="w-full mt-6">
+                <ChatInput
+                  t={t}
+                  language={language}
+                  isTyping={isTyping}
+                  selectedSources={selectedSources}
+                  onSubmit={handleChatSubmit}
+                  selectedModel={selectedModel}
+                  onModelChange={onModelChange}
+                  onTogglePromptModal={onTogglePromptModal}
+                  isModelMenuOpen={isModelMenuOpen}
+                  setIsModelMenuOpen={setIsModelMenuOpen}
+                />
+              </div>
+            </div>
           </div>
         ) : (
-          <div className="p-6 space-y-6">
-            {messages.map((m) => (
-              <MessageItem
-                key={m.id}
-                message={m}
-                language={language}
-                onPageClick={onPageClick}
-                handleCopyMessage={handleCopyMessage}
-                copiedMessageId={copiedMessageId}
-                suggestedQuestions={suggestedQuestions}
-                handleSuggestedQuestionClick={handleSuggestedQuestionClick}
-                renderTextWithCitations={renderTextWithCitations}
-              />
-            ))}
-            {isTyping && (
-              <div className="flex justify-start">
-                <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                  <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-                </div>
+          <div className="flex-1 flex flex-col min-h-0">
+            {/* 메시지 영역: 메시지가 없을 때는 빈 공간으로 채워 입력창을 하단으로 밉니다 */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-6">
+                {messages.map((m) => (
+                  <MessageItem
+                    key={m.id}
+                    message={m}
+                    language={language}
+                    onPageClick={onPageClick}
+                    onTimeClick={onTimeClick}
+                    handleCopyMessage={handleCopyMessage}
+                    copiedMessageId={copiedMessageId}
+                    suggestedQuestions={suggestedQuestions}
+                    handleSuggestedQuestionClick={handleSuggestedQuestionClick}
+                    renderTextWithCitations={renderTextWithCitations}
+                  />
+                ))}
+                {isTyping && (
+                  <div className="flex justify-start">
+                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
               </div>
-            )}
-            <div ref={messagesEndRef} />
+            </div>
+
+            {/* 입력창 영역: 소스가 추가된 상태부터는 항상 하단에 고정됩니다 */}
+            <div className="flex-shrink-0">
+              <ChatInput
+                t={t}
+                language={language}
+                isTyping={isTyping}
+                selectedSources={selectedSources}
+                onSubmit={handleChatSubmit}
+                selectedModel={selectedModel}
+                onModelChange={onModelChange}
+                onTogglePromptModal={onTogglePromptModal}
+                isModelMenuOpen={isModelMenuOpen}
+                setIsModelMenuOpen={setIsModelMenuOpen}
+              />
+            </div>
           </div>
         )}
       </div>
-
-      {/* Input */}
-      <ChatInput
-        t={t}
-        language={language}
-        isTyping={isTyping}
-        selectedSources={selectedSources}
-        onSubmit={handleChatSubmit}
-      />
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { ChevronRight, ChevronDown, Copy, Check, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save, Sparkles, Globe, ExternalLink } from 'lucide-react'
+import { ChevronRight, ChevronDown, Copy, Check, Loader2, Lightbulb, FileText, List, ChevronLeft, X, Edit2, Save, Sparkles, Globe, ExternalLink, AlertCircle } from 'lucide-react'
 import { virtualizeText } from '../utils/fileParser'
 import { useLanguage } from '../contexts/LanguageContext'
 import Tooltip from './Tooltip'
@@ -105,7 +105,7 @@ Respond in JSON format:
   }
 }
 
-const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null, onClose, showNotification }) => {
+const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null, targetTime = null, onClose, showNotification }) => {
   // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
@@ -131,6 +131,11 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
   const [highlightedPage, setHighlightedPage] = useState(null) // 페이지 이동 시 하이라이트 효과
   const pendingTargetPageRef = useRef(null) // PDF 로드 완료 후 이동할 페이지 (비동기 체인용)
   const previousFileIdRef = useRef(null) // 🔥 이전 파일 ID 추적 (파일 전환 감지용)
+  const playerRef = useRef(null) // 유튜브 플레이어 DOM Ref
+  const [player, setPlayer] = useState(null) // 유튜브 플레이어 인스턴스
+  const playerReadyRef = useRef(false)
+  const [highlightedChunkId, setHighlightedChunkId] = useState(null) // 하이라이트된 청크 ID
+  const chunkRefs = useRef({}) // 청크 DOM Ref들을 저장할 맵
 
   // 🎥 유튜브 비디오 ID 추출 헬퍼 (모든 형태의 URL 대응)
   const getYouTubeId = (url) => {
@@ -155,6 +160,7 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
   }
 
   const youtubeId = selectedFile?.url ? getYouTubeId(selectedFile.url) : (selectedFile?.parsedData?.url ? getYouTubeId(selectedFile.parsedData.url) : null)
+  const isYouTube = !!youtubeId
 
   // 🌐 웹/유튜브 소스인 경우 자동으로 아티클 모드(뷰어)로 전환
   useEffect(() => {
@@ -165,6 +171,106 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
       setViewMode('natural')
     }
   }, [selectedFile?.id, selectedFile?.type, selectedFile?.parsedData?.fileType])
+
+  // 유튜브 IFrame API 로드 및 플레이어 초기화
+  useEffect(() => {
+    if (!youtubeId || viewMode !== 'article') return
+
+    // API 로드 확인
+    if (!window.YT) {
+      const tag = document.createElement('script')
+      tag.src = "https://www.youtube.com/iframe_api"
+      const firstScriptTag = document.getElementsByTagName('script')[0]
+      firstScriptTag.parentNode.insertBefore(tag, firstScriptTag)
+    }
+
+    // 전역 콜백 등록
+    window.onYouTubeIframeAPIReady = () => {
+      console.log('[Youtube] API 준비됨')
+      initPlayer()
+    }
+
+    const initPlayer = () => {
+      if (playerRef.current && window.YT) {
+        const newPlayer = new window.YT.Player('youtube-player', {
+          height: '100%',
+          width: '100%',
+          videoId: youtubeId,
+          playerVars: {
+            autoplay: 0,
+            modestbranding: 1,
+            rel: 0
+          },
+          events: {
+            onReady: (event) => {
+              console.log('[Youtube] 플레이어 준비 완료')
+              setPlayer(event.target)
+              playerReadyRef.current = true
+            }
+          }
+        })
+      }
+    }
+
+    if (window.YT && window.YT.Player) {
+      initPlayer()
+    }
+
+    return () => {
+      // 컴포넌트 언마운트 시 플레이어 파괴할 수 있지만, 
+      // 이 POC에서는 단순화함
+    }
+  }, [youtubeId, viewMode])
+
+  // 시간 이동 핸들러
+  const handleTimeSeek = (timeStr, chunkId = null) => {
+    if (!player || !playerReadyRef.current) return
+
+    // "1:23" -> 83, "1:12:34" -> 4354 변환
+    const parts = timeStr.toString().split(':').map(Number)
+    let seconds = 0
+    if (parts.length === 3) {
+      seconds = parts[0] * 3600 + parts[1] * 60 + parts[2]
+    } else if (parts.length === 2) {
+      seconds = parts[0] * 60 + parts[1]
+    } else {
+      seconds = parts[0]
+    }
+
+    console.log(`[Youtube] 시간 이동 시도: ${timeStr} (${seconds}초)`)
+    player.seekTo(seconds, true)
+    player.playVideo()
+
+    if (chunkId) {
+      setHighlightedChunkId(chunkId)
+      const element = chunkRefs.current[`chunk-${chunkId}`]
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      }
+    }
+  }
+
+  // targetTime prop 변경 시 시간 이동 (인용 배지 클릭 시)
+  useEffect(() => {
+    if (targetTime && player && playerReadyRef.current) {
+      // 만약 targetTime이 청크 ID라면 (숫자 형태)
+      if (/^\d+$/.test(targetTime)) {
+        const chunkId = parseInt(targetTime)
+        const chunk = selectedFile.parsedData?.youtubeData?.chunks?.find(c => c.id === chunkId)
+        if (chunk) {
+          const formatTime = (seconds) => {
+            const h = Math.floor(seconds / 3600)
+            const m = Math.floor((seconds % 3600) / 60)
+            const s = Math.floor(seconds % 60)
+            return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`
+          }
+          handleTimeSeek(formatTime(chunk.start), chunkId)
+        }
+      } else {
+        handleTimeSeek(targetTime)
+      }
+    }
+  }, [targetTime, player, selectedFile])
 
   // 📄 텍스트/웹 소스 가상 페이지 분할 자동 적용 (Safeguard)
   useEffect(() => {
@@ -1579,16 +1685,91 @@ Set field to "invalid" if the request cannot be fulfilled.`
               {/* 🎥 유튜브 플레이어 (유튜브 링크인 경우) */}
               {youtubeId && (
                 <div className="mb-12 overflow-hidden rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.15)] bg-black aspect-video border border-slate-100 ring-1 ring-black/5 animate-in fade-in slide-in-from-top-4 duration-700">
-                  <iframe
-                    width="100%"
-                    height="100%"
-                    src={`https://www.youtube.com/embed/${youtubeId}?autoplay=0&rel=0&modestbranding=1`}
-                    title="YouTube video player"
-                    frameBorder="0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                    className="w-full h-full"
-                  ></iframe>
+                  <div id="youtube-player" className="w-full h-full" ref={playerRef}></div>
+                </div>
+              )}
+
+              {/* 📜 유튜브 자막 리스트 (청크/타임스탬프 지원) */}
+              {isYouTube && selectedFile.parsedData?.youtubeData?.chunks && (
+                <div className="mb-16 bg-white rounded-[2rem] border border-slate-200 overflow-hidden shadow-[0_30px_60px_-15px_rgba(0,0,0,0.1)] ring-1 ring-slate-900/5">
+                  <div className="px-10 py-7 border-b border-slate-100 bg-slate-50/50 backdrop-blur-md flex items-center justify-between">
+                    <div className="flex items-center space-x-4">
+                      <div className="bg-red-500 p-2.5 rounded-xl shadow-lg shadow-red-200">
+                        <List className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-black text-slate-900 tracking-tight">
+                          {language === 'ko' ? '인텔리전트 스크립트 분석' : 'Intelligent Script Analysis'}
+                        </h3>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                          {selectedFile.parsedData.youtubeData.chunks.length} Segments Identified
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3 bg-white px-4 py-2 rounded-2xl border border-slate-200/60 shadow-sm">
+                      <span className="block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                      <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">Interactive Sync</span>
+                    </div>
+                  </div>
+                  <div className="max-h-[750px] overflow-y-auto p-10 space-y-6 bg-white scroll-smooth custom-scrollbar">
+                    {selectedFile.parsedData.youtubeData.chunks.map((item, idx) => {
+                      const formatTime = (seconds) => {
+                        const h = Math.floor(seconds / 3600)
+                        const m = Math.floor((seconds % 3600) / 60)
+                        const s = Math.floor(seconds % 60)
+                        return h > 0
+                          ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+                          : `${m}:${String(s).padStart(2, '0')}`
+                      }
+                      const timeStr = formatTime(item.start)
+                      const isHighlighted = highlightedChunkId === item.id
+
+                      return (
+                        <div
+                          key={idx}
+                          ref={(el) => chunkRefs.current[`chunk-${item.id}`] = el}
+                          onClick={() => handleTimeSeek(timeStr, item.id)}
+                          className={`flex items-start group cursor-pointer p-6 rounded-[1.5rem] transition-all duration-500 border-2 ${isHighlighted
+                              ? 'bg-blue-50/40 border-blue-500 shadow-[0_20px_50px_rgba(59,130,246,0.1)] scale-[1.02] ring-[12px] ring-blue-50/50'
+                              : 'hover:bg-slate-50/80 hover:border-slate-200 border-transparent hover:translate-x-1'
+                            }`}
+                        >
+                          <div className="flex flex-col items-center w-24 flex-shrink-0 pt-1 mr-8 border-r border-slate-200/50 pr-6">
+                            <span className={`text-[12px] font-black px-4 py-2 rounded-xl ${isHighlighted ? 'bg-blue-600 text-white shadow-xl shadow-blue-200' : 'bg-slate-100 text-slate-500 group-hover:bg-red-500 group-hover:text-white group-hover:shadow-lg group-hover:shadow-red-200'} transition-all duration-300`}>
+                              {timeStr}
+                            </span>
+                            <span className={`text-[9px] mt-4 font-black uppercase tracking-[0.3em] ${isHighlighted ? 'text-blue-500' : 'text-slate-300'} transition-all`}>
+                              INDEX-{item.id}
+                            </span>
+                          </div>
+                          <div className="flex-1">
+                            <p className={`text-[17px] leading-[1.8] font-medium transition-all duration-300 ${isHighlighted ? 'text-slate-900' : 'text-slate-600 group-hover:text-slate-900 underline decoration-transparent group-hover:decoration-slate-200 underline-offset-8'}`}>
+                              {item.text}
+                            </p>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ⚠️ 자막 없음 알림 (chunks와 transcript 모두 체크) */}
+              {isYouTube && !selectedFile.parsedData?.youtubeData?.transcript && !selectedFile.parsedData?.youtubeData?.chunks && (
+                <div className="mb-12 p-6 bg-amber-50 rounded-2xl border border-amber-200 flex items-start space-x-4 shadow-sm animate-pulse">
+                  <div className="bg-amber-100 p-2 rounded-full">
+                    <AlertCircle className="w-6 h-6 text-amber-600" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-amber-900 mb-1">
+                      {language === 'ko' ? '자막을 가져올 수 없습니다' : 'No Subtitles Found'}
+                    </h4>
+                    <p className="text-xs text-amber-700 leading-relaxed">
+                      {language === 'ko'
+                        ? '이 영상은 자막이 비활성화되어 있거나 자동 생성 자막만 존재할 수 있습니다. 영상 플레이어에서 직접 확인하시거나 브라우저에서 시청해 주세요.'
+                        : 'Subtitles for this video might be disabled or only auto-generated. Please check directly on the player or browser.'}
+                    </p>
+                  </div>
                 </div>
               )}
 

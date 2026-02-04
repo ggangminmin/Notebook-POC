@@ -517,6 +517,54 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
     }
   }
 
+  /**
+   * WebSearchPopup에서 선택된 검색 결과를 바로 소스로 추가
+   */
+  const processSelectedSearchSources = (query, selectedResults) => {
+    if (!selectedResults || selectedResults.length === 0) return
+
+    setIsSearching(true)
+    setSearchProgress({
+      percent: 50,
+      message: language === 'ko' ? '가져온 소스를 정리 중...' : 'Processing selected sources...'
+    })
+
+    // 개별 소스를 가상 페이지로 분할하여 저장 (기존 executeWebSearch와 동일 로직)
+    const webSources = selectedResults.map((result, index) => {
+      const virtualization = virtualizeText(result.extractedText || result.summary || '')
+
+      return {
+        id: `web_${Date.now()}_${index}`,
+        name: result.title || query,
+        type: 'web',
+        url: result.url,
+        uploadedAt: new Date().toISOString(),
+        parsedData: {
+          extractedText: result.extractedText || result.summary || '',
+          summary: result.summary,
+          pageCount: virtualization.pageCount,
+          pageTexts: virtualization.pageTexts,
+          metadata: {
+            title: result.title,
+            url: result.url,
+            searchQuery: query,
+            researchType: 'fast'
+          }
+        }
+      }
+    })
+
+    console.log('[SourcePanel] 선택된 웹 소스 추가:', webSources)
+    onAddSources(webSources)
+    setSearchQuery('')
+    setSearchProgress({ percent: 100, message: language === 'ko' ? '완료!' : 'Complete!' })
+
+    setTimeout(() => {
+      setIsSearching(false)
+      setSearchProgress({ percent: 0, message: '' })
+    }, 1000)
+  }
+
   // 문서 컨텍스트 생성 (AI 추천 시스템용)
   const getDocumentContext = () => {
     const selected = sources.filter(s => selectedSourceIds.includes(s.id))
@@ -1016,9 +1064,16 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
         onClose={() => setIsSearchPopupOpen(false)}
         initialQuery={searchQuery}
         documentContext={getDocumentContext()}
-        onStartSearch={(finalQuery, plans) => {
+        onAddSources={onAddSources}
+        onStartSearch={(finalQuery, plans, selectedResults) => {
           setSearchQuery(finalQuery)
-          executeWebSearch(finalQuery, plans)
+          if (selectedResults && selectedResults.length > 0) {
+            // 이미 결과가 선택된 경우 (추천 질문 클릭 flow)
+            processSelectedSearchSources(finalQuery, selectedResults)
+          } else {
+            // 결과 없이 검색만 요청된 경우 (Next 버튼 flow)
+            executeWebSearch(finalQuery, plans)
+          }
         }}
         language={language}
       />
