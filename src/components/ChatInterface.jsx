@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import React from 'react'
-import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check, Upload, ChevronDown, ArrowUp, ChevronRight } from 'lucide-react'
+import { Send, Bot, User, Loader2, FileText, AlertCircle, Sparkles, Zap, Brain, Lightbulb, Gem, Settings, Copy, Check, Upload, ChevronDown, ArrowUp, ChevronRight, Share } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useLanguage } from '../contexts/LanguageContext'
@@ -34,7 +34,7 @@ const GeminiLogo = ({ className, isActive }) => (
   </svg>
 )
 
-const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, onTimeClick, systemPromptOverrides = [], onTogglePromptModal, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource }) => {
+const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onModelChange, onChatUpdate, onPageClick, onTimeClick, systemPromptOverrides = [], onTogglePromptModal, onOpenNotebookSettings, onOpenShare, initialMessages = [], analyzedSourceIds = [], onAnalyzedSourcesUpdate, onOpenAddSource, isReadOnly = false }) => {
   // 초기 메시지 설정 (노트북에서 불러온 데이터 또는 빈 배열)
   // initialMessages의 allSources 데이터가 누락된 경우를 대비하여 재계산
   const processInitialMessages = () => {
@@ -904,7 +904,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   })
 
   // 📝 입력창 컴포넌트 (입력 가속화를 위해 상태 분리)
-  const ChatInput = ({ t, language, isTyping, selectedSources, onSubmit, selectedModel, onModelChange, onTogglePromptModal, isModelMenuOpen, setIsModelMenuOpen }) => {
+  const ChatInput = ({ t, language, isTyping, selectedSources, onSubmit, selectedModel, onModelChange, onTogglePromptModal, isModelMenuOpen, setIsModelMenuOpen, isReadOnly }) => {
     const [localInput, setLocalInput] = useState('')
 
     const onInternalSubmit = (e) => {
@@ -925,8 +925,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
     }
 
     return (
-      <div className="px-6 py-8 bg-[#F3F6FA] flex-shrink-0 flex justify-center">
-        <form onSubmit={onInternalSubmit} className="w-full max-w-5xl relative group">
+      <div className="px-6 py-10 flex-shrink-0 flex justify-center bg-transparent">
+        <form onSubmit={onInternalSubmit} className="w-full max-w-4xl relative group">
           <div className="bg-white rounded-[28px] shadow-xl border border-slate-100 focus-within:border-blue-200 focus-within:ring-8 focus-within:ring-blue-50/50 transition-all flex flex-col p-4">
             {/* 상단: 입력 영역 */}
             <textarea
@@ -937,7 +937,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px'
               }}
               onKeyDown={onKeyDown}
-              placeholder={language === 'ko' ? 'Chat Agent에게 물어보기' : 'Ask Chat Agent...'}
+              placeholder={language === 'ko' ? 'Note Chat에게 물어보기' : 'Ask Note Chat...'}
               className="w-full text-[16px] bg-transparent border-none focus:outline-none focus:ring-0 resize-none py-1.5 leading-relaxed text-slate-700 custom-scrollbar placeholder:text-slate-400"
               rows="1"
               style={{ minHeight: '36px', maxHeight: '200px' }}
@@ -954,7 +954,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                     className="flex items-center space-x-2 text-slate-700 hover:text-slate-900 transition-colors px-1 py-1"
                   >
                     <span className="text-[14px] font-bold tracking-tight">
-                      {selectedModel === 'instant' ? 'GPT-5.2 Instant' : selectedModel === 'thinking' ? 'GPT-5.2 Pro' : 'Gemini-3.0 Flash'}
+                      {selectedModel === 'instant' ? 'GPT-5 Instant' : selectedModel === 'thinking' ? 'GPT-5 Pro' : 'Gemini-3.0 Flash'}
                     </span>
                     <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isModelMenuOpen ? 'rotate-180' : ''}`} />
                   </button>
@@ -965,8 +965,8 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                       <div className="fixed inset-0 z-40" onClick={() => setIsModelMenuOpen(false)} />
                       <div className="absolute bottom-full left-0 mb-3 w-52 bg-white rounded-2xl shadow-2xl border border-gray-100 py-2 z-50 animate-scale-in origin-bottom-left">
                         {[
-                          { id: 'instant', name: 'GPT-5.2 Instant' },
-                          { id: 'thinking', name: 'GPT-5.2 Pro' },
+                          { id: 'instant', name: 'GPT-5 Instant' },
+                          { id: 'thinking', name: 'GPT-5 Pro' },
                           { id: 'gemini', name: 'Gemini-3.0 Flash' }
                         ].map(m => (
                           <button
@@ -988,14 +988,16 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                   )}
                 </div>
 
-                {/* AI 지침 설정 링크 */}
-                <button
-                  type="button"
-                  onClick={onTogglePromptModal}
-                  className="text-[14px] font-bold text-slate-500 hover:text-blue-600 transition-colors"
-                >
-                  {language === 'ko' ? 'AI 지침 설정' : 'AI Guidelines'}
-                </button>
+                {/* AI 지침 설정 링크 (공유받은 유저는 숨김) */}
+                {!isReadOnly && (
+                  <button
+                    type="button"
+                    onClick={onTogglePromptModal}
+                    className="text-[14px] font-bold text-slate-500 hover:text-blue-600 transition-colors"
+                  >
+                    {language === 'ko' ? 'AI 지침 설정' : 'AI Guidelines'}
+                  </button>
+                )}
               </div>
 
               {/* 전송 버튼 */}
@@ -1111,10 +1113,29 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
   return (
     <div className="h-full flex flex-col bg-white overflow-hidden">
       {/* Messages & Input Area */}
-      <div className="flex-1 flex flex-col bg-[#F3F6FA] relative overflow-hidden">
+      <div className="flex-1 flex flex-col bg-[#F8FAFC] relative overflow-hidden">
+        {/* 우측 상단 유틸리티 버튼 영역 */}
+        <div className="absolute top-6 right-6 z-10 flex items-center space-x-3">
+          <button
+            className="flex items-center space-x-2 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-slate-700 text-[14px] font-bold hover:bg-gray-50 transition-all active:scale-95"
+            onClick={onOpenShare}
+          >
+            <Share className="w-4 h-4 text-slate-500" />
+            <span>{language === 'ko' ? '공유' : 'Share'}</span>
+          </button>
+          {!isReadOnly && (
+            <button
+              onClick={onOpenNotebookSettings}
+              className="flex items-center space-x-2 bg-white px-4 py-2 rounded-xl border border-slate-200 shadow-sm text-slate-700 text-[14px] font-bold hover:bg-gray-50 transition-all active:scale-95"
+            >
+              <Settings className="w-4 h-4 text-slate-500" />
+              <span>{language === 'ko' ? '설정' : 'Settings'}</span>
+            </button>
+          )}
+        </div>
         {messages.length === 0 && selectedSources.length === 0 ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-6 pb-32">
-            <div className="w-full max-w-5xl flex flex-col items-center space-y-6">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 pb-20">
+            <div className="w-full max-w-4xl flex flex-col items-center space-y-8 animate-fade-in">
               <h1 className="text-4xl font-black text-slate-800 tracking-tighter text-center">
                 {language === 'ko' ? '시작하려면 소스 추가' : 'Add sources to start'}
               </h1>
@@ -1144,9 +1165,27 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
           </div>
         ) : (
           <div className="flex-1 flex flex-col min-h-0">
-            {/* 메시지 영역: 메시지가 없을 때는 빈 공간으로 채워 입력창을 하단으로 밉니다 */}
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="space-y-6">
+            {/* 메시지 영역 */}
+            <div className="flex-1 overflow-y-auto pt-12 px-6">
+              <div className="max-w-4xl mx-auto w-full space-y-8 pb-12">
+                {/* 채팅 시작 시간 표시 (중앙) */}
+                <div className="flex justify-center mb-10">
+                  <div className="px-4 py-1.5 bg-slate-100/50 rounded-full text-[12px] text-slate-400 font-medium">
+                    {(() => {
+                      const now = new Date();
+                      const yyyy = now.getFullYear();
+                      const m = now.getMonth() + 1;
+                      const d = now.getDate();
+                      let h = now.getHours();
+                      const mm = String(now.getMinutes()).padStart(2, '0');
+                      const ampm = h >= 12 ? 'PM' : 'AM';
+                      h = h % 12;
+                      h = h ? h : 12; // 0시를 12시로 표시
+                      return `${yyyy}.${m}.${d}. ${ampm} ${h}:${mm}`;
+                    })()}
+                  </div>
+                </div>
+
                 {messages.map((m) => (
                   <MessageItem
                     key={m.id}
@@ -1163,8 +1202,10 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 ))}
                 {isTyping && (
                   <div className="flex justify-start">
-                    <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-                      <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                    <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex items-center space-x-3 animate-pulse">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce" />
+                      <div className="w-2 h-2 bg-blue-300 rounded-full animate-bounce [animation-delay:0.2s]" />
+                      <div className="w-2 h-2 bg-blue-200 rounded-full animate-bounce [animation-delay:0.4s]" />
                     </div>
                   </div>
                 )}
@@ -1185,6 +1226,7 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                 onTogglePromptModal={onTogglePromptModal}
                 isModelMenuOpen={isModelMenuOpen}
                 setIsModelMenuOpen={setIsModelMenuOpen}
+                isReadOnly={isReadOnly}
               />
             </div>
           </div>

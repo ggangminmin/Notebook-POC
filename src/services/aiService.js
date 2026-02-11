@@ -4,15 +4,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai'
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY
 
-// GPT 모델 설정 (2026년 1월 기준 최신)
+// GPT 모델 설정 (실제 동작 상용 모델로 매핑)
 const GPT_MODELS = {
-  INSTANT: 'gpt-5.2-chat-latest',  // 빠른 응답 (GPT-5.2 Instant - 적응형 추론)
-  THINKING: 'gpt-5.2',             // 심층 추론 (GPT-5.2 Thinking - 고급 추론)
-  MINI: 'gpt-4o-mini'              // 초저비용/초고속 (제안/필터링용)
+  INSTANT: 'gpt-4o',          // 빠른 응답 (GPT-4o)
+  THINKING: 'gpt-4o',         // 심층 추론 (현재 gpt-4o로 유지, 필요한 경우 o1-mini 등으로 변경 가능)
+  CODEX: 'gpt-4o',            // UI/UX 특화
+  MINI: 'gpt-4o-mini'         // 저비용/고속 (GPT-4o mini)
 }
 
-// Gemini 모델 설정 (2025년 12월 기준 최신)
-const GEMINI_MODEL = 'gemini-3-flash-preview' // Gemini 3 Flash (공식 Preview 버전 - 2025.12.17 출시)
+// Gemini 모델 설정 (Gemini 2.0 Flash - 최신 멀티모달 최적화)
+const GEMINI_MODEL = 'gemini-2.0-flash'
 
 // Gemini AI 초기화
 const genAI = GEMINI_API_KEY ? new GoogleGenerativeAI(GEMINI_API_KEY) : null
@@ -42,7 +43,7 @@ export const isMeaninglessQuery = (query) => {
 
 // OpenAI API 호출
 // GPT-5.2는 temperature를 지원하지 않음 (고정값 1)
-const callOpenAI = async (messages, useThinking = false, useMini = false) => {
+export const callOpenAI = async (messages, useThinking = false, useMini = false) => {
   try {
     let model = useThinking ? GPT_MODELS.THINKING : GPT_MODELS.INSTANT
     if (useMini) model = GPT_MODELS.MINI
@@ -53,7 +54,7 @@ const callOpenAI = async (messages, useThinking = false, useMini = false) => {
     const requestBody = {
       model: model,
       messages: messages,
-      max_completion_tokens: useThinking ? 4000 : 2000  // 심층 분석은 4000, 일반은 2000
+      max_tokens: useThinking ? 4000 : 2000  // 심층 분석은 4000, 일반은 2000
     }
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -177,6 +178,50 @@ const callGemini = async (messages, temperature = 0.3, isDeepAnalysis = false) =
       throw new Error('안전 가이드라인에 따른 차단으로 응답을 생성할 수 없습니다. 질문 내용을 검토해 주세요.')
     }
 
+    throw error
+  }
+}
+
+/**
+ * Gemini Vision (Multimodal) 호출 - 이미지 분석용
+ * @param {string} prompt - 분석 요청 프롬프트
+ * @param {string} base64Data - 이미지 Base64 데이터
+ * @param {string} mimeType - 이미지 타입 (image/png, image/jpeg 등)
+ */
+export const callGeminiVision = async (prompt, base64Data, mimeType = 'image/png') => {
+  try {
+    if (!genAI) throw new Error('Gemini API 키가 설정되지 않았습니다')
+
+    // Vision 기능을 지원하는 2.0 Flash 모델 사용
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL })
+
+    // 구조화된 출력을 위한 지침 추가
+    const finalPrompt = `${prompt}\n\n결과는 반드시 순수 JSON 형식으로만 응답해주세요. 마크다운 코드 블록(\`\`\`json) 등은 제외하고 순수 데이터만 보내주세요.`
+
+    const result = await model.generateContent([
+      finalPrompt,
+      {
+        inlineData: {
+          data: base64Data,
+          mimeType: mimeType
+        }
+      }
+    ])
+
+    const response = await result.response
+    const text = response.text()
+
+    // JSON 응답 정제 (마크다운 코드 블록 제거 등)
+    try {
+      const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/\{[\s\S]*\}/)
+      const jsonStr = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : text
+      return JSON.parse(jsonStr)
+    } catch (parseError) {
+      console.error('[Gemini Vision] JSON 파싱 실패:', text)
+      return { error: '데이터 구조화 실패', raw: text }
+    }
+  } catch (error) {
+    console.error('Gemini Vision API 오류:', error)
     throw error
   }
 }

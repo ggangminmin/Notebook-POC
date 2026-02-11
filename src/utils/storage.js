@@ -6,6 +6,14 @@ import * as localDB from './idb';
 
 const BUCKET_NAME = 'notebook-files'; // Supabase Storage 버킷 이름
 
+// 마스터 계정 여부 확인 헬퍼
+const isMasterAccount = (email) => {
+  if (!email) return false;
+  return email === 'admin@test.com' ||
+    email === 'demo-admin' ||
+    email.startsWith('admin.master@'); // admin.master@gptko.co.kr 등 지원
+};
+
 // 🔥 데이터 정제: 저장 전 무거운 데이터 제거
 const sanitizeNotebookForStorage = (notebook) => {
   console.log('[Sanitize] 저장 전 데이터 정제 시작:', notebook.id);
@@ -54,32 +62,42 @@ const sanitizeNotebookForStorage = (notebook) => {
 };
 
 // 모든 노트북 가져오기
-export const getAllNotebooks = async () => {
+export const getAllNotebooks = async (ownerId) => {
   try {
-    // 1. 로컬 DB에서 먼저 시도 (빠른 로딩)
-    const localNotebooks = await localDB.localGetAllNotebooks();
-    if (localNotebooks && localNotebooks.length > 0) {
-      console.log('[Storage] 로컬 DB에서 노트북 로드:', localNotebooks.length, '개');
+    // 1. 로컬 캐시 확인
+    const localNotebooks = await localDB.localGetAllNotebooks(ownerId);
+    const isMaster = isMasterAccount(ownerId);
 
-      // 백그라운드에서 Supabase와 동기화 (선택 사항 - 여기서는 생략하거나 필요시 추가)
+    // 마스터 계정은 로컬 캐시에 관계 없이 항상 서버 데이터를 한 번 더 확인하여 동기화 보장
+    if (isMaster) {
+      console.log('[Storage] 마스터 계정 서버 동기화 시작 (전체 데이터 로드)');
+    } else if (localNotebooks && localNotebooks.length > 0) {
+      console.log('[Storage] 로컬 DB에서 노트북 로드:', localNotebooks.length, '개');
       return localNotebooks;
     }
 
-    // 2. 로컬에 없으면 Supabase에서 로드
-    const { data, error } = await supabase
+    let query = supabase
       .from('notebooks')
-      .select('*')
-      .order('updated_at', { ascending: false });
+      .select('*');
+
+    // 마스터가 아니면 본인 소유 또는 공유받은 목록 로드
+    if (!isMaster) {
+      const userEmail = ownerId.startsWith('demo-') ? ownerId.replace('demo-', '') : ownerId;
+      // Supabase or 필터: 내 소유이거나, sharing_settings->sharedWith 배열에 내 이메일이 포함된 경우
+      query = query.or(`ownerId.eq.${ownerId},sharingSettings->sharedWith.cs.{"${userEmail}"}`);
+    }
+
+    const { data, error } = await query.order('updated_at', { ascending: false });
 
     if (error) {
       console.error('[Supabase] 노트북 로드 실패:', error);
       return [];
     }
 
-    // 각 노트북의 상세 정보 로드
+    // 각 노트북의 상세 정보 로드 (요청한 유저의 메시지만 로드)
     const notebooksWithDetails = await Promise.all(
       data.map(async (notebook) => {
-        const messages = await getNotebookMessages(notebook.id);
+        const messages = await getNotebookMessages(notebook.id, ownerId);
         const sources = await getNotebookSources(notebook.id);
         const fullNotebook = {
           id: notebook.id,
@@ -109,49 +127,51 @@ export const getAllNotebooks = async () => {
   }
 };
 
+// 유저의 노트북 개수 조회 (50개 제한 체크용)
+export const getNotebookCount = async (userId) => {
+  try {
+    const isMaster = isMasterAccount(userId);
+    let query = supabase.from('notebooks').select('id', { count: 'exact', head: true });
+
+    if (!isMaster) {
+      const userEmail = userId.includes('@') ? userId : `${userId}@gptko.co.kr`;
+      query = query.or(`ownerId.eq.${userId},sharingSettings->sharedWith.cs.{"${userEmail}"}`);
+    }
+
+    const { count, error } = await query;
+    if (error) throw error;
+    return count || 0;
+  } catch (error) {
+    console.error('[Storage] 노트북 개수 조회 실패:', error);
+    return 0;
+  }
+};
+
 // ID로 노트북 가져오기
-export const getNotebookById = async (id) => {
+export const getNotebookById = async (id, ownerId) => {
   try {
     // 1. 로컬 DB에서 확인
     const localNotebook = await localDB.localGetNotebookById(id);
     if (localNotebook) {
       console.log('[Storage] 로컬 DB에서 노트북 조회 성공:', id);
+
+      // 마스터 계정이거나 소유자인 경우에만 메시지 내역 유지
+      const isOwner = localNotebook.ownerId === ownerId;
+      const isMaster = isMasterAccount(ownerId);
+
+      if (!isOwner && !isMaster) {
+        return { ...localNotebook, messages: [] };
+      }
       return localNotebook;
     }
 
     // 2. 없으면 Supabase에서 조회
-    const { data, error } = await supabase
-      .from('notebooks')
-      .select('*')
-      .eq('id', id)
-      .single();
-
-    if (error) {
-      console.error('[Supabase] 노트북 조회 실패:', error);
-      return null;
+    const fullNotebookData = await getNotebookByIdFromSupabase(id, ownerId);
+    if (fullNotebookData) {
+      // 로컬 DB에 캐싱
+      await localDB.localSaveNotebook(fullNotebookData);
     }
-
-    const messages = await getNotebookMessages(id);
-    const sources = await getNotebookSources(id);
-
-    const fullNotebook = {
-      id: data.id,
-      title: data.title,
-      emoji: data.emoji,
-      createdAt: data.created_at,
-      updatedAt: data.updated_at,
-      selectedModel: data.selected_model,
-      systemPromptOverrides: Array.isArray(data.system_prompt_overrides)
-        ? data.system_prompt_overrides
-        : [],
-      analyzedSourceIds: data.analyzed_source_ids || [],
-      messages,
-      sources
-    };
-
-    // 로컬 DB에 저장
-    await localDB.localSaveNotebook(fullNotebook);
-    return fullNotebook;
+    return fullNotebookData;
   } catch (error) {
     console.error('[Storage] 노트북 조회 중 오류:', error);
     return null;
@@ -172,37 +192,57 @@ export const saveNotebook = async (notebook) => {
     console.log('[Storage] 📍 1단계: 로컬 DB 즉시 저장 완료 (Data Loss Prevention)');
 
     // 🔥 [STEP 2] 클라우드 동기화 (Background-like Process)
-    // 이 작업이 실패하거나 늦어져도 로컬 데이터는 이미 안전함
     const syncProcess = async () => {
       try {
         console.log('[Supabase] 🔄 2단계: 클라우드 동기화 시작...');
+
+        // 현재 유저 확인
+        const { data: { user } } = await supabase.auth.getUser();
+        const currentUserId = user?.email || 'user-minseok';
+
         const sanitizedNotebook = sanitizeNotebookForStorage(notebook);
 
-        const notebookData = {
-          id: sanitizedNotebook.id,
-          title: sanitizedNotebook.title || 'Untitled Notebook',
-          emoji: sanitizedNotebook.emoji || '📝',
-          created_at: sanitizedNotebook.createdAt || new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          selected_model: sanitizedNotebook.selectedModel || 'gpt-5.1-instant',
-          system_prompt_overrides: Array.isArray(sanitizedNotebook.systemPromptOverrides)
-            ? sanitizedNotebook.systemPromptOverrides
-            : [],
-          analyzed_source_ids: sanitizedNotebook.analyzedSourceIds || []
-        };
+        // 1. 노트북 소유자나 마스터만 메타데이터(제목, AI 지침 등) 수정 가능
+        const isOwner = sanitizedNotebook.ownerId === currentUserId;
+        const isMaster = isMasterAccount(currentUserId);
 
-        const { error: notebookError } = await supabase
-          .from('notebooks')
-          .upsert(notebookData, { onConflict: 'id' });
+        if (isOwner || isMaster) {
+          const notebookData = {
+            id: sanitizedNotebook.id,
+            title: sanitizedNotebook.title || 'Untitled Notebook',
+            emoji: sanitizedNotebook.emoji || '📝',
+            created_at: sanitizedNotebook.createdAt || new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            selected_model: sanitizedNotebook.selectedModel || 'gpt-5.1-instant',
+            system_prompt_overrides: Array.isArray(sanitizedNotebook.systemPromptOverrides)
+              ? sanitizedNotebook.systemPromptOverrides
+              : [],
+            analyzed_source_ids: sanitizedNotebook.analyzedSourceIds || [],
+            ownerId: sanitizedNotebook.ownerId,
+            sharingSettings: sanitizedNotebook.sharingSettings || {}
+          };
 
-        if (notebookError) throw notebookError;
+          const { error: notebookError } = await supabase
+            .from('notebooks')
+            .upsert(notebookData, { onConflict: 'id' });
 
-        if (sanitizedNotebook.messages) {
-          await saveNotebookMessages(sanitizedNotebook.id, sanitizedNotebook.messages);
+          if (notebookError) throw notebookError;
+          console.log('[Supabase] ✅ 노트북 메타데이터 업데이트 완료');
+        } else {
+          console.log('[Supabase] ℹ️ 공유된 노트북이므로 메타데이터 업데이트 스킵 (소유자 권한)');
         }
 
-        if (sanitizedNotebook.sources && sanitizedNotebook.sources.length > 0) {
-          await saveNotebookSources(sanitizedNotebook.id, sanitizedNotebook.sources);
+        // 2. 메시지는 유저별로 독립적으로 저장 (누구나 자신의 메시지는 저장 가능)
+        if (sanitizedNotebook.messages) {
+          // 중요: 소유자가 아닌 경우에도 본인의 이메일로 메시지를 저장함
+          await saveNotebookMessages(sanitizedNotebook.id, sanitizedNotebook.messages, currentUserId);
+        }
+
+        // 3. 소스는 일단 공용이므로 소유자만 업데이트 가능하도록 (필요시 조정 가능)
+        if (isOwner || isMaster) {
+          if (sanitizedNotebook.sources && sanitizedNotebook.sources.length > 0) {
+            await saveNotebookSources(sanitizedNotebook.id, sanitizedNotebook.sources);
+          }
         }
 
         console.log('[Supabase] ✅ 클라우드 동기화 최종 완료');
@@ -222,11 +262,20 @@ export const saveNotebook = async (notebook) => {
 };
 
 // Supabase에서만 노트북 정보 가져오기 (내부용)
-async function getNotebookByIdFromSupabase(id) {
+async function getNotebookByIdFromSupabase(id, ownerId) {
   const { data, error } = await supabase.from('notebooks').select('*').eq('id', id).single();
   if (error || !data) return null;
 
-  const messages = await getNotebookMessages(id);
+  // 마스터 여부 확인
+  const isMaster = isMasterAccount(ownerId);
+  const isOwner = data.ownerId === ownerId;
+
+  // 본인 소유이거나 마스터인 경우에만 메시지 로드, 아니면 빈 배열 (공유받은 유저는 매번 깨끗한 상태로 시작)
+  let messages = [];
+  if (isOwner || isMaster) {
+    messages = await getNotebookMessages(id, ownerId);
+  }
+
   const sources = await getNotebookSources(id);
 
   return {
@@ -238,19 +287,27 @@ async function getNotebookByIdFromSupabase(id) {
     selectedModel: data.selected_model,
     systemPromptOverrides: Array.isArray(data.system_prompt_overrides) ? data.system_prompt_overrides : [],
     analyzedSourceIds: data.analyzed_source_ids || [],
+    ownerId: data.ownerId,
+    sharingSettings: data.sharingSettings || {},
     messages,
     sources
   };
 }
 
 // 노트북 메시지 가져오기
-export const getNotebookMessages = async (notebookId) => {
+export const getNotebookMessages = async (notebookId, userId) => {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('messages')
       .select('*')
-      .eq('notebook_id', notebookId)
-      .order('timestamp', { ascending: true });
+      .eq('notebook_id', notebookId);
+
+    // 유저 ID가 있으면 해당 유저의 메시지만 가져옴
+    if (userId) {
+      query = query.eq('user_id', userId);
+    }
+
+    const { data, error } = await query.order('timestamp', { ascending: true });
 
     if (error) {
       console.error('[Supabase] 메시지 로드 실패:', error);
@@ -271,13 +328,19 @@ export const getNotebookMessages = async (notebookId) => {
 };
 
 // 노트북 메시지 저장
-export const saveNotebookMessages = async (notebookId, messages) => {
+export const saveNotebookMessages = async (notebookId, messages, userId) => {
   try {
-    // 기존 메시지 삭제
-    await supabase
+    // 기존 메시지 삭제 (해당 유저의 메시지만)
+    let deleteQuery = supabase
       .from('messages')
       .delete()
       .eq('notebook_id', notebookId);
+
+    if (userId) {
+      deleteQuery = deleteQuery.eq('user_id', userId);
+    }
+
+    await deleteQuery;
 
     // 메시지가 없으면 조기 리턴
     if (!messages || messages.length === 0) {
@@ -290,6 +353,7 @@ export const saveNotebookMessages = async (notebookId, messages) => {
       .filter(msg => msg.role && msg.content) // role과 content가 있는 메시지만
       .map(msg => ({
         notebook_id: notebookId,
+        user_id: userId, // 유저 ID 추가
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp || new Date().toISOString()

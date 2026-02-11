@@ -6,9 +6,16 @@ import DataPreview from './components/DataPreview'
 import PDFViewer from './components/PDFViewer'
 import Dashboard from './components/Dashboard'
 import Agents from './components/Agents'
+import OCRPoc from './components/OCRPoc'
+import ChatAI from './components/ChatAI'
 import Notification from './components/Notification'
+import NotebookSettingsModal from './components/NotebookSettingsModal'
+import ShareModal from './components/ShareModal'
+import AuthModal from './components/AuthModal'
+import LoginPage from './components/LoginPage'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import pdfViewerController from './utils/pdfViewerController'
+import { supabase } from './utils/supabaseClient'
 import {
   getNotebookById,
   updateNotebookSources,
@@ -16,11 +23,14 @@ import {
   updateNotebookModel,
   updateNotebookSystemPrompt,
   updateNotebookAnalyzedSources,
-  updateNotebookSelectedSourceIds
+  updateNotebookSelectedSourceIds,
+  updateNotebookSharing
 } from './utils/notebookManager'
 import { migrateFromIndexedDB } from './utils/storage'
 import { testSupabaseConnection } from './utils/supabaseClient'
 import { ChevronLeft, User, LogOut, ChevronDown, MessageSquare, Zap } from 'lucide-react'
+
+const CURRENT_USER_ID = 'user-minseok' // fallback (로컬 테스트용)
 
 function AppContent() {
   // 언어 설정
@@ -46,7 +56,14 @@ function AppContent() {
   const [analyzedSourceIds, setAnalyzedSourceIds] = useState([]) // 이미 분석한 파일 ID 목록
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false) // 소스 추가 모달 열림 상태
   const [isPromptModalOpen, setIsPromptModalOpen] = useState(false) // AI 지침 설정 모달 상태
+  const [isNotebookSettingsOpen, setIsNotebookSettingsOpen] = useState(false) // 노트북 설정 모달 상태
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false) // 공유 설정 모달 상태
+  const [shareTargetNotebook, setShareTargetNotebook] = useState(null) // 공유 대상 노트북
   const [isSourcePanelCollapsed, setIsSourcePanelCollapsed] = useState(false) // 소스 패널 접힘 상태
+
+  // Auth 관련 상태
+  const [user, setUser] = useState(null)
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
 
   // 알림(Notification) 상태
   const [notification, setNotification] = useState({
@@ -201,6 +218,19 @@ function AppContent() {
 
           setCurrentView('chat')
         }
+      } else if (event.state?.view === 'agents') {
+        // 에이전트 목록으로 복귀
+        if (currentNotebook && currentView === 'chat') {
+          await saveCurrentNotebookData()
+        }
+        setCurrentView('agents')
+        setCurrentNotebook(null)
+      } else if (event.state?.view === 'ocr-poc') {
+        // OCR POC로 복귀
+        setCurrentView('ocr-poc')
+      } else if (event.state?.view === 'chat-ai') {
+        // Chat AI로 복귀
+        setCurrentView('chat-ai')
       }
     }
 
@@ -209,6 +239,7 @@ function AppContent() {
     // 초기 로드 시 URL 기반 라우팅
     const initializeRoute = async () => {
       const hash = window.location.hash
+
       if (hash.startsWith('#chat/')) {
         const notebookId = hash.replace('#chat/', '')
         const savedNotebook = await getNotebookById(notebookId)
@@ -225,8 +256,9 @@ function AppContent() {
           setSelectedModel(savedNotebook.selectedModel || 'instant')
           setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
 
-          // 대화 이력 복원
-          if (savedNotebook.messages) {
+          // 대화 이력 복원 (공유받은 사용자인 경우 비움)
+          const isOwner = savedNotebook.ownerId === currentUserId || !savedNotebook.ownerId;
+          if (isOwner && savedNotebook.messages) {
             setChatHistory(savedNotebook.messages.map(msg => ({
               role: msg.role,
               content: msg.content,
@@ -246,9 +278,18 @@ function AppContent() {
 
           setCurrentView('chat')
         }
+      } else if (hash === '#agents') {
+        setCurrentView('agents')
+      } else if (hash === '#ocr-poc') {
+        setCurrentView('ocr-poc')
+      } else if (hash === '#chat-ai') {
+        setCurrentView('chat-ai')
       } else {
         // 기본값: 대시보드
-        window.history.replaceState({ view: 'dashboard' }, '', '#dashboard')
+        if (!hash || hash === '#dashboard') {
+          window.history.replaceState({ view: 'dashboard' }, '', '#dashboard')
+          setCurrentView('dashboard')
+        }
       }
     }
 
@@ -284,6 +325,25 @@ function AppContent() {
     initializeSupabase()
   }, [])
 
+  // 🔥 Auth 세션 감시
+  useEffect(() => {
+    // 현재 세션 확인
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null)
+    })
+
+    // 인증 상태 변화 감지
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null)
+    })
+
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const currentUserId = user?.email || CURRENT_USER_ID;
+  const isAdmin = user?.email === 'admin@test.com' || user?.email === 'admin.master@gptko.co.kr';
+  const isReadOnly = currentNotebook?.ownerId && currentNotebook.ownerId !== currentUserId && !isAdmin;
+
   // 전역 PDF 뷰어 컨트롤러 초기화 (Event Bus 패턴)
   useEffect(() => {
     console.log('[App.jsx] PDF 뷰어 컨트롤러 리스너 등록')
@@ -308,8 +368,8 @@ function AppContent() {
   const handleNotebookSelect = async (notebook) => {
     console.log('[App] 노트북 선택:', notebook.id, notebook.title)
 
-    // 노트북 데이터 불러오기
-    const savedNotebook = await getNotebookById(notebook.id)
+    // 노트북 데이터 불러오기 (현재 유저 ID 전달 필수)
+    const savedNotebook = await getNotebookById(notebook.id, currentUserId)
     if (!savedNotebook) {
       console.error('[App] 노트북을 찾을 수 없음:', notebook.id)
       return
@@ -336,8 +396,9 @@ function AppContent() {
     setSelectedModel(savedNotebook.selectedModel || 'instant')
     setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
 
-    // 대화 이력 상태 복원 (DataPreview용)
-    if (savedNotebook.messages) {
+    // 대화 이력 상태 복원
+    // getNotebookById에서 이미 유저별로 필터링된 메시지를 반환함
+    if (savedNotebook.messages && savedNotebook.messages.length > 0) {
       const formattedHistory = savedNotebook.messages.map(msg => ({
         role: msg.role,
         content: msg.content,
@@ -370,6 +431,22 @@ function AppContent() {
     console.log('- 메시지 개수:', savedNotebook.messages?.length || 0)
     console.log('- 선택된 모델:', savedNotebook.selectedModel)
     console.log('- 분석된 소스:', restoredAnalyzedIds.length)
+  }
+
+  // 에이전트 실행 핸들러
+  const handleAgentExecute = (agent) => {
+    console.log('[App] 에이전트 실행:', agent.title, agent.id)
+    if (agent.id === 26) {
+      setCurrentView('ocr-poc')
+      // 브라우저 히스토리 업데이트
+      window.history.pushState({ view: 'ocr-poc' }, '', '#ocr-poc')
+    } else {
+      showNotification(
+        language === 'ko' ? '서비스 준비 중' : 'Service Coming Soon',
+        language === 'ko' ? `[${agent.title}] 기능은 현재 개발 중입니다.` : `The [${agent.title}] feature is currently under development.`,
+        'info'
+      )
+    }
   }
 
   // 대시보드로 돌아가기
@@ -750,8 +827,18 @@ function AppContent() {
 
 
   // 공통 레이아웃 (헤더 포함)
+  if (!user) {
+    return (
+      <LoginPage
+        onLoginSuccess={(userData) => setUser(userData)}
+        language={language}
+        onNotification={showNotification}
+      />
+    )
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-white">
       {/* Top Header - Premium Dark Navigation Bar */}
       <div className="h-16 bg-[#121212] border-b border-white/5 flex items-center px-6 flex-shrink-0 z-50">
         {/* Left: Logo (Occupies left third) */}
@@ -776,18 +863,27 @@ function AppContent() {
 
         {/* Center: Navigation (Centered in the bar) */}
         <div className="hidden lg:flex items-center space-x-1">
-          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
+          <button
+            onClick={() => {
+              setCurrentView('chat-ai')
+              window.history.pushState({ view: 'chat-ai' }, '', '#chat-ai')
+            }}
+            className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'chat-ai' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
+          >
             Chat AI
           </button>
           <button
             onClick={() => setCurrentView('dashboard')}
             className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'dashboard' || currentView === 'chat' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
           >
-            에이전트 챗봇
+            Note Chat
           </button>
           <button
-            onClick={() => setCurrentView('agents')}
-            className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'agents' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
+            onClick={() => {
+              setCurrentView('agents')
+              window.history.pushState({ view: 'agents' }, '', '#agents')
+            }}
+            className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'agents' || currentView === 'ocr-poc' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
           >
             에이전트
           </button>
@@ -807,32 +903,65 @@ function AppContent() {
 
         {/* Right: User Section (Occupies right third) */}
         <div className="flex-1 flex justify-end items-center space-x-5">
-          <div className="hidden sm:flex flex-col items-end text-right">
-            <span className="text-sm font-bold text-gray-200 leading-none">admin@test.com</span>
-            <span className="text-[11px] text-gray-500 mt-1 font-medium bg-gray-800/50 px-2 py-0.5 rounded-md">플랫폼 관리자</span>
-          </div>
+          {user ? (
+            <>
+              <div className="hidden sm:flex flex-col items-end text-right">
+                <span className="text-sm font-bold text-gray-200 leading-none">
+                  {user.user_metadata?.full_name || user.email}
+                </span>
+                <span className="text-[11px] text-gray-500 mt-1 font-medium bg-gray-800/50 px-2 py-0.5 rounded-md">
+                  {user.email === 'admin@test.com' ? '플랫폼 관리자' : '일반 사용자'}
+                </span>
+              </div>
 
-          <div className="flex items-center space-x-2 border-l border-white/10 pl-5">
-            <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#1A1A1A] hover:bg-[#252525] border border-white/5 text-gray-400 hover:text-white transition-all shadow-sm">
-              <User className="w-5 h-5" />
-            </button>
+              <div className="flex items-center space-x-2 border-l border-white/10 pl-5">
+                <button
+                  onClick={() => setIsAuthModalOpen(true)}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#1A1A1A] hover:bg-[#252525] border border-white/5 text-gray-400 hover:text-white transition-all shadow-sm"
+                >
+                  <User className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    showNotification('로그아웃', '정상적으로 로그아웃되었습니다.');
+                  }}
+                  className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#1A1A1A] hover:bg-red-900/20 border border-red-500/20 text-red-400 hover:text-red-300 transition-all shadow-sm"
+                  title="로그아웃"
+                >
+                  <LogOut className="w-5 h-5" />
+                </button>
+              </div>
+            </>
+          ) : (
             <button
-              onClick={handleBackToDashboard}
-              className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/20 transition-all shadow-sm"
-              title={language === 'ko' ? '로그아웃' : 'Logout'}
+              onClick={() => setIsAuthModalOpen(true)}
+              className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 transition-all active:scale-95"
             >
-              <LogOut className="w-5 h-5" />
+              {language === 'ko' ? '로그인 / 가입' : 'Sign In'}
             </button>
-          </div>
+          )}
         </div>
       </div>
 
       {currentView === 'dashboard' ? (
         <div className="flex-1 overflow-y-auto">
-          <Dashboard onNotebookSelect={handleNotebookSelect} showNotification={showNotification} />
+          <Dashboard
+            onNotebookSelect={handleNotebookSelect}
+            showNotification={showNotification}
+            onShare={(notebook) => {
+              setShareTargetNotebook(notebook)
+              setIsShareModalOpen(true)
+            }}
+            currentUserId={currentUserId}
+          />
         </div>
       ) : currentView === 'agents' ? (
-        <Agents />
+        <Agents onExecute={handleAgentExecute} />
+      ) : currentView === 'ocr-poc' ? (
+        <OCRPoc onBack={() => window.history.back()} />
+      ) : currentView === 'chat-ai' ? (
+        <ChatAI onBack={() => handleBackToDashboard()} currentUserId={currentUserId} />
       ) : (
         <>
           {/* Sub Header: Notebook Title Bar */}
@@ -860,6 +989,7 @@ function AppContent() {
                 isCollapsed={isSourcePanelCollapsed}
                 onToggleCollapse={() => setIsSourcePanelCollapsed(!isSourcePanelCollapsed)}
                 showNotification={showNotification}
+                isReadOnly={isReadOnly}
               />
             </div>
 
@@ -885,6 +1015,12 @@ function AppContent() {
                 onAnalyzedSourcesUpdate={handleAnalyzedSourcesUpdate}
                 onOpenAddSource={() => setIsAddSourceModalOpen(true)}
                 onTogglePromptModal={() => setIsPromptModalOpen(true)}
+                onOpenNotebookSettings={() => setIsNotebookSettingsOpen(true)}
+                onOpenShare={() => {
+                  setShareTargetNotebook(currentNotebook)
+                  setIsShareModalOpen(true)
+                }}
+                isReadOnly={isReadOnly}
               />
             </div>
 
@@ -908,6 +1044,7 @@ function AppContent() {
                   targetTime={targetTime}
                   onClose={() => setIsSettingsPanelOpen(false)}
                   showNotification={showNotification}
+                  isReadOnly={isReadOnly}
                 />
               </div>
             )}
@@ -938,6 +1075,55 @@ function AppContent() {
           onClose={() => setIsPromptModalOpen(false)}
         />
       )}
+
+      {/* 노트북 전용 설정 모달 (세팅) */}
+      {isNotebookSettingsOpen && (
+        <NotebookSettingsModal
+          isOpen={isNotebookSettingsOpen}
+          onClose={() => setIsNotebookSettingsOpen(false)}
+          language={language}
+          onSave={(settings) => {
+            console.log('노트북 설정 저장됨:', settings);
+            showNotification(
+              language === 'ko' ? '설정 저장 완료' : 'Settings Saved',
+              language === 'ko' ? '노트북 설정이 저장되었습니다.' : 'Notebook settings have been saved.'
+            );
+          }}
+        />
+      )}
+
+      {/* 노트북 공유 모달 */}
+      {isShareModalOpen && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          notebook={shareTargetNotebook}
+          language={language}
+          user={user}
+          onSave={async (settings) => {
+            console.log('공유 설정 저장됨:', settings);
+            const updated = await updateNotebookSharing(shareTargetNotebook.id, settings);
+            if (updated) {
+              if (currentNotebook && currentNotebook.id === updated.id) {
+                setCurrentNotebook(updated);
+              }
+              showNotification(
+                language === 'ko' ? '공유 설정 완료' : 'Sharing Updated',
+                language === 'ko' ? '노트북의 공유 권한이 변경되었습니다.' : 'Notebook sharing permissions have been updated.'
+              );
+            }
+          }}
+        />
+      )}
+
+      {/* Auth 모달 */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        language={language}
+        onNotification={showNotification}
+        setUser={setUser}
+      />
 
       {/* 전역 알림 컴포넌트 */}
       <Notification

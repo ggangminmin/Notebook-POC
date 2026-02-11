@@ -39,7 +39,7 @@ export const localSaveNotebook = async (notebook) => {
     }
 };
 
-export const localGetAllNotebooks = async () => {
+export const localGetAllNotebooks = async (ownerId) => {
     try {
         const db = await initDB();
         const tx = db.transaction(NOTEBOOK_STORE, 'readonly');
@@ -47,7 +47,28 @@ export const localGetAllNotebooks = async () => {
 
         return new Promise((resolve, reject) => {
             const request = store.getAll();
-            request.onsuccess = () => resolve(request.result);
+            request.onsuccess = () => {
+                const results = request.result || [];
+                // 사용자별 필터링: 소유자가 본인이거나, 공유 목록(sharedWith)에 본인이 포함된 경우
+                // ownerId는 'demo-email' 형식일 수 있으므로 email과 함께 체크
+                const userEmail = ownerId.startsWith('demo-') ? ownerId.replace('demo-', '') : ownerId;
+
+                const filtered = results.map(nb => {
+                    const isOwner = nb.ownerId === ownerId;
+                    const isSharedToMe = nb.sharingSettings?.sharedWith?.includes(userEmail);
+                    const isLegacyMaster = !nb.ownerId && (ownerId === 'admin@test.com' || ownerId === 'demo-admin');
+
+                    if (isOwner || isSharedToMe || isLegacyMaster) {
+                        // 본인 소유가 아니면(공유받은 경우) 메시지 내역 비우기
+                        if (!isOwner && !isLegacyMaster) {
+                            return { ...nb, messages: [] };
+                        }
+                        return nb;
+                    }
+                    return null;
+                }).filter(Boolean);
+                resolve(filtered);
+            };
             request.onerror = () => reject(request.error);
         });
     } catch (error) {
@@ -64,7 +85,17 @@ export const localGetNotebookById = async (id) => {
 
         return new Promise((resolve, reject) => {
             const request = store.get(id);
-            request.onsuccess = () => resolve(request.result);
+            request.onsuccess = () => {
+                const nb = request.result;
+                if (!nb) {
+                    resolve(null);
+                    return;
+                }
+
+                // ownerId를 알 수 없으므로, storage.js에서 최종 필터링하도록 원본 반환
+                // (이 함수는 주로 단일 조회 시 사용되며 storage.js에서 후처리를 함)
+                resolve(nb);
+            };
             request.onerror = () => reject(request.error);
         });
     } catch (error) {

@@ -14,7 +14,7 @@ import {
   Gift, Award, Box, Briefcase, Coffee,
   Cpu, Layers, Layout, Mail, MessageSquare,
   Package, Pen, Phone, Settings, Shield,
-  Sun, Tag, Truck, Umbrella, Wifi
+  Sun, Tag, Truck, Umbrella, Wifi, Share2
 } from 'lucide-react'
 import { formatDate, NOTEBOOK_ICONS, DEFAULT_ICON } from '../utils/notebookManager'
 
@@ -41,7 +41,7 @@ const getIconComponent = (iconName) => {
   return iconComponents[iconName] || iconComponents[DEFAULT_ICON] || FileText
 }
 
-const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate }) => {
+const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate, onShare, currentUserId }) => {
   const [isEditing, setIsEditing] = useState(false)
   const [editedTitle, setEditedTitle] = useState(notebook.title)
   const [showMenu, setShowMenu] = useState(false)
@@ -87,6 +87,14 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
     setShowMenu(false)
     setIsEditing(true)
     setEditedTitle(notebook.title)
+  }
+
+  const handleShare = (e) => {
+    e.stopPropagation()
+    setShowMenu(false)
+    if (onShare) {
+      onShare(notebook)
+    }
   }
 
   const handleDelete = (e) => {
@@ -152,20 +160,21 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
   // 아이콘이 매핑에 없는 경우에도 fallback 처리
   const rawIconName = notebook.icon || DEFAULT_ICON
   const currentIconName = iconComponents[rawIconName] ? rawIconName : DEFAULT_ICON
+  const isShared = notebook.ownerId && notebook.ownerId !== currentUserId
   const IconComponent = getIconComponent(currentIconName)
 
   return (
     <div
       onClick={onClick}
-      className="group bg-white rounded-2xl border border-gray-100 shadow-sm p-4 cursor-pointer transition-all duration-200 hover:shadow-md hover:border-gray-200 flex flex-col relative"
-      style={{ aspectRatio: '240 / 200' }}
+      className={`group bg-white rounded-2xl border border-gray-100 p-5 cursor-pointer transition-all duration-300 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2 flex flex-col relative`}
+      style={{ aspectRatio: '320 / 280' }}
     >
       {/* 상단: 아이콘 + 더보기 메뉴 */}
       <div className="flex items-start justify-between mb-3">
         <div className="relative">
           <button
             onClick={handleIconClick}
-            className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all hover:scale-105 ${getIconBgColor(currentIconName)}`}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-110 shadow-sm border border-transparent ${getIconBgColor(currentIconName)}`}
             title="아이콘 변경"
           >
             <IconComponent className="w-6 h-6" />
@@ -187,9 +196,8 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
                     <button
                       key={iconName}
                       onClick={() => handleIconSelect(iconName)}
-                      className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${
-                        currentIconName === iconName ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
-                      }`}
+                      className={`p-2 rounded-lg hover:bg-gray-100 transition-colors ${currentIconName === iconName ? 'bg-blue-100 text-blue-600' : 'text-gray-600'
+                        }`}
                       title={iconName}
                     >
                       <Icon className="w-4 h-4" />
@@ -229,6 +237,14 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
                   <Trash2 className="w-3.5 h-3.5" />
                   <span>삭제</span>
                 </button>
+                <div className="h-[1px] bg-gray-50 my-1"></div>
+                <button
+                  onClick={handleShare}
+                  className="w-full px-3 py-2 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center space-x-2"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>공유</span>
+                </button>
               </div>
             )}
           </div>
@@ -238,13 +254,13 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
       {/* 중앙: 제목 (편집 가능) */}
       <div className="flex-1 mb-3">
         {isEditing ? (
-          <div className="flex items-center space-x-1.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center w-full space-x-1" onClick={(e) => e.stopPropagation()}>
             <input
               type="text"
               value={editedTitle}
               onChange={(e) => setEditedTitle(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="flex-1 px-2 py-1 text-sm font-semibold text-gray-800 border border-blue-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
+              className="flex-1 min-w-0 px-2 py-1 text-sm font-semibold text-gray-800 border border-blue-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-100"
               autoFocus
             />
             <button
@@ -263,16 +279,25 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
             </button>
           </div>
         ) : (
-          <h3 className="text-sm font-semibold text-gray-800 leading-tight line-clamp-2">
+          <h3 className="text-[15px] font-bold text-gray-900 group-hover:text-blue-600 transition-colors leading-snug line-clamp-2">
             {notebook.title}
           </h3>
         )}
       </div>
 
       {/* 하단: 생성일 + 소스 개수 */}
-      <div className="flex items-center justify-between text-[11px] text-gray-500 mt-auto">
-        <span>{formatDate(notebook.createdAt)}</span>
-        <span className="text-blue-600 font-medium">소스 {notebook.sources.length}개</span>
+      <div className="flex items-center justify-between pt-4 border-t border-gray-50 text-[12px] text-gray-500 mt-auto">
+        <span className="font-medium">{formatDate(notebook.createdAt)}</span>
+        <div className="flex items-center space-x-1.5">
+          {isShared && (
+            <div className="flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold mr-1">
+              <Users className="w-2.5 h-2.5 mr-1" />
+              공유됨
+            </div>
+          )}
+          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+          <span className="text-blue-600 font-bold">소스 {notebook.sources.length}개</span>
+        </div>
       </div>
     </div>
   )

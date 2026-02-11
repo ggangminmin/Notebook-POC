@@ -41,6 +41,8 @@ export const getRandomIcon = () => {
 //   selectedModel: string (선택된 AI 모델)
 //   systemPromptOverrides: Array (사용자 정의 AI 지침)
 //   analyzedSourceIds: Array<string> (이미 분석한 파일 ID 목록)
+//   ownerId: string (소유자 ID)
+//   sharingSettings: { accessLevel, viewLevel, isGreetingEnabled } (공유 설정)
 // }
 
 // 더미 데이터 생성 (초기 6개 노트북)
@@ -149,10 +151,10 @@ const initializeDB = async () => {
 }
 
 // IndexedDB에서 모든 노트북 불러오기
-export const getAllNotebooks = () => {
+export const getAllNotebooks = (ownerId) => {
   // 동기 함수로 유지하기 위해 초기화와 분리
   // 실제 데이터는 비동기로 로드되지만, 호출자는 동기적으로 처리
-  return storage.getAllNotebooks().catch(error => {
+  return storage.getAllNotebooks(ownerId).catch(error => {
     console.error('[notebookManager] 노트북 불러오기 실패:', error)
     return []
   })
@@ -167,8 +169,8 @@ export const getNotebookById = (id) => {
 }
 
 // 중복 제목 방지를 위한 고유 제목 생성
-export const generateUniqueTitle = async (baseTitle = '새 노트북') => {
-  const notebooks = await storage.getAllNotebooks()
+export const generateUniqueTitle = async (baseTitle = '새 노트북', ownerId) => {
+  const notebooks = await storage.getAllNotebooks(ownerId)
   const existingTitles = notebooks.map(nb => nb.title)
 
   // 기본 제목이 중복되지 않으면 그대로 반환
@@ -189,9 +191,9 @@ export const generateUniqueTitle = async (baseTitle = '새 노트북') => {
 }
 
 // 새 노트북 생성
-export const createNotebook = async (title = '새 노트북', icon = null) => {
+export const createNotebook = async (title = '새 노트북', icon = null, ownerId = 'user-minseok') => {
   // 중복 제목 방지
-  const uniqueTitle = await generateUniqueTitle(title)
+  const uniqueTitle = await generateUniqueTitle(title, ownerId)
 
   // 아이콘이 지정되지 않으면 랜덤 선택
   const notebookIcon = icon || getRandomIcon()
@@ -207,7 +209,13 @@ export const createNotebook = async (title = '새 노트북', icon = null) => {
     messages: [],
     selectedModel: 'instant', // 기본값: GPT Instant (빠른 응답)
     systemPromptOverrides: [],
-    analyzedSourceIds: []
+    analyzedSourceIds: [],
+    ownerId: ownerId, // 실제 소유자 ID
+    sharingSettings: {
+      accessLevel: 'restricted',
+      viewLevel: 'full',
+      isGreetingEnabled: false
+    }
   }
 
   await storage.saveNotebook(newNotebook)
@@ -292,6 +300,11 @@ export const updateNotebookAnalyzedSources = (id, analyzedSourceIds) => updateNo
 // 노트북의 선택된 소스 ID 업데이트
 export const updateNotebookSelectedSourceIds = (id, selectedSourceIds) => updateNotebook(id, { selectedSourceIds })
 
+// 노트북 공유 설정 업데이트
+export const updateNotebookSharing = (id, sharingSettings) => {
+  return updateNotebook(id, { sharingSettings })
+}
+
 // 노트북 삭제
 export const deleteNotebook = async (id) => {
   await storage.deleteNotebook(id)
@@ -307,8 +320,8 @@ export const sortNotebooksByDate = (notebooks) => {
 }
 
 // 노트북 검색 (제목 기반)
-export const searchNotebooks = async (query) => {
-  const notebooks = await getAllNotebooks()
+export const searchNotebooks = async (query, ownerId) => {
+  const notebooks = await getAllNotebooks(ownerId)
   if (!query || query.trim() === '') return notebooks
 
   const lowerQuery = query.toLowerCase()

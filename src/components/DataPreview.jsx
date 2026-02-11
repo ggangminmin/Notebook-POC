@@ -105,7 +105,7 @@ Respond in JSON format:
   }
 }
 
-const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null, targetTime = null, onClose, showNotification }) => {
+const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdateData, onUpdateName, onSystemPromptUpdate, chatHistory = [], lastSyncTime, systemPromptOverrides: propSystemPromptOverrides = [], targetPage = null, targetTime = null, onClose, showNotification, isReadOnly = false }) => {
   // 독립적인 상태 관리 (ChatInterface와 분리)
   const [expandedKeys, setExpandedKeys] = useState(new Set(['root']))
   const [isCopied, setIsCopied] = useState(false)
@@ -1730,8 +1730,8 @@ Set field to "invalid" if the request cannot be fulfilled.`
                           ref={(el) => chunkRefs.current[`chunk-${item.id}`] = el}
                           onClick={() => handleTimeSeek(timeStr, item.id)}
                           className={`flex items-start group cursor-pointer p-6 rounded-[1.5rem] transition-all duration-500 border-2 ${isHighlighted
-                              ? 'bg-blue-50/40 border-blue-500 shadow-[0_20px_50px_rgba(59,130,246,0.1)] scale-[1.02] ring-[12px] ring-blue-50/50'
-                              : 'hover:bg-slate-50/80 hover:border-slate-200 border-transparent hover:translate-x-1'
+                            ? 'bg-blue-50/40 border-blue-500 shadow-[0_20px_50px_rgba(59,130,246,0.1)] scale-[1.02] ring-[12px] ring-blue-50/50'
+                            : 'hover:bg-slate-50/80 hover:border-slate-200 border-transparent hover:translate-x-1'
                             }`}
                         >
                           <div className="flex flex-col items-center w-24 flex-shrink-0 pt-1 mr-8 border-r border-slate-200/50 pr-6">
@@ -1999,226 +1999,230 @@ Set field to "invalid" if the request cannot be fulfilled.`
               )}
             </div>
 
-            {/* AI 행동 지침 제어기 (Prompt Editor) */}
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => setIsEditingData(!isEditingData)}
-                  className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                >
-                  <Edit2 className="w-4 h-4" />
-                  <span>
-                    {isEditingData
-                      ? (language === 'ko' ? '편집 취소' : 'Cancel Edit')
-                      : (language === 'ko' ? '🤖 AI 행동 지침 제어' : '🤖 AI Behavior Control')
-                    }
-                  </span>
-                </button>
+            {/* AI 행동 지침 제어기 (Prompt Editor - 공유받은 유저는 숨김) */}
+            {!isReadOnly && (
+              <div className="mt-4 pt-4 border-t border-gray-200">
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => setIsEditingData(!isEditingData)}
+                    className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                    <span>
+                      {isEditingData
+                        ? (language === 'ko' ? '편집 취소' : 'Cancel Edit')
+                        : (language === 'ko' ? '🤖 AI 행동 지침 제어' : '🤖 AI Behavior Control')
+                      }
+                    </span>
+                  </button>
 
-                {/* Undo/Redo 버튼 */}
-                <div className="flex items-center space-x-1">
-                  <button
-                    onClick={handleUndo}
-                    disabled={currentHistoryIndex < 0}
-                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                    title={language === 'ko' ? '실행 취소 (Undo)' : 'Undo'}
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={handleRedo}
-                    disabled={currentHistoryIndex >= editHistory.length - 1}
-                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                    title={language === 'ko' ? '다시 실행 (Redo)' : 'Redo'}
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setShowHistory(!showHistory)}
-                    className="p-1.5 text-gray-600 hover:bg-gray-100 rounded ml-1"
-                    title={language === 'ko' ? '편집 이력 보기' : 'View Edit History'}
-                  >
-                    <List className="w-4 h-4" />
-                  </button>
+                  {/* Undo/Redo 버튼 */}
+                  <div className="flex items-center space-x-1">
+                    <button
+                      onClick={handleUndo}
+                      disabled={currentHistoryIndex < 0}
+                      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                      title={language === 'ko' ? '실행 취소 (Undo)' : 'Undo'}
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={handleRedo}
+                      disabled={currentHistoryIndex >= editHistory.length - 1}
+                      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                      title={language === 'ko' ? '다시 실행 (Redo)' : 'Redo'}
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setShowHistory(!showHistory)}
+                      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded ml-1"
+                      title={language === 'ko' ? '편집 이력 보기' : 'View Edit History'}
+                    >
+                      <List className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
 
-              {/* 편집 이력 표시 */}
-              {showHistory && editHistory.length > 0 && (
-                <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 max-h-40 overflow-y-auto">
-                  <h4 className="text-xs font-semibold text-gray-700 mb-2">
-                    {language === 'ko' ? '📝 편집 이력' : '📝 Edit History'}
-                  </h4>
-                  <div className="space-y-2">
-                    {editHistory.map((entry, index) => (
-                      <div
-                        key={index}
-                        className={`text-xs p-2 rounded ${index === currentHistoryIndex
-                          ? 'bg-blue-100 border border-blue-300'
-                          : 'bg-white border border-gray-200'
-                          }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-gray-700">
-                            {entry.action === 'prompt_override' ? '🤖' : '✏️'} {entry.field}
-                          </span>
-                          <span className="text-gray-500 text-[10px]">
-                            {new Date(entry.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                        {entry.oldValue && (
-                          <div className="mt-1 text-gray-600">
-                            <span className="line-through">{String(entry.oldValue).substring(0, 30)}</span>
-                            {' → '}
-                            <span className="text-green-600 font-medium">
-                              {String(entry.newValue).substring(0, 30)}
+                {/* 편집 이력 표시 */}
+                {showHistory && editHistory.length > 0 && (
+                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                    <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                      {language === 'ko' ? '📝 편집 이력' : '📝 Edit History'}
+                    </h4>
+                    <div className="space-y-2">
+                      {editHistory.map((entry, index) => (
+                        <div
+                          key={index}
+                          className={`text-xs p-2 rounded ${index === currentHistoryIndex
+                            ? 'bg-blue-100 border border-blue-300'
+                            : 'bg-white border border-gray-200'
+                            }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-gray-700">
+                              {entry.action === 'prompt_override' ? '🤖' : '✏️'} {entry.field}
+                            </span>
+                            <span className="text-gray-500 text-[10px]">
+                              {new Date(entry.timestamp).toLocaleTimeString()}
                             </span>
                           </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* 활성화된 AI 지침 표시 */}
-              {propSystemPromptOverrides.length > 0 && (
-                <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="text-xs font-semibold text-purple-800">
-                      {language === 'ko' ? '🤖 활성 AI 지침' : '🤖 Active AI Instructions'}
-                    </h4>
-                    <span className="text-xs text-purple-600">
-                      {propSystemPromptOverrides.length}개 적용됨
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {propSystemPromptOverrides.map((override) => (
-                      <div key={override.id} className="bg-white border border-purple-200 rounded p-2 text-xs">
-                        <div className="flex items-start justify-between">
-                          <p className="text-gray-700 flex-1 pr-2">{override.content}</p>
-                          <button
-                            onClick={() => removeSystemPromptOverride(override.id)}
-                            className="text-red-600 hover:bg-red-50 p-1 rounded flex-shrink-0"
-                            title={language === 'ko' ? '제거' : 'Remove'}
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
+                          {entry.oldValue && (
+                            <div className="mt-1 text-gray-600">
+                              <span className="line-through">{String(entry.oldValue).substring(0, 30)}</span>
+                              {' → '}
+                              <span className="text-green-600 font-medium">
+                                {String(entry.newValue).substring(0, 30)}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {isEditingData && (
-                <div className="mt-3 space-y-3">
-                  <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
-                    <h5 className="text-xs font-bold text-purple-900 mb-3 flex items-center space-x-2">
-                      <span className="text-lg">🧠</span>
-                      <span>{language === 'ko' ? '지능형 문서 제어 센터' : 'Intelligent Document Control Center'}</span>
-                    </h5>
-
-                    <div className="space-y-2 text-xs">
-                      <p className="text-gray-700 font-medium">
-                        {language === 'ko'
-                          ? '📌 지원하는 명령 유형:'
-                          : '📌 Supported Command Types:'
-                        }
-                      </p>
-
-                      <div className="grid grid-cols-1 gap-1.5">
-                        <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                          <span className="text-purple-700 font-semibold">1. </span>
-                          <span className="text-gray-800">
-                            {language === 'ko'
-                              ? '"비용 중심으로 요약해줘"'
-                              : '"Summarize from cost perspective"'
-                            }
-                          </span>
-                        </div>
-
-                        <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                          <span className="text-purple-700 font-semibold">2. </span>
-                          <span className="text-gray-800">
-                            {language === 'ko'
-                              ? '"15페이지 이후는 제외해줘"'
-                              : '"Exclude content after page 15"'
-                            }
-                          </span>
-                        </div>
-
-                        <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                          <span className="text-purple-700 font-semibold">3. </span>
-                          <span className="text-gray-800">
-                            {language === 'ko'
-                              ? '"3페이지로 요약해줘"'
-                              : '"Summarize in 3 pages"'
-                            }
-                          </span>
-                        </div>
-
-                        <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                          <span className="text-purple-700 font-semibold">4. </span>
-                          <span className="text-gray-800">
-                            {language === 'ko'
-                              ? '"페이지 수를 100으로 인식해"'
-                              : '"Recognize page count as 100"'
-                            }
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="text-purple-600 font-medium mt-2">
-                        {language === 'ko'
-                          ? '⚡ 명령이 LLM 시스템 프롬프트에 즉시 반영되어 채팅 답변 스타일이 변경됩니다!'
-                          : '⚡ Commands will be immediately reflected in LLM system prompt, changing chat response style!'
-                        }
-                      </p>
+                      ))}
                     </div>
                   </div>
+                )}
 
-                  <textarea
-                    value={editPrompt}
-                    onChange={(e) => setEditPrompt(e.target.value)}
-                    placeholder={language === 'ko'
-                      ? '예: "비용 절감 관점으로 분석해줘", "처음 20페이지만 고려해", "핵심만 3줄로 요약"...'
-                      : 'e.g., "Analyze from cost-saving perspective", "Only consider first 20 pages", "Summarize key points in 3 lines"...'
-                    }
-                    className="w-full px-4 py-3 text-sm border-2 border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none placeholder-gray-500"
-                    rows={4}
-                    disabled={isProcessingEdit}
-                  />
-
-                  <div className="flex justify-end space-x-2">
-                    <button
-                      onClick={() => {
-                        setIsEditingData(false)
-                        setEditPrompt('')
-                      }}
-                      className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                      disabled={isProcessingEdit}
-                    >
-                      {language === 'ko' ? '취소' : 'Cancel'}
-                    </button>
-                    <button
-                      onClick={handleNaturalLanguageEdit}
-                      disabled={!editPrompt.trim() || isProcessingEdit}
-                      className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                    >
-                      {isProcessingEdit ? (
-                        <>
-                          <Loader2 className="w-3 h-3 animate-spin" />
-                          <span>{language === 'ko' ? '처리 중...' : 'Processing...'}</span>
-                        </>
-                      ) : (
-                        <span>{language === 'ko' ? '적용' : 'Apply'}</span>
-                      )}
-                    </button>
+                {/* 활성화된 AI 지침 표시 */}
+                {propSystemPromptOverrides.length > 0 && (
+                  <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="text-xs font-semibold text-purple-800">
+                        {language === 'ko' ? '🤖 활성 AI 지침' : '🤖 Active AI Instructions'}
+                      </h4>
+                      <span className="text-xs text-purple-600">
+                        {propSystemPromptOverrides.length}개 적용됨
+                      </span>
+                    </div>
+                    <div className="space-y-2">
+                      {propSystemPromptOverrides.map((override) => (
+                        <div key={override.id} className="bg-white border border-purple-200 rounded p-2 text-xs">
+                          <div className="flex items-start justify-between">
+                            <p className="text-gray-700 flex-1 pr-2">{override.content}</p>
+                            {!isReadOnly && (
+                              <button
+                                onClick={() => removeSystemPromptOverride(override.id)}
+                                className="text-red-600 hover:bg-red-50 p-1 rounded flex-shrink-0"
+                                title={language === 'ko' ? '제거' : 'Remove'}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+
+                {isEditingData && (
+                  <div className="mt-3 space-y-3">
+                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                      <h5 className="text-xs font-bold text-purple-900 mb-3 flex items-center space-x-2">
+                        <span className="text-lg">🧠</span>
+                        <span>{language === 'ko' ? '지능형 문서 제어 센터' : 'Intelligent Document Control Center'}</span>
+                      </h5>
+
+                      <div className="space-y-2 text-xs">
+                        <p className="text-gray-700 font-medium">
+                          {language === 'ko'
+                            ? '📌 지원하는 명령 유형:'
+                            : '📌 Supported Command Types:'
+                          }
+                        </p>
+
+                        <div className="grid grid-cols-1 gap-1.5">
+                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                            <span className="text-purple-700 font-semibold">1. </span>
+                            <span className="text-gray-800">
+                              {language === 'ko'
+                                ? '"비용 중심으로 요약해줘"'
+                                : '"Summarize from cost perspective"'
+                              }
+                            </span>
+                          </div>
+
+                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                            <span className="text-purple-700 font-semibold">2. </span>
+                            <span className="text-gray-800">
+                              {language === 'ko'
+                                ? '"15페이지 이후는 제외해줘"'
+                                : '"Exclude content after page 15"'
+                              }
+                            </span>
+                          </div>
+
+                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                            <span className="text-purple-700 font-semibold">3. </span>
+                            <span className="text-gray-800">
+                              {language === 'ko'
+                                ? '"3페이지로 요약해줘"'
+                                : '"Summarize in 3 pages"'
+                              }
+                            </span>
+                          </div>
+
+                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                            <span className="text-purple-700 font-semibold">4. </span>
+                            <span className="text-gray-800">
+                              {language === 'ko'
+                                ? '"페이지 수를 100으로 인식해"'
+                                : '"Recognize page count as 100"'
+                              }
+                            </span>
+                          </div>
+                        </div>
+
+                        <p className="text-purple-600 font-medium mt-2">
+                          {language === 'ko'
+                            ? '⚡ 명령이 LLM 시스템 프롬프트에 즉시 반영되어 채팅 답변 스타일이 변경됩니다!'
+                            : '⚡ Commands will be immediately reflected in LLM system prompt, changing chat response style!'
+                          }
+                        </p>
+                      </div>
+                    </div>
+
+                    <textarea
+                      value={editPrompt}
+                      onChange={(e) => setEditPrompt(e.target.value)}
+                      placeholder={language === 'ko'
+                        ? '예: "비용 절감 관점으로 분석해줘", "처음 20페이지만 고려해", "핵심만 3줄로 요약"...'
+                        : 'e.g., "Analyze from cost-saving perspective", "Only consider first 20 pages", "Summarize key points in 3 lines"...'
+                      }
+                      className="w-full px-4 py-3 text-sm border-2 border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none placeholder-gray-500"
+                      rows={4}
+                      disabled={isProcessingEdit}
+                    />
+
+                    <div className="flex justify-end space-x-2">
+                      <button
+                        onClick={() => {
+                          setIsEditingData(false)
+                          setEditPrompt('')
+                        }}
+                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                        disabled={isProcessingEdit}
+                      >
+                        {language === 'ko' ? '취소' : 'Cancel'}
+                      </button>
+                      <button
+                        onClick={handleNaturalLanguageEdit}
+                        disabled={!editPrompt.trim() || isProcessingEdit}
+                        className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                      >
+                        {isProcessingEdit ? (
+                          <>
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            <span>{language === 'ko' ? '처리 중...' : 'Processing...'}</span>
+                          </>
+                        ) : (
+                          <span>{language === 'ko' ? '적용' : 'Apply'}</span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 원본 JSON 데이터 (개발자용) - 아코디언 */}
             <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">

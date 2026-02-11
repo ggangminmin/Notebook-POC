@@ -317,7 +317,7 @@ const WebSearchPopup = ({ isOpen, onClose, initialQuery, documentContext, onStar
                         <div className="relative">
                             <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full scale-150 animate-pulse" />
                             <div className="relative w-24 h-24 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-[32px] flex items-center justify-center shadow-2xl shadow-blue-200">
-                                <Search className="w-10 h-10 text-white animate-bounce" />
+                                <Loader2 className="w-10 h-10 text-white animate-spin" />
                             </div>
                         </div>
                         <div className="text-center space-y-3">

@@ -13,7 +13,7 @@ const HwpIcon = ({ className }) => (
   </div>
 )
 
-const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange, isCollapsed, onToggleCollapse, showNotification }) => {
+const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource, onDeleteSource, isAddModalOpen = false, onAddModalChange, isCollapsed, onToggleCollapse, showNotification, isReadOnly = false }) => {
   const [showAddModal, setShowAddModal] = useState(false)
 
   // 외부에서 모달 열림 상태 제어
@@ -617,13 +617,15 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
             <PanelLeft className="w-5 h-5" />
           </button>
           {/* Add Button - Collapsed */}
-          <button
-            onClick={() => handleModalChange(true)}
-            className="w-10 h-10 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 transition-all active:scale-95 shadow-sm"
-            title={t('sources.addSource')}
-          >
-            <Plus className="w-5 h-5" />
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => handleModalChange(true)}
+              className="w-10 h-10 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl flex items-center justify-center text-slate-400 transition-all active:scale-95 shadow-sm"
+              title={t('sources.addSource')}
+            >
+              <Plus className="w-5 h-5" />
+            </button>
+          )}
 
           {/* Sources Icons List */}
           <div className="flex-1 flex flex-col items-center space-y-3 w-full">
@@ -659,19 +661,22 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
           <div className="p-4 space-y-4">
             {/* Add Source Button + Sidebar Toggle */}
             <div className="flex items-center space-x-2">
-              <button
-                onClick={() => handleModalChange(true)}
-                className="flex-1 h-12 bg-gradient-to-r from-[#4c2f6d] to-[#0d4a58] rounded-lg hover:opacity-90 transition-all flex items-center justify-center space-x-2 text-white shadow-md active:scale-[0.98]"
-              >
-                <Plus className="w-5 h-5" />
-                <span className="text-sm font-bold">{t('sources.addSource')}</span>
-              </button>
+              {!isReadOnly && (
+                <button
+                  onClick={() => handleModalChange(true)}
+                  className="flex-1 h-12 bg-gradient-to-r from-[#4c2f6d] to-[#0d4a58] rounded-lg hover:opacity-90 transition-all flex items-center justify-center space-x-2 text-white shadow-md active:scale-[0.98]"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="text-sm font-bold">{t('sources.addSource')}</span>
+                </button>
+              )}
               <button
                 onClick={onToggleCollapse}
-                className="w-12 h-12 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all active:scale-95 border border-gray-100 shadow-sm"
+                className={`w-12 h-12 flex items-center justify-center rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-all active:scale-95 border border-gray-100 shadow-sm ${isReadOnly ? 'flex-1' : ''}`}
                 title={language === 'ko' ? '사이드바 접기' : 'Collapse Sidebar'}
               >
                 <PanelLeft className="w-5 h-5" />
+                {isReadOnly && <span className="ml-2 text-sm font-bold">{language === 'ko' ? '사이드바 접기' : 'Collapse'}</span>}
               </button>
             </div>
 
@@ -782,9 +787,6 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                             <p className="text-sm font-medium text-gray-900 truncate leading-tight" title={source.name}>
                               {source.name}
                             </p>
-                            <p className="text-[10px] text-gray-500 mt-0.5 truncate" title={source.url || ''}>
-                              {source.type === 'web' ? source.url : new Date(source.uploadedAt).toLocaleDateString()}
-                            </p>
                           </div>
 
                           {/* External Link Button for Web Sources - Compact */}
@@ -802,17 +804,19 @@ const SourcePanel = ({ sources, onAddSources, selectedSourceIds, onToggleSource,
                             </Tooltip>
                           )}
 
-                          <Tooltip text={language === 'ko' ? '삭제' : 'Delete'} position="top">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                onDeleteSource(source.id)
-                              }}
-                              className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
-                            >
-                              <X className="w-3 h-3" />
-                            </button>
-                          </Tooltip>
+                          {!isReadOnly && (
+                            <Tooltip text={language === 'ko' ? '삭제' : 'Delete'} position="top">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  onDeleteSource(source.id)
+                                }}
+                                className="flex-shrink-0 p-1 rounded text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors opacity-0 group-hover:opacity-100"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </Tooltip>
+                          )}
                         </div>
 
                         {/* Expanded Summary Section */}
