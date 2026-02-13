@@ -15,15 +15,34 @@ const ShareModal = ({ isOpen, onClose, notebook, language = 'ko', onSave, user }
     const [selectedMembers, setSelectedMembers] = useState([])
     const [memberNotebookCounts, setMemberNotebookCounts] = useState({}) // 각 직원의 노트북 개수 추적
 
-    // 현재 유저의 도메인 추출 (예: gptko.co.kr)
-    const userDomain = user?.email?.split('@')[1] || 'gptko.co.kr'
+    // 유저 메타데이터에서 회사 정보 가져오기 (admin.master 등은 모든 회원 조회 가능하게 처리)
+    const userCompany = user?.user_metadata?.company || '지피티코리아';
+    const isMaster = user?.email === 'admin@test.com' || user?.email === 'admin.master@gptko.co.kr';
 
-    // 동일 도메인 소속 직원 명단 (본인 제외 필터링)
-    const companyMembers = [
-        { name: '마스터 관리자', email: `admin.master@${userDomain}`, initial: 'M' },
-        { name: '회사 직원1', email: `ms.kang@${userDomain}`, initial: 'K1' },
-        { name: '회사 직원2', email: `ms.kang2@${userDomain}`, initial: 'K2' }
-    ].filter(member => member.email !== user?.email)
+    // 회사별 직원 명단 프리셋 (POC 체계 전체 지원)
+    const allCompanyMembers = [
+        // 지피티코리아
+        { name: '황용운 이사', email: 'yw.hwang@gptko.co.kr', initial: '황', company: '지피티코리아' },
+        { name: '안수찬 실장', email: 'sc.ahn@gptko.co.kr', initial: '안', company: '지피티코리아' },
+        { name: '구일완 대리', email: 'iw.ku@gptko.co.kr', initial: '구', company: '지피티코리아' },
+        { name: '권용재 사원', email: 'yj.kwon@gptko.co.kr', initial: '권', company: '지피티코리아' },
+        { name: '송제성 팀장', email: 'js.song@gptko.co.kr', initial: '송', company: '지피티코리아' },
+        { name: '석준용 대리', email: 'jy.seok@gptko.co.kr', initial: '석', company: '지피티코리아' },
+        { name: '임승연 사원', email: 'sy.lim@gptko.co.kr', initial: '임', company: '지피티코리아' },
+        { name: '박진영 팀장', email: 'jy.park@gptko.co.kr', initial: '박', company: '지피티코리아' },
+        { name: '이아영 대리', email: 'ay.lee@gptko.co.kr', initial: '이', company: '지피티코리아' },
+        { name: '김학종 사원', email: 'hj.kim@gptko.co.kr', initial: '김', company: '지피티코리아' },
+        { name: '방효윤 사원', email: 'hy.방', email: 'hy.bang@gptko.co.kr', initial: '방', company: '지피티코리아' },
+        // AIWEB
+        { name: '소병우 실장', email: 'bw.so@aiweb.kr', initial: '소', company: 'AIWEB' },
+        { name: '전주희 팀장', email: 'jh.jun@aiweb.kr', initial: '전', company: 'AIWEB' },
+        { name: '박선영 팀장', email: 'sy.park@aiweb.kr', initial: '박', company: 'AIWEB' }
+    ];
+
+    // 현재 사용자와 동일한 회사의 직원만 필터링 (마스터는 전체)
+    const companyMembers = allCompanyMembers.filter(member =>
+        (isMaster || member.company === userCompany) && member.email !== user?.email
+    );
 
     // 초기 설정 반영 & 직원 노트북 개수 조회
     useEffect(() => {
@@ -31,16 +50,29 @@ const ShareModal = ({ isOpen, onClose, notebook, language = 'ko', onSave, user }
             setAccessLevel(notebook.sharingSettings.accessLevel || 'restricted')
             setViewLevel(notebook.sharingSettings.viewLevel || 'full')
             setIsGreetingEnabled(notebook.sharingSettings.isGreetingEnabled || false)
+            // 공유된 멤버 목록 복원 (Array인지 확인 필수)
+            const sharedWith = notebook.sharingSettings.sharedWith;
+            setSelectedMembers(Array.isArray(sharedWith) ? sharedWith : [])
+        } else {
+            // 초기화
+            setAccessLevel('restricted')
+            setViewLevel('full')
+            setIsGreetingEnabled(false)
+            setSelectedMembers([])
         }
 
         // 모달이 열릴 때 비동기로 직원들의 노트북 개수 파악
         if (isOpen && companyMembers.length > 0) {
             companyMembers.forEach(async (member) => {
-                const count = await getNotebookCount(member.email)
-                setMemberNotebookCounts(prev => ({ ...prev, [member.email]: count }))
+                try {
+                    const count = await getNotebookCount(member.email)
+                    setMemberNotebookCounts(prev => ({ ...prev, [member.email]: count }))
+                } catch (e) {
+                    console.error('[ShareModal] 개수 조회 실패:', member.email, e);
+                }
             })
         }
-    }, [isOpen, notebook])
+    }, [isOpen, notebook?.id, notebook?.sharingSettings])
 
     if (!isOpen || !notebook) return null
 

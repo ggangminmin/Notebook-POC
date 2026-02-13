@@ -8,11 +8,12 @@ import Dashboard from './components/Dashboard'
 import Agents from './components/Agents'
 import OCRPoc from './components/OCRPoc'
 import ChatAI from './components/ChatAI'
-import Notification from './components/Notification'
-import NotebookSettingsModal from './components/NotebookSettingsModal'
-import ShareModal from './components/ShareModal'
+import AdminPanel from './components/AdminPanel'
+import CompanyAdminPanel from './components/CompanyAdminPanel'
+import NotebookManageModal from './components/NotebookManageModal'
 import AuthModal from './components/AuthModal'
 import LoginPage from './components/LoginPage'
+import Notification from './components/Notification'
 import { LanguageProvider, useLanguage } from './contexts/LanguageContext'
 import pdfViewerController from './utils/pdfViewerController'
 import { supabase } from './utils/supabaseClient'
@@ -24,9 +25,10 @@ import {
   updateNotebookSystemPrompt,
   updateNotebookAnalyzedSources,
   updateNotebookSelectedSourceIds,
-  updateNotebookSharing
+  updateNotebookSharing,
+  updateNotebookSettings
 } from './utils/notebookManager'
-import { migrateFromIndexedDB } from './utils/storage'
+import { migrateFromIndexedDB, localClearAllNotebooks } from './utils/storage'
 import { testSupabaseConnection } from './utils/supabaseClient'
 import { ChevronLeft, User, LogOut, ChevronDown, MessageSquare, Zap } from 'lucide-react'
 
@@ -37,7 +39,7 @@ function AppContent() {
   const { language, t } = useLanguage()
 
   // 라우팅 상태
-  const [currentView, setCurrentView] = useState('dashboard') // 'dashboard' or 'chat'
+  const [currentView, setCurrentView] = useState('chat-ai') // 'chat-ai' as default view
   const [currentNotebook, setCurrentNotebook] = useState(null) // 현재 선택된 노트북
 
   // 채팅 UI 상태
@@ -63,6 +65,7 @@ function AppContent() {
 
   // Auth 관련 상태
   const [user, setUser] = useState(null)
+  const [isAuthRestored, setIsAuthRestored] = useState(false)
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false)
 
   // 알림(Notification) 상태
@@ -72,6 +75,17 @@ function AppContent() {
     subMessage: '',
     type: 'success'
   })
+
+  const currentUserId = user?.email || user?.id || CURRENT_USER_ID;
+  const isMasterAdmin =
+    user?.email === 'admin@test.com' ||
+    user?.email === 'admin.master@gptko.co.kr';
+  const isCompanyAdmin =
+    user?.email === 'admin@gptko.co.kr' ||
+    user?.email === 'admin@aiweb.kr' ||
+    user?.user_metadata?.role === 'company_admin';
+  const isAdmin = isMasterAdmin || isCompanyAdmin;
+  const isReadOnly = currentNotebook?.ownerId && currentNotebook.ownerId !== currentUserId && !isAdmin;
 
   // 알림 표시 함수
   const showNotification = useCallback((message, subMessage = '', type = 'success') => {
@@ -137,63 +151,74 @@ function AppContent() {
       return source
     })
 
-  // 현재 노트북 데이터 저장 (IndexedDB + Supabase)
-  const saveCurrentNotebookData = useCallback(async () => {
-    if (!currentNotebook) return
+  // 현재 노트북 데이터 저장 (통합 저장 방식으로 개선)
+  const saveCurrentNotebookData = useCallback(async (targetNotebook = null) => {
+    const notebookToSave = targetNotebook || currentNotebook
+    if (!notebookToSave) return
 
-    console.log('[App] 현재 노트북 데이터 저장 시작:', currentNotebook.id)
+    console.log('[App] 💾 노트북 데이터 통합 저장 시작:', notebookToSave.id)
 
     try {
-      console.log('[App] 저장 시도 중인 소스 개수:', sources.length)
-      console.log('[App] 소스 ID 목록:', sources.map(s => s.id))
-
-      // 1. 소스 업데이트
-      await updateNotebookSources(currentNotebook.id, sources)
-
-      // 2. 모델 및 프롬프트 업데이트
-      await updateNotebookModel(currentNotebook.id, selectedModel)
-      await updateNotebookSystemPrompt(currentNotebook.id, systemPromptOverrides)
-
-      // 3. 메시지 업데이트 (채팅 이력이 있으면)
-      if (chatHistory && chatHistory.length > 0) {
-        await updateNotebookMessages(currentNotebook.id, chatHistory)
-        console.log('[App] 메시지 동기화 저장 완료:', chatHistory.length, '개')
+      // 모든 변경 사항을 하나의 객체로 모아 한 번에 업데이트 (성능 및 안정성 향상)
+      const updates = {
+        sources,
+        selectedModel,
+        systemPromptOverrides,
+        analyzedSourceIds,
+        messages: chatHistory // 채팅 내역 포함
       }
 
-      // 4. 분석된 소스 ID 업데이트
-      await updateNotebookAnalyzedSources(currentNotebook.id, analyzedSourceIds)
+      // notebookManager의 통합 업데이트 호출
+      await updateNotebook(notebookToSave.id, updates, currentUserId)
 
-      console.log('[App] ✅ 모든 노트북 데이터 저장 완료')
+      console.log('[App] ✅ 모든 노트북 데이터 저장 완료 (Sources, Messages, Settings)')
     } catch (error) {
-      console.error('[App] ❌ 저장 실패:', error)
+      console.error('[App] ❌ 통합 저장 실패:', error)
     }
-  }, [currentNotebook, sources, selectedModel, systemPromptOverrides, chatHistory, analyzedSourceIds])
+  }, [currentNotebook, sources, selectedModel, systemPromptOverrides, chatHistory, analyzedSourceIds, currentUserId])
 
   // 브라우저 뒤로가기/앞으로가기 지원
   useEffect(() => {
     const handlePopState = async (event) => {
       console.log('[App] popstate 이벤트:', event.state)
+      const state = event.state
+      const hash = window.location.hash
       const currentView = currentViewRef.current
       const currentNotebook = currentNotebookRef.current
 
-      if (event.state?.view === 'dashboard') {
-        // 대시보드로 복귀
-        if (currentNotebook && currentView === 'chat') {
-          await saveCurrentNotebookData()
-        }
+      // 1. 대시보드 브라우저 백/포워드 처리
+      if (state?.view === 'dashboard' || (!state && (hash === '' || hash === '#dashboard'))) {
+        // UI 즉시 전환
         setCurrentView('dashboard')
         setCurrentNotebook(null)
-      } else if (event.state?.view === 'chat' && event.state?.notebookId) {
-        // 특정 노트북으로 이동 (비교하여 이미 해당 노트북이면 스킵)
-        if (currentNotebook?.id === event.state.notebookId && currentView === 'chat') {
+
+        // 백그라운드 저장
+        if (currentNotebook && currentView === 'chat') {
+          saveCurrentNotebookData(currentNotebook)
+        }
+      }
+      // 2. 채팅 뷰 브라우저 백/포워드 처리
+      else if ((state?.view === 'chat' && state?.notebookId) || (!state && hash.startsWith('#chat/'))) {
+        const notebookId = state?.notebookId || hash.replace('#chat/', '')
+
+        if (currentNotebook?.id === notebookId && currentView === 'chat') {
           return
         }
 
-        const savedNotebook = await getNotebookById(event.state.notebookId)
+        // 채팅 뷰 이동은 데이터를 불러와야 하므로 await 필요
+        const savedNotebook = await getNotebookById(notebookId, currentUserId)
         if (savedNotebook) {
+          // 상태 복원 전 mount 플래그 설정 (자동 저장 방지)
+          isInitialMountSources.current = true
+          isInitialMountModel.current = true
+          isInitialMountSystemPrompt.current = true
+
           setCurrentNotebook(savedNotebook)
           setSources(savedNotebook.sources || [])
-          setSelectedSourceIds(savedNotebook.sources.map(s => s.id))
+          setSelectedSourceIds(savedNotebook.selectedSourceIds && savedNotebook.selectedSourceIds.length > 0
+            ? savedNotebook.selectedSourceIds
+            : (savedNotebook.sources || []).map(s => s.id)
+          )
           setSelectedModel(savedNotebook.selectedModel || 'instant')
           setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
 
@@ -218,31 +243,38 @@ function AppContent() {
 
           setCurrentView('chat')
         }
-      } else if (event.state?.view === 'agents') {
-        // 에이전트 목록으로 복귀
-        if (currentNotebook && currentView === 'chat') {
-          await saveCurrentNotebookData()
-        }
+      }
+      // 3. 기타 뷰 처리
+      else if (state?.view === 'agents' || (!state && hash === '#agents')) {
         setCurrentView('agents')
         setCurrentNotebook(null)
-      } else if (event.state?.view === 'ocr-poc') {
-        // OCR POC로 복귀
+        if (currentNotebook && currentView === 'chat') {
+          saveCurrentNotebookData(currentNotebook)
+        }
+      } else if (state?.view === 'ocr-poc' || (!state && hash === '#ocr-poc')) {
         setCurrentView('ocr-poc')
-      } else if (event.state?.view === 'chat-ai') {
-        // Chat AI로 복귀
+      } else if (state?.view === 'chat-ai' || (!state && hash === '#chat-ai')) {
         setCurrentView('chat-ai')
       }
     }
 
     window.addEventListener('popstate', handlePopState)
 
-    // 초기 로드 시 URL 기반 라우팅
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [])
+
+  // 초기 로드 시 URL 기반 라우팅 (Auth 복구 후 실행)
+  useEffect(() => {
+    if (!isAuthRestored) return
+
     const initializeRoute = async () => {
       const hash = window.location.hash
 
       if (hash.startsWith('#chat/')) {
         const notebookId = hash.replace('#chat/', '')
-        const savedNotebook = await getNotebookById(notebookId)
+        const savedNotebook = await getNotebookById(notebookId, currentUserId)
         if (savedNotebook) {
           // 🔥 중요: 초기 로드 시 자동 저장 방지
           isInitialMountSources.current = true
@@ -252,12 +284,20 @@ function AppContent() {
 
           setCurrentNotebook(savedNotebook)
           setSources(savedNotebook.sources || [])
-          setSelectedSourceIds(savedNotebook.sources.map(s => s.id))
+
+          if (savedNotebook.selectedSourceIds && savedNotebook.selectedSourceIds.length > 0) {
+            setSelectedSourceIds(savedNotebook.selectedSourceIds)
+          } else {
+            setSelectedSourceIds((savedNotebook.sources || []).map(s => s.id))
+          }
+
           setSelectedModel(savedNotebook.selectedModel || 'instant')
           setSystemPromptOverrides(savedNotebook.systemPromptOverrides || [])
 
-          // 대화 이력 복원 (공유받은 사용자인 경우 비움)
-          const isOwner = savedNotebook.ownerId === currentUserId || !savedNotebook.ownerId;
+          // 대화 이력 복원 (소유자이거나 마스터인 경우)
+          const isMaster = isAdmin || (user?.email && (user.email === 'admin@test.com' || user.email === 'demo-admin'));
+          const isOwner = savedNotebook.ownerId === currentUserId || !savedNotebook.ownerId || isMaster;
+
           if (isOwner && savedNotebook.messages) {
             setChatHistory(savedNotebook.messages.map(msg => ({
               role: msg.role,
@@ -285,21 +325,17 @@ function AppContent() {
       } else if (hash === '#chat-ai') {
         setCurrentView('chat-ai')
       } else {
-        // 기본값: 대시보드
-        if (!hash || hash === '#dashboard') {
-          window.history.replaceState({ view: 'dashboard' }, '', '#dashboard')
-          setCurrentView('dashboard')
+        // 기본값: Chat AI (사용자 요청)
+        if (!hash || hash === '#dashboard' || hash === '') {
+          window.history.replaceState({ view: 'chat-ai' }, '', '#chat-ai')
+          setCurrentView('chat-ai')
         }
       }
     }
 
     initializeRoute()
-
-    return () => {
-      window.removeEventListener('popstate', handlePopState)
-    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isAuthRestored, currentUserId])
 
   // Supabase 연결 테스트 (앱 시작 시 1회)
   useEffect(() => {
@@ -330,19 +366,17 @@ function AppContent() {
     // 현재 세션 확인
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user || null)
+      setIsAuthRestored(true)
     })
 
     // 인증 상태 변화 감지
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user || null)
+      setIsAuthRestored(true)
     })
 
     return () => subscription.unsubscribe()
   }, [])
-
-  const currentUserId = user?.email || CURRENT_USER_ID;
-  const isAdmin = user?.email === 'admin@test.com' || user?.email === 'admin.master@gptko.co.kr';
-  const isReadOnly = currentNotebook?.ownerId && currentNotebook.ownerId !== currentUserId && !isAdmin;
 
   // 전역 PDF 뷰어 컨트롤러 초기화 (Event Bus 패턴)
   useEffect(() => {
@@ -381,8 +415,9 @@ function AppContent() {
     isInitialMountSystemPrompt.current = true
     lastSavedSourceIds.current = (savedNotebook.sources || []).map(s => s.id).sort().join(',')
 
-    // 현재 노트북 설정
+    // 현재 노트북 설정 및 Ref 업데이트 (저장용)
     setCurrentNotebook(savedNotebook)
+    currentNotebookRef.current = savedNotebook
 
     // 저장된 데이터로 상태 복원
     setSources(savedNotebook.sources || [])
@@ -400,9 +435,9 @@ function AppContent() {
     // getNotebookById에서 이미 유저별로 필터링된 메시지를 반환함
     if (savedNotebook.messages && savedNotebook.messages.length > 0) {
       const formattedHistory = savedNotebook.messages.map(msg => ({
-        role: msg.role,
-        content: msg.content,
-        timestamp: msg.timestamp
+        ...msg,
+        role: msg.role || msg.type || 'assistant',
+        type: msg.type || msg.role || 'assistant'
       }))
       setChatHistory(formattedHistory)
     } else {
@@ -453,16 +488,25 @@ function AppContent() {
   const handleBackToDashboard = async () => {
     console.log('[App] 대시보드로 복귀')
 
-    // 현재 노트북 데이터 저장 (떠나기 전)
-    if (currentNotebook) {
-      await saveCurrentNotebookData()
-    }
-
+    // 1. UI 상태 즉시 변경 (사용자 체감 속도 향상)
     setCurrentView('dashboard')
+    const notebookToSave = currentNotebook // 현재 노트북 캡처
     setCurrentNotebook(null)
 
-    // 브라우저 히스토리 업데이트
-    window.history.pushState({ view: 'dashboard' }, '', '#dashboard')
+    // 2. 브라우저 히스토리 업데이트
+    if (window.location.hash !== '#dashboard') {
+      window.history.pushState({ view: 'dashboard' }, '', '#dashboard')
+    }
+
+    // 3. 백그라운드에서 데이터 저장
+    if (notebookToSave) {
+      try {
+        // 명시적으로 저장할 대상을 전달하여 상태가 null이 되어도 저장 보장
+        saveCurrentNotebookData(notebookToSave)
+      } catch (error) {
+        console.error('[App] 대시보드 복귀 중 저장 실패:', error)
+      }
+    }
   }
 
   // 소스 변경 시 자동 저장 (IndexedDB로 대용량 지원)
@@ -492,7 +536,7 @@ function AppContent() {
       // 저장 전에 ID 목록 업데이트
       lastSavedSourceIds.current = currentSourceIds
 
-      updateNotebookSources(currentNotebook.id, sources)
+      updateNotebookSources(currentNotebook.id, sources, currentUserId)
         .then(() => {
           console.log('[App] ✅ 소스 자동 저장 완료:', sources.length, '개')
           console.log('[App] 노트북 ID:', currentNotebook.id)
@@ -516,7 +560,7 @@ function AppContent() {
 
     if (currentNotebook && currentView === 'chat') {
       console.log('[App] 모델 변경 감지 - 자동 저장')
-      updateNotebookModel(currentNotebook.id, selectedModel)
+      updateNotebookModel(currentNotebook.id, selectedModel, currentUserId)
     }
   }, [selectedModel, currentNotebook, currentView])
 
@@ -530,7 +574,7 @@ function AppContent() {
 
     if (currentNotebook && currentView === 'chat') {
       console.log('[App] 시스템 프롬프트 변경 감지 - 자동 저장')
-      updateNotebookSystemPrompt(currentNotebook.id, systemPromptOverrides)
+      updateNotebookSystemPrompt(currentNotebook.id, systemPromptOverrides, currentUserId)
     }
   }, [systemPromptOverrides, currentNotebook, currentView])
 
@@ -554,9 +598,9 @@ function AppContent() {
   // 선택된 소스 ID 변경 시 자동 저장
   useEffect(() => {
     if (currentNotebook && currentView === 'chat') {
-      updateNotebookSelectedSourceIds(currentNotebook.id, selectedSourceIds)
+      updateNotebookSelectedSourceIds(currentNotebook.id, selectedSourceIds, currentUserId)
     }
-  }, [selectedSourceIds, currentNotebook, currentView])
+  }, [selectedSourceIds, currentNotebook, currentView, currentUserId])
 
   const handleAddSources = (newSources) => {
     setSources(prev => [...prev, ...newSources])
@@ -622,34 +666,32 @@ function AppContent() {
 
   // 채팅 이력 업데이트 및 동기화 (ChatInterface → DataPreview + Supabase)
   const handleChatUpdate = useCallback(async (messages) => {
+    // 🔥 중요: 모든 메타데이터(citations, sources 등)를 유지하며 정규화
     const formattedHistory = messages.map(msg => ({
-      role: msg.type === 'user' ? 'user' : 'assistant',
-      content: msg.content,
-      timestamp: msg.timestamp
+      ...msg,
+      role: msg.type === 'user' ? 'user' : (msg.role || 'assistant')
     }))
+
     setChatHistory(formattedHistory)
     setLastSyncTime(new Date().toISOString())
 
     // 🔥 디바운스 처리: 메시지 자동 저장 (500ms 대기)
     if (currentNotebook) {
-      // 이전 타이머 취소
       if (saveMessagesTimerRef.current) {
         clearTimeout(saveMessagesTimerRef.current)
       }
 
-      // 새 타이머 설정
       saveMessagesTimerRef.current = setTimeout(async () => {
         try {
-          await updateNotebookMessages(currentNotebook.id, formattedHistory)
-          console.log('[App] 메시지 자동 저장 (디바운스):', formattedHistory.length, '개')
+          // 개별 테이블(messages)과 노트북 데이터 모두 업데이트
+          await updateNotebookMessages(currentNotebook.id, formattedHistory, currentUserId)
+          console.log('[App] 메시지 자동 저장 완료:', formattedHistory.length, '개')
         } catch (error) {
           console.error('[App] 메시지 저장 실패:', error)
         }
       }, 500)
     }
-
-    console.log('[App] 대화 이력 동기화:', formattedHistory.length, '개 메시지')
-  }, [currentNotebook])
+  }, [currentNotebook, currentUserId])
 
   // 분석된 소스 ID 업데이트 (ChatInterface → IndexedDB)
   const handleAnalyzedSourcesUpdate = useCallback((newAnalyzedIds) => {
@@ -658,7 +700,7 @@ function AppContent() {
 
     // IndexedDB에 자동 저장
     if (currentNotebook) {
-      updateNotebookAnalyzedSources(currentNotebook.id, newAnalyzedIds)
+      updateNotebookAnalyzedSources(currentNotebook.id, newAnalyzedIds, currentUserId)
         .then(() => console.log('[App] 분석된 소스 ID 저장 완료'))
         .catch(error => console.error('[App] 분석된 소스 ID 저장 실패:', error))
     }
@@ -830,7 +872,22 @@ function AppContent() {
   if (!user) {
     return (
       <LoginPage
-        onLoginSuccess={(userData) => setUser(userData)}
+        onLoginSuccess={async (userData) => {
+          setUser(userData)
+
+          // 데모 계정 데이터 강제 초기화 (사용자 요청)
+          const isDemoAccount = userData.email === 'ms.kang@gptko.co.kr' ||
+            userData.email === 'ms.kang2@gptko.co.kr' ||
+            userData.email === 'cort53@naver.com';
+
+          if (isDemoAccount) {
+            console.log('[App] 데모 계정 로컬 데이터 초기화 수행');
+            await localClearAllNotebooks();
+          }
+
+          setCurrentView('chat-ai')
+          window.history.pushState({ view: 'chat-ai' }, '', '#chat-ai')
+        }}
         language={language}
         onNotification={showNotification}
       />
@@ -873,7 +930,7 @@ function AppContent() {
             Chat AI
           </button>
           <button
-            onClick={() => setCurrentView('dashboard')}
+            onClick={handleBackToDashboard}
             className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl hover:bg-white/5 ${currentView === 'dashboard' || currentView === 'chat' ? 'bg-[#3B3B3B] text-[#00E5FF] border border-white/5 shadow-sm' : 'text-gray-400 hover:text-white'}`}
           >
             Note Chat
@@ -896,9 +953,21 @@ function AppContent() {
           <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
             고객지원
           </button>
-          <button className="px-5 py-2 text-[14px] font-bold text-gray-400 hover:text-white transition-all rounded-xl hover:bg-white/5">
-            관리자
-          </button>
+
+          {isAdmin && (
+            <button
+              onClick={() => {
+                setCurrentView('admin')
+                window.history.pushState({ view: 'admin' }, '', '#admin')
+              }}
+              className={`px-5 py-2 text-[14px] font-bold transition-all rounded-xl ${currentView === 'admin'
+                ? 'bg-gray-700 text-white border border-white/10 shadow-lg'
+                : 'bg-white/5 text-gray-300 hover:bg-white/10 hover:text-white border border-white/5'
+                }`}
+            >
+              {isMasterAdmin ? '관리자' : '회사 관리'}
+            </button>
+          )}
         </div>
 
         {/* Right: User Section (Occupies right third) */}
@@ -910,7 +979,7 @@ function AppContent() {
                   {user.user_metadata?.full_name || user.email}
                 </span>
                 <span className="text-[11px] text-gray-500 mt-1 font-medium bg-gray-800/50 px-2 py-0.5 rounded-md">
-                  {user.email === 'admin@test.com' ? '플랫폼 관리자' : '일반 사용자'}
+                  {isAdmin ? (user.email === 'admin@test.com' ? '플랫폼 관리자' : '회사 관리자') : (user.user_metadata?.company ? '회사 사용자' : '일반 사용자')}
                 </span>
               </div>
 
@@ -962,10 +1031,24 @@ function AppContent() {
         <OCRPoc onBack={() => window.history.back()} />
       ) : currentView === 'chat-ai' ? (
         <ChatAI onBack={() => handleBackToDashboard()} currentUserId={currentUserId} />
+      ) : currentView === 'admin' ? (
+        <div className="flex-1 overflow-hidden">
+          {isMasterAdmin ? <AdminPanel /> : <CompanyAdminPanel companyName={user?.user_metadata?.company} />}
+        </div>
       ) : (
         <>
           {/* Sub Header: Notebook Title Bar */}
-          <div className="h-11 bg-white border-b border-gray-200 flex items-center px-6 flex-shrink-0 z-40">
+          <div className="h-11 bg-white border-b border-gray-200 flex items-center px-4 flex-shrink-0 z-40 bg-white/80 backdrop-blur-md">
+            <button
+              onClick={handleBackToDashboard}
+              className="flex items-center space-x-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-50 transition-all group mr-3"
+            >
+              <ChevronLeft className="w-5 h-5 text-slate-400 group-hover:text-blue-600 transition-colors" />
+              <span className="text-[13px] font-medium text-slate-500 group-hover:text-slate-800 transition-colors">
+                {language === 'ko' ? '목록으로' : 'Back to List'}
+              </span>
+            </button>
+            <div className="h-4 w-[1px] bg-slate-200 mr-4" />
             <h2 className="text-[15px] font-bold text-slate-700 tracking-tight">
               {currentNotebook?.title || (language === 'ko' ? '새노트' : 'New Notebook')}
             </h2>
@@ -1052,8 +1135,8 @@ function AppContent() {
         </>
       )}
 
-      {/* AI 행동 지침 설정 모달 (팝업 형식) */}
-      {isPromptModalOpen && (
+      {/* AI 행동 지침 설정 모달 (팝업 형식) - 공유받은 유저는 접근 불가 */}
+      {isPromptModalOpen && !isReadOnly && (
         <SystemPromptPanel
           language={language}
           onSystemPromptUpdate={(overrides) => {
@@ -1076,45 +1159,49 @@ function AppContent() {
         />
       )}
 
-      {/* 노트북 전용 설정 모달 (세팅) */}
-      {isNotebookSettingsOpen && (
-        <NotebookSettingsModal
-          isOpen={isNotebookSettingsOpen}
-          onClose={() => setIsNotebookSettingsOpen(false)}
-          language={language}
-          onSave={(settings) => {
-            console.log('노트북 설정 저장됨:', settings);
-            showNotification(
-              language === 'ko' ? '설정 저장 완료' : 'Settings Saved',
-              language === 'ko' ? '노트북 설정이 저장되었습니다.' : 'Notebook settings have been saved.'
-            );
-          }}
-        />
-      )}
+      {/* 통합 노트북 관리 모달 (제목 수정 + 공유 설정 + 프롬프트 설정) */}
+      <NotebookManageModal
+        isOpen={isShareModalOpen || isNotebookSettingsOpen}
+        onClose={() => {
+          setIsShareModalOpen(false)
+          setIsNotebookSettingsOpen(false)
+          setShareTargetNotebook(null)
+        }}
+        notebook={shareTargetNotebook || currentNotebook}
+        user={user}
+        onSave={async (updatedData) => {
+          const targetId = updatedData.id;
+          try {
+            // 모든 변경 사항을 한 번에 업데이트 (IDB + Cloud)
+            const result = await updateNotebookSettings(targetId, {
+              title: updatedData.title,
+              sharingSettings: updatedData.sharingSettings,
+              chatPrompt: updatedData.chatPrompt,
+              summaryPrompt: updatedData.summaryPrompt
+            }, currentUserId);
 
-      {/* 노트북 공유 모달 */}
-      {isShareModalOpen && (
-        <ShareModal
-          isOpen={isShareModalOpen}
-          onClose={() => setIsShareModalOpen(false)}
-          notebook={shareTargetNotebook}
-          language={language}
-          user={user}
-          onSave={async (settings) => {
-            console.log('공유 설정 저장됨:', settings);
-            const updated = await updateNotebookSharing(shareTargetNotebook.id, settings);
-            if (updated) {
-              if (currentNotebook && currentNotebook.id === updated.id) {
-                setCurrentNotebook(updated);
+            if (result) {
+              // 현재 열린 노트북이면 상태 동기화
+              if (currentNotebook?.id === targetId) {
+                setCurrentNotebook(result);
+                // 프롬프트는 로컬 상태에도 반영
+                setSystemPromptOverrides([
+                  { id: 'chat-prompt', role: 'system', content: result.chatPrompt },
+                  { id: 'summary-prompt', role: 'system', content: result.summaryPrompt }
+                ]);
               }
+
               showNotification(
-                language === 'ko' ? '공유 설정 완료' : 'Sharing Updated',
-                language === 'ko' ? '노트북의 공유 권한이 변경되었습니다.' : 'Notebook sharing permissions have been updated.'
+                language === 'ko' ? '설정 저장 완료' : 'Settings Saved',
+                language === 'ko' ? '노트북 설정이 모두 업데이트되었습니다.' : 'Notebook settings updated successfully.'
               );
             }
-          }}
-        />
-      )}
+          } catch (e) {
+            console.error('[App] 관리 모달 저장 실패:', e);
+            showNotification(t('errors.saveFailed'), '', 'error');
+          }
+        }}
+      />
 
       {/* Auth 모달 */}
       <AuthModal

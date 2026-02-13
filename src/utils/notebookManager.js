@@ -134,13 +134,15 @@ const initializeDB = async () => {
     // IndexedDB에서 노트북 확인
     const notebooks = await storage.getAllNotebooks()
 
-    // 데이터가 없으면 더미 데이터 생성
+    // 데이터가 없으면 더미 데이터 생성 (비활성화됨 - 사용자 요청)
     if (notebooks.length === 0) {
-      console.log('[notebookManager] 초기 더미 데이터 생성')
+      console.log('[notebookManager] 초기 데이터 없음 (더미 데이터 생성 비활성화)');
+      /*
       const dummyData = generateDummyNotebooks()
       for (const notebook of dummyData) {
         await storage.saveNotebook(notebook)
       }
+      */
     }
 
     initialized = true
@@ -161,8 +163,8 @@ export const getAllNotebooks = (ownerId) => {
 }
 
 // 특정 노트북 불러오기 (ID 기반)
-export const getNotebookById = (id) => {
-  return storage.getNotebookById(id).catch(error => {
+export const getNotebookById = (id, ownerId) => {
+  return storage.getNotebookById(id, ownerId).catch(error => {
     console.error('[notebookManager] 노트북 조회 실패:', error)
     return null
   })
@@ -218,15 +220,15 @@ export const createNotebook = async (title = '새 노트북', icon = null, owner
     }
   }
 
-  await storage.saveNotebook(newNotebook)
+  await storage.saveNotebook(newNotebook, ownerId)
   console.log('[notebookManager] 새 노트북 생성:', newNotebook.id, '제목:', uniqueTitle, '아이콘:', notebookIcon)
   return newNotebook
 }
 
 // 노트북 업데이트 (전체 데이터 덮어쓰기)
-export const updateNotebook = async (id, updates) => {
+export const updateNotebook = async (id, updates, ownerId) => {
   try {
-    const notebook = await storage.getNotebookById(id)
+    const notebook = await storage.getNotebookById(id, ownerId)
 
     if (!notebook) {
       console.error('[notebookManager] 노트북을 찾을 수 없음:', id)
@@ -239,7 +241,7 @@ export const updateNotebook = async (id, updates) => {
       updatedAt: new Date().toISOString()
     }
 
-    await storage.saveNotebook(updatedNotebook)
+    await storage.saveNotebook(updatedNotebook, ownerId)
     console.log('[notebookManager] 노트북 업데이트:', id)
     return updatedNotebook
   } catch (error) {
@@ -249,25 +251,25 @@ export const updateNotebook = async (id, updates) => {
 }
 
 // 노트북 제목 수정
-export const updateNotebookTitle = (id, newTitle) => {
-  return updateNotebook(id, { title: newTitle })
+export const updateNotebookTitle = (id, newTitle, ownerId) => {
+  return updateNotebook(id, { title: newTitle }, ownerId)
 }
 
 // 노트북 이모지 변경
-export const updateNotebookEmoji = (id, newEmoji) => {
-  return updateNotebook(id, { emoji: newEmoji })
+export const updateNotebookEmoji = (id, newEmoji, ownerId) => {
+  return updateNotebook(id, { emoji: newEmoji }, ownerId)
 }
 
 // 노트북 아이콘 변경
-export const updateNotebookIcon = (id, newIcon) => {
-  return updateNotebook(id, { icon: newIcon, emoji: newIcon })
+export const updateNotebookIcon = (id, newIcon, ownerId) => {
+  return updateNotebook(id, { icon: newIcon, emoji: newIcon }, ownerId)
 }
 
 // 노트북의 소스 업데이트 (파일 추가/제거)
-export const updateNotebookSources = async (id, sources) => {
+export const updateNotebookSources = async (id, sources, ownerId) => {
   // 🛑 안전 장치: 새로운 소스 목록이 비어있는데 기존 소스가 있었다면 업데이트 차단
   try {
-    const currentNotebook = await storage.getNotebookById(id);
+    const currentNotebook = await storage.getNotebookById(id, ownerId);
     if (sources.length === 0 && currentNotebook?.sources?.length > 0) {
       console.warn('[notebookManager] 🛑 빈 소스 목록으로 업데이트 시도 차단 (데이터 보호)');
       return currentNotebook;
@@ -276,33 +278,38 @@ export const updateNotebookSources = async (id, sources) => {
     console.error('[notebookManager] 안전 체크 실패:', e);
   }
 
-  return updateNotebook(id, { sources })
+  return updateNotebook(id, { sources }, ownerId)
 }
 
 // 노트북의 메시지 업데이트 (채팅 내역)
-export const updateNotebookMessages = (id, messages) => {
-  return updateNotebook(id, { messages })
+export const updateNotebookMessages = (id, messages, ownerId) => {
+  return updateNotebook(id, { messages }, ownerId)
 }
 
 // 노트북의 AI 모델 업데이트
-export const updateNotebookModel = (id, selectedModel) => {
-  return updateNotebook(id, { selectedModel })
+export const updateNotebookModel = (id, selectedModel, ownerId) => {
+  return updateNotebook(id, { selectedModel }, ownerId)
 }
 
 // 노트북의 시스템 프롬프트 업데이트
-export const updateNotebookSystemPrompt = (id, systemPromptOverrides) => {
-  return updateNotebook(id, { systemPromptOverrides })
+export const updateNotebookSystemPrompt = (id, systemPromptOverrides, ownerId) => {
+  return updateNotebook(id, { systemPromptOverrides }, ownerId)
 }
 
 // 노트북의 분석된 소스 ID 업데이트
-export const updateNotebookAnalyzedSources = (id, analyzedSourceIds) => updateNotebook(id, { analyzedSourceIds })
+export const updateNotebookAnalyzedSources = (id, analyzedSourceIds, ownerId) => updateNotebook(id, { analyzedSourceIds }, ownerId)
 
 // 노트북의 선택된 소스 ID 업데이트
-export const updateNotebookSelectedSourceIds = (id, selectedSourceIds) => updateNotebook(id, { selectedSourceIds })
+export const updateNotebookSelectedSourceIds = (id, selectedSourceIds, ownerId) => updateNotebook(id, { selectedSourceIds }, ownerId)
 
 // 노트북 공유 설정 업데이트
-export const updateNotebookSharing = (id, sharingSettings) => {
-  return updateNotebook(id, { sharingSettings })
+export const updateNotebookSharing = (id, sharingSettings, ownerId) => {
+  return updateNotebook(id, { sharingSettings }, ownerId)
+}
+
+// 노트북의 상세 설정 업데이트 (채팅 프롬프트 등)
+export const updateNotebookSettings = (id, settings, ownerId) => {
+  return updateNotebook(id, settings, ownerId)
 }
 
 // 노트북 삭제

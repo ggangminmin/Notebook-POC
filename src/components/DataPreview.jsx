@@ -137,6 +137,11 @@ const DataPreview = ({ selectedFile, rightPanelState, onPanelModeChange, onUpdat
   const [highlightedChunkId, setHighlightedChunkId] = useState(null) // 하이라이트된 청크 ID
   const chunkRefs = useRef({}) // 청크 DOM Ref들을 저장할 맵
 
+  // 🔍 PDF 뷰어 제어 상태
+  const [zoomScale, setZoomScale] = useState(1.0)
+  const [targetPageInput, setTargetPageInput] = useState('')
+  const [activePage, setActivePage] = useState(1)
+
   // 🎥 유튜브 비디오 ID 추출 헬퍼 (모든 형태의 URL 대응)
   const getYouTubeId = (url) => {
     if (!url) return null
@@ -1432,159 +1437,182 @@ Set field to "invalid" if the request cannot be fulfilled.`
         ) : viewMode === 'pdf' ? (
           /* PDF 뷰어 모드 - 전체 스크롤형 (NotebookLM 스타일) */
           <div className="h-full flex flex-col">
-            {pdfState.isLoading ? (
-              /* 스켈레톤 UI - 부드러운 로딩 경험 */
-              <div className="flex-1 bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50" style={{ overflowY: 'scroll' }}>
-                <div className="py-4 px-3 space-y-4">
-                  {/* 스켈레톤 페이지 카드 (3개) */}
-                  {[1, 2, 3].map((idx) => (
-                    <div key={`skeleton-${idx}`} className="bg-white mx-auto shadow-lg rounded-lg overflow-hidden border border-gray-200 animate-pulse">
-                      {/* 헤더 스켈레톤 */}
-                      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-2 border-b border-gray-200 flex items-center justify-between">
-                        <div className="h-3 bg-gray-300 rounded w-20"></div>
-                        <div className="h-3 bg-gray-300 rounded-full w-12"></div>
-                      </div>
-                      {/* 페이지 콘텐츠 스켈레톤 */}
-                      <div className="w-full bg-gray-200 aspect-[8.5/11]"></div>
-                    </div>
-                  ))}
-                  {/* 로딩 상태 표시 */}
-                  <div className="text-center py-4">
-                    <Loader2 className="w-6 h-6 mx-auto mb-2 text-blue-600 animate-spin" />
-                    <p className="text-[11px] font-medium text-gray-700">
-                      {language === 'ko' ? 'PDF 렌더링 중...' : 'Rendering PDF...'}
-                    </p>
-                    <p className="text-[10px] text-gray-500 mt-0.5">
-                      {language === 'ko' ? '고해상도로 준비하고 있습니다' : 'Preparing in high quality'}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            ) : pdfState.renderedPages.length > 0 ? (
+            <div className="flex-1 bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50 relative overflow-hidden">
               <div
                 ref={scrollContainerRef}
-                className="flex-1 bg-gradient-to-b from-gray-50 via-gray-100 to-gray-50"
-                style={{ overflowY: 'scroll', scrollBehavior: 'smooth' }}
+                className="h-full scroll-smooth custom-scrollbar"
+                style={{ overflowY: 'scroll' }}
+                onScroll={(e) => {
+                  // 현재 스크롤 위치를 기반으로 활성 페이지 계산
+                  const container = e.target
+                  const scrollMiddle = container.scrollTop + (container.clientHeight / 2)
+
+                  // 각 페이지 요소의 위치 확인
+                  Object.entries(pageRefs.current).forEach(([key, el]) => {
+                    if (el && key.startsWith('page-')) {
+                      const pageNum = parseInt(key.replace('page-', ''))
+                      const elTop = el.offsetTop
+                      const elBottom = elTop + el.clientHeight
+
+                      if (scrollMiddle >= elTop && scrollMiddle <= elBottom) {
+                        if (activePage !== pageNum) setActivePage(pageNum)
+                      }
+                    }
+                  })
+                }}
               >
-                <div className="py-4 px-3 space-y-4">
-                  {pdfState.renderedPages.map((pageData) => (
-                    <div
-                      key={`page-${pageData.pageNumber}`}
-                      ref={(el) => pageRefs.current[`page-${pageData.pageNumber}`] = el}
-                      className={`bg-white mx-auto shadow-lg rounded-lg overflow-hidden transition-all duration-300 hover:shadow-xl ${highlightedPage === pageData.pageNumber
-                        ? 'border-4 border-blue-500 ring-8 ring-blue-300 ring-opacity-50 animate-pulse scale-105 shadow-2xl'
-                        : 'border border-gray-200'
-                        }`}
-                      style={highlightedPage === pageData.pageNumber ? {
-                        transform: 'scale(1.02)',
-                        boxShadow: '0 20px 60px rgba(59, 130, 246, 0.4)',
-                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
-                      } : {}}
-                    >
-                      {/* 페이지 번호 표시 - NotebookLM 스타일 (슬림화) + 하이라이트 효과 */}
-                      <div className={`px-3 py-2 border-b border-gray-200 flex items-center justify-between transition-all ${highlightedPage === pageData.pageNumber
-                        ? 'bg-gradient-to-r from-blue-100 to-indigo-100'
-                        : 'bg-gradient-to-r from-blue-50 to-indigo-50'
-                        }`}>
-                        <span className={`text-[11px] font-bold flex items-center space-x-1.5 ${highlightedPage === pageData.pageNumber ? 'text-blue-700' : 'text-gray-700'
-                          }`}>
-                          <FileText className={`w-3 h-3 ${highlightedPage === pageData.pageNumber ? 'text-blue-700' : 'text-blue-600'}`} />
-                          <span>{language === 'ko' ? '페이지' : 'Page'} {pageData.pageNumber}</span>
-                          {highlightedPage === pageData.pageNumber && (
-                            <span className="ml-2 text-[9px] text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full animate-pulse">
-                              {language === 'ko' ? '← 인용된 페이지' : '← Cited Page'}
+                <div className="py-8 px-4 space-y-8 flex flex-col items-center">
+                  {pdfState.renderedPages.length > 0 ? (
+                    <>
+                      {pdfState.renderedPages.map((pageData) => (
+                        <div
+                          key={`page-${pageData.pageNumber}`}
+                          ref={(el) => pageRefs.current[`page-${pageData.pageNumber}`] = el}
+                          className={`bg-white transition-all duration-500 shadow-2xl relative group ${highlightedPage === pageData.pageNumber
+                            ? 'ring-8 ring-blue-500 ring-opacity-30 scale-[1.02] z-10'
+                            : 'border border-gray-200'
+                            }`}
+                          style={{
+                            width: `${Math.min(100, 100 * zoomScale)}%`,
+                            maxWidth: zoomScale > 1 ? 'none' : '850px',
+                            transform: zoomScale < 1 ? `scale(${zoomScale})` : 'none',
+                            transformOrigin: 'top center',
+                            marginBottom: zoomScale < 1 ? `-${(1 - zoomScale) * 100}%` : '2rem'
+                          }}
+                        >
+                          {/* 페이지 번호 배지 (Floating) */}
+                          <div className="absolute top-4 left-4 z-20">
+                            <span className="bg-black/50 backdrop-blur-md text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg">
+                              P.{pageData.pageNumber}
                             </span>
+                          </div>
+
+                          {/* 페이지 이미지 또는 Mock 콘텐츠 */}
+                          {pageData.imageData ? (
+                            <div className="w-full h-auto overflow-hidden">
+                              <img
+                                src={pageData.imageData}
+                                alt={`Page ${pageData.pageNumber}`}
+                                className="w-full h-auto"
+                                style={{ imageRendering: 'high-quality' }}
+                              />
+                            </div>
+                          ) : (
+                            <div className="p-12 bg-white min-h-[600px] flex items-center justify-center text-gray-400">
+                              {pageData.mockContent || (language === 'ko' ? '콘텐츠를 불러오는 중...' : 'Loading content...')}
+                            </div>
                           )}
-                        </span>
-                        <span className="text-[10px] text-gray-500 bg-white px-2 py-0.5 rounded-full font-semibold">
-                          {pageData.pageNumber} / {pdfState.numPages}
-                        </span>
+
+                          {/* 하이라이트 오버레이 */}
+                          {highlightedPage === pageData.pageNumber && (
+                            <div className="absolute inset-0 bg-blue-500/5 pointer-events-none animate-pulse border-4 border-blue-500" />
+                          )}
+                        </div>
+                      ))}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-[calc(100vh-200px)]">
+                      <div className="text-center p-6 bg-red-50 rounded-lg border-2 border-red-200 shadow-lg max-w-md">
+                        <FileText className="w-16 h-16 mx-auto mb-4 text-red-400" />
+                        <p className="text-lg font-bold text-red-700 mb-2">
+                          {language === 'ko' ? '⚠️ PDF 파일을 불러올 수 없습니다' : '⚠️ Cannot load PDF file'}
+                        </p>
+                        <p className="text-sm text-gray-600 mb-4">
+                          {language === 'ko' ? 'PDF 뷰어 모드로 전환되었지만 렌더링된 페이지가 없습니다.' : 'Switched to PDF viewer mode but no rendered pages available.'}
+                        </p>
+                        <div className="text-xs text-left bg-white p-3 rounded border border-gray-300 font-mono space-y-1 mb-4">
+                          <div><span className="font-bold">PDF 로드:</span> {pdfState.pdf ? '✅' : '❌'}</div>
+                          <div><span className="font-bold">페이지 수:</span> {pdfState.numPages}</div>
+                          <div><span className="font-bold">렌더링됨:</span> {pdfState.renderedPages.length}</div>
+                          <div><span className="font-bold">로딩 중:</span> {pdfState.isLoading ? 'Yes' : 'No'}</div>
+                          <div className="truncate"><span className="font-bold">파일명:</span> {selectedFile?.name || 'N/A'}</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            console.log('[PDF 디버그] 전체 pdfState:', pdfState)
+                            console.log('[PDF 디버그] selectedFile:', selectedFile)
+                            alert('콘솔 로그를 확인하세요 (F12)')
+                          }}
+                          className="w-full py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors text-sm font-bold shadow-md shadow-blue-200"
+                        >
+                          {language === 'ko' ? '상세 디버그 정보 출력' : 'Print Debug Info'}
+                        </button>
                       </div>
-                      {/* 페이지 이미지 또는 Mock 콘텐츠 */}
-                      {pageData.imageData ? (
-                        <div className="w-full overflow-hidden">
-                          <img
-                            src={pageData.imageData}
-                            alt={`Page ${pageData.pageNumber}`}
-                            className="w-full h-auto"
-                            style={{
-                              imageRendering: 'high-quality',
-                              display: 'block',
-                              maxWidth: '100%',
-                              height: 'auto'
-                            }}
-                          />
-                        </div>
-                      ) : pageData.mockContent ? (
-                        /* Mock 페이지 콘텐츠 (테스트용) */
-                        <div className="p-8 bg-white min-h-[500px] flex flex-col items-center justify-center">
-                          <div className="text-center mb-6">
-                            <div className="text-6xl font-bold text-blue-500 mb-2">
-                              {pageData.pageNumber}
-                            </div>
-                            <div className="text-sm text-gray-500 uppercase tracking-wide">
-                              Mock Page
-                            </div>
-                          </div>
-                          <div className="max-w-md text-sm text-gray-700 leading-relaxed text-center px-6">
-                            <p className="mb-4">
-                              {pageData.mockContent}
-                            </p>
-                            <div className="mt-6 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-left">
-                              <p className="font-semibold text-blue-800 mb-2">
-                                💡 Test Citation Examples:
-                              </p>
-                              <ul className="list-disc list-inside space-y-1 text-blue-700">
-                                <li>Single page: <code className="bg-white px-1 py-0.5 rounded">[{pageData.pageNumber}]</code></li>
-                                <li>Range: <code className="bg-white px-1 py-0.5 rounded">[{pageData.pageNumber}-{Math.min(pageData.pageNumber + 2, 30)}]</code></li>
-                                <li>Multiple: <code className="bg-white px-1 py-0.5 rounded">[{pageData.pageNumber}, {Math.min(pageData.pageNumber + 3, 30)}]</code></li>
-                              </ul>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center h-64 bg-gray-50">
-                          <p className="text-sm text-gray-500">
-                            {language === 'ko' ? '페이지를 불러올 수 없습니다' : 'Cannot load page'}
-                          </p>
-                        </div>
-                      )}
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center p-6 bg-red-50 rounded-lg border-2 border-red-200">
-                  <FileText className="w-16 h-16 mx-auto mb-4 text-red-400" />
-                  <p className="text-lg font-bold text-red-700 mb-2">
-                    {language === 'ko' ? '⚠️ PDF 파일을 불러올 수 없습니다' : '⚠️ Cannot load PDF file'}
-                  </p>
-                  <p className="text-sm text-gray-600 mb-4">
-                    {language === 'ko' ? 'PDF 뷰어 모드로 전환되었지만 렌더링된 페이지가 없습니다.' : 'Switched to PDF viewer mode but no rendered pages available.'}
-                  </p>
-                  <div className="text-xs text-left bg-white p-3 rounded border border-gray-300 font-mono">
-                    <div className="mb-1"><strong>디버그 정보:</strong></div>
-                    <div>• PDF 로드됨: {pdfState.pdf ? '✅ Yes' : '❌ No'}</div>
-                    <div>• 전체 페이지: {pdfState.numPages}</div>
-                    <div>• 렌더링된 페이지: {pdfState.renderedPages.length}</div>
-                    <div>• 로딩 중: {pdfState.isLoading ? 'Yes' : 'No'}</div>
-                    <div>• 파일명: {selectedFile?.name || 'N/A'}</div>
-                    <div>• 파일 타입: {selectedFile?.file?.type || 'N/A'}</div>
+
+              {/* 🛠 PDF 플로팅 네비게이션 툴바 */}
+              {pdfState.renderedPages.length > 0 && (
+                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-30 flex items-center space-x-2 bg-white/80 backdrop-blur-xl border border-gray-200/50 p-2 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.1)] ring-1 ring-black/5">
+                  <div className="flex items-center bg-gray-100/50 rounded-xl px-2 py-1 space-x-1">
+                    <button
+                      onClick={() => handlePageNavigate({ pageNumber: Math.max(1, activePage - 1) })}
+                      disabled={activePage <= 1}
+                      className="p-1.5 hover:bg-white rounded-lg transition-all disabled:opacity-30"
+                    >
+                      <ChevronLeft className="w-4 h-4 text-gray-700" />
+                    </button>
+
+                    <div className="flex items-center px-2 space-x-1.5 min-w-[80px] justify-center">
+                      <input
+                        type="text"
+                        value={targetPageInput !== '' ? targetPageInput : activePage}
+                        onFocus={() => setTargetPageInput(activePage.toString())}
+                        onChange={(e) => setTargetPageInput(e.target.value)}
+                        onBlur={() => setTargetPageInput('')}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const num = parseInt(targetPageInput)
+                            if (!isNaN(num)) handlePageNavigate({ pageNumber: num })
+                            setTargetPageInput('')
+                          }
+                        }}
+                        className="w-8 bg-transparent text-center text-sm font-black text-blue-600 focus:outline-none"
+                      />
+                      <span className="text-[10px] font-black text-gray-400">/</span>
+                      <span className="text-xs font-black text-gray-500">{pdfState.numPages}</span>
+                    </div>
+
+                    <button
+                      onClick={() => handlePageNavigate({ pageNumber: Math.min(pdfState.numPages, activePage + 1) })}
+                      disabled={activePage >= pdfState.numPages}
+                      className="p-1.5 hover:bg-white rounded-lg transition-all disabled:opacity-30"
+                    >
+                      <ChevronRight className="w-4 h-4 text-gray-700" />
+                    </button>
                   </div>
-                  <button
-                    onClick={() => {
-                      console.log('[PDF 디버그] 전체 pdfState:', pdfState)
-                      console.log('[PDF 디버그] selectedFile:', selectedFile)
-                      alert('콘솔 로그를 확인하세요 (F12)')
-                    }}
-                    className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 text-sm"
-                  >
-                    {language === 'ko' ? '상세 디버그 정보 출력' : 'Print Debug Info'}
-                  </button>
+
+                  <div className="w-px h-6 bg-gray-200 mx-1"></div>
+
+                  <div className="flex items-center space-x-1 px-1">
+                    <button
+                      onClick={() => setZoomScale(prev => Math.max(0.5, prev - 0.1))}
+                      className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-600"
+                      title="Zoom Out"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+
+                    <button
+                      onClick={() => setZoomScale(1.0)}
+                      className="px-2 py-1 text-[10px] font-black text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-md transition-all uppercase"
+                    >
+                      {Math.round(zoomScale * 100)}%
+                    </button>
+
+                    <button
+                      onClick={() => setZoomScale(prev => Math.min(2.0, prev + 0.1))}
+                      className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-600"
+                      title="Zoom In"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         ) : viewMode === 'text-preview' ? (
           /* 텍스트 뷰어 모드 (Word/TXT/Excel 파일 - NotebookLM 스타일 전체 문서 표시) */
@@ -1826,7 +1854,7 @@ Set field to "invalid" if the request cannot be fulfilled.`
           </div>
         ) : (
           /* 자연어 데이터 설명 모드 */
-          <div className="space-y-4">
+          <div className="space-y-6 pb-10">
             {/* 🎥 유튜브 플레이어 (자연어 모드에서도 표시) */}
             {youtubeId && (
               <div className="mb-6 overflow-hidden rounded-2xl shadow-xl bg-black aspect-video border border-gray-200">
@@ -1843,459 +1871,602 @@ Set field to "invalid" if the request cannot be fulfilled.`
               </div>
             )}
 
-            {/* 문서 정보 자연어 설명 */}
-            <div className="bg-gradient-to-br from-slate-50 to-gray-50 rounded-xl p-5 shadow-sm border border-gray-200">
-              <h3 className="text-sm font-bold text-gray-800 flex items-center space-x-2">
-                <FileText className="w-4 h-4 text-blue-600" />
-                <span>{language === 'ko' ? '문서 정보' : 'Document Information'}</span>
-              </h3>
-            </div>
-
-            <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
-              {/* 파일명 - 인라인 편집 가능 */}
-              <div className="flex items-start justify-between group">
-                <div className="flex-1">
-                  {editingField === 'filename' ? (
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={editValue}
-                        onChange={(e) => setEditValue(e.target.value)}
-                        className="flex-1 px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            onUpdateName?.(selectedFile.id, editValue)
-                            setEditingField(null)
-                          } else if (e.key === 'Escape') {
-                            setEditingField(null)
-                          }
-                        }}
-                      />
-                      <button
-                        onClick={() => {
-                          onUpdateName?.(selectedFile.id, editValue)
-                          setEditingField(null)
-                        }}
-                        className="p-1 text-green-600 hover:bg-green-50 rounded"
-                      >
-                        <Save className="w-4 h-4" />
-                      </button>
-                      <button
-                        onClick={() => setEditingField(null)}
-                        className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <p>
-                      {language === 'ko'
-                        ? `이 문서의 파일명은 "${selectedFile.name}" 입니다.`
-                        : `The document filename is "${selectedFile.name}".`
-                      }
-                    </p>
-                  )}
+            {/* ✨ AI 분석 캔버스 (NotebookLM 스타일) */}
+            <div className="space-y-6">
+              {isLoadingSummary ? (
+                <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm animate-pulse">
+                  <div className="flex items-center space-x-2 mb-4">
+                    <Sparkles className="w-5 h-5 text-blue-400" />
+                    <div className="h-4 bg-gray-200 rounded w-32"></div>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="h-3 bg-gray-100 rounded w-full"></div>
+                    <div className="h-3 bg-gray-100 rounded w-5/6"></div>
+                    <div className="h-3 bg-gray-100 rounded w-4/6"></div>
+                  </div>
                 </div>
-                {editingField !== 'filename' && (
-                  <button
-                    onClick={() => {
-                      setEditingField('filename')
-                      setEditValue(selectedFile.name)
-                    }}
-                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-600 hover:bg-blue-50 rounded ml-2"
-                  >
-                    <Edit2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
-              {/* 파일 타입 */}
-              <p>
-                {language === 'ko'
-                  ? `파일 유형은 ${selectedFile.type === 'web' ? '웹 페이지' : selectedFile.type === 'report' ? '리포트 문서' : selectedFile.file?.type?.includes('pdf') ? 'PDF 문서' : '텍스트 파일'}입니다.`
-                  : `This is a ${selectedFile.type === 'web' ? 'web page' : selectedFile.type === 'report' ? 'report document' : selectedFile.file?.type?.includes('pdf') ? 'PDF document' : 'text file'}.`
-                }
-              </p>
-
-              {/* 페이지 수 (PDF인 경우) - 인라인 편집 가능 */}
-              {selectedFile.parsedData?.pageCount && (
-                <div className="flex items-start justify-between group">
-                  <div className="flex-1">
-                    {editingField === 'pageCount' ? (
+              ) : naturalSummary ? (
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                  {/* 핵심 요약 카드 */}
+                  <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative group">
+                    <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center space-x-2">
-                        <input
-                          type="number"
-                          value={editValue}
-                          onChange={(e) => setEditValue(e.target.value)}
-                          className="w-24 px-2 py-1 text-sm border border-blue-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                          autoFocus
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              onUpdateData?.(selectedFile.id, 'pageCount', parseInt(editValue))
-                              setEditingField(null)
-                            } else if (e.key === 'Escape') {
-                              setEditingField(null)
-                            }
-                          }}
+                        <div className="bg-blue-50 p-2 rounded-xl">
+                          <Sparkles className="w-5 h-5 text-blue-600" />
+                        </div>
+                        <h3 className="text-sm font-bold text-gray-900 tracking-tight">
+                          {language === 'ko' ? 'AI 핵심 요약' : 'AI Core Summary'}
+                        </h3>
+                      </div>
+                      {!isReadOnly && isEditing !== 'summary' && (
+                        <button
+                          onClick={() => handleStartEdit('summary')}
+                          className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+
+                    {isEditing === 'summary' ? (
+                      <div className="space-y-3">
+                        <textarea
+                          value={editedContent.summary}
+                          onChange={(e) => setEditedContent({ ...editedContent, summary: e.target.value })}
+                          className="w-full p-3 text-sm border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent min-h-[120px]"
                         />
-                        <button
-                          onClick={() => {
-                            onUpdateData?.(selectedFile.id, 'pageCount', parseInt(editValue))
-                            setEditingField(null)
-                          }}
-                          className="p-1 text-green-600 hover:bg-green-50 rounded"
-                        >
-                          <Save className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setEditingField(null)}
-                          className="p-1 text-gray-600 hover:bg-gray-100 rounded"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
+                        <div className="flex justify-end space-x-2">
+                          <button onClick={handleCancelEdit} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                            {language === 'ko' ? '취소' : 'Cancel'}
+                          </button>
+                          <button onClick={handleSaveEdit} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            {language === 'ko' ? '저장' : 'Save'}
+                          </button>
+                        </div>
                       </div>
                     ) : (
-                      <p>
-                        {language === 'ko'
-                          ? `총 ${selectedFile.parsedData.pageCount}페이지로 구성되어 있습니다.`
-                          : `It contains ${selectedFile.parsedData.pageCount} pages in total.`
-                        }
-                      </p>
+                      <div className="prose prose-slate prose-sm max-w-none text-gray-700 leading-relaxed">
+                        {typeof naturalSummary === 'string' ? (
+                          <ReactMarkdown>{naturalSummary}</ReactMarkdown>
+                        ) : (
+                          <p>{naturalSummary.summary}</p>
+                        )}
+                      </div>
                     )}
                   </div>
-                  {editingField !== 'pageCount' && (
-                    <button
-                      onClick={() => {
-                        setEditingField('pageCount')
-                        setEditValue(selectedFile.parsedData.pageCount.toString())
-                      }}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 text-blue-600 hover:bg-blue-50 rounded ml-2"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-              )}
 
-              {/* 내용 길이 */}
-              {selectedFile.parsedData?.extractedText && (
-                <p>
-                  {language === 'ko'
-                    ? `문서에는 약 ${selectedFile.parsedData.extractedText.length.toLocaleString()}자의 텍스트가 포함되어 있습니다.`
-                    : `The document contains approximately ${selectedFile.parsedData.extractedText.length.toLocaleString()} characters of text.`
-                  }
-                </p>
-              )}
-
-              {/* 파일 크기 */}
-              {selectedFile.parsedData?.fileSize && (
-                <p>
-                  {language === 'ko'
-                    ? `파일 크기는 ${selectedFile.parsedData.fileSize}입니다.`
-                    : `The file size is ${selectedFile.parsedData.fileSize}.`
-                  }
-                </p>
-              )}
-            </div>
-
-            {/* AI 행동 지침 제어기 (Prompt Editor - 공유받은 유저는 숨김) */}
-            {!isReadOnly && (
-              <div className="mt-4 pt-4 border-t border-gray-200">
-                <div className="flex items-center justify-between">
-                  <button
-                    onClick={() => setIsEditingData(!isEditingData)}
-                    className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
-                  >
-                    <Edit2 className="w-4 h-4" />
-                    <span>
-                      {isEditingData
-                        ? (language === 'ko' ? '편집 취소' : 'Cancel Edit')
-                        : (language === 'ko' ? '🤖 AI 행동 지침 제어' : '🤖 AI Behavior Control')
-                      }
-                    </span>
-                  </button>
-
-                  {/* Undo/Redo 버튼 */}
-                  <div className="flex items-center space-x-1">
-                    <button
-                      onClick={handleUndo}
-                      disabled={currentHistoryIndex < 0}
-                      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={language === 'ko' ? '실행 취소 (Undo)' : 'Undo'}
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={handleRedo}
-                      disabled={currentHistoryIndex >= editHistory.length - 1}
-                      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
-                      title={language === 'ko' ? '다시 실행 (Redo)' : 'Redo'}
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setShowHistory(!showHistory)}
-                      className="p-1.5 text-gray-600 hover:bg-gray-100 rounded ml-1"
-                      title={language === 'ko' ? '편집 이력 보기' : 'View Edit History'}
-                    >
-                      <List className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* 편집 이력 표시 */}
-                {showHistory && editHistory.length > 0 && (
-                  <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 max-h-40 overflow-y-auto">
-                    <h4 className="text-xs font-semibold text-gray-700 mb-2">
-                      {language === 'ko' ? '📝 편집 이력' : '📝 Edit History'}
-                    </h4>
-                    <div className="space-y-2">
-                      {editHistory.map((entry, index) => (
-                        <div
-                          key={index}
-                          className={`text-xs p-2 rounded ${index === currentHistoryIndex
-                            ? 'bg-blue-100 border border-blue-300'
-                            : 'bg-white border border-gray-200'
-                            }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium text-gray-700">
-                              {entry.action === 'prompt_override' ? '🤖' : '✏️'} {entry.field}
-                            </span>
-                            <span className="text-gray-500 text-[10px]">
-                              {new Date(entry.timestamp).toLocaleTimeString()}
-                            </span>
+                  {/* 주요 내용 (Key Points) */}
+                  {typeof naturalSummary === 'object' && naturalSummary.keyPoints && (
+                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative group">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-2">
+                          <div className="bg-indigo-50 p-2 rounded-xl">
+                            <Lightbulb className="w-5 h-5 text-indigo-600" />
                           </div>
-                          {entry.oldValue && (
-                            <div className="mt-1 text-gray-600">
-                              <span className="line-through">{String(entry.oldValue).substring(0, 30)}</span>
-                              {' → '}
-                              <span className="text-green-600 font-medium">
-                                {String(entry.newValue).substring(0, 30)}
-                              </span>
+                          <h3 className="text-sm font-bold text-gray-900 tracking-tight">
+                            {language === 'ko' ? '주요 인사이트' : 'Key Insights'}
+                          </h3>
+                        </div>
+                        {!isReadOnly && isEditing !== 'keyPoints' && (
+                          <button
+                            onClick={() => handleStartEdit('keyPoints')}
+                            className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+
+                      {isEditing === 'keyPoints' ? (
+                        <div className="space-y-3">
+                          {editedContent.keyPoints.map((point, idx) => (
+                            <div key={idx} className="flex items-center space-x-2">
+                              <input
+                                value={point}
+                                onChange={(e) => {
+                                  const newPoints = [...editedContent.keyPoints]
+                                  newPoints[idx] = e.target.value
+                                  setEditedContent({ ...editedContent, keyPoints: newPoints })
+                                }}
+                                className="flex-1 p-2 text-sm border border-gray-200 rounded-lg focus:ring-1 focus:ring-indigo-500"
+                              />
                             </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* 활성화된 AI 지침 표시 */}
-                {propSystemPromptOverrides.length > 0 && (
-                  <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-xs font-semibold text-purple-800">
-                        {language === 'ko' ? '🤖 활성 AI 지침' : '🤖 Active AI Instructions'}
-                      </h4>
-                      <span className="text-xs text-purple-600">
-                        {propSystemPromptOverrides.length}개 적용됨
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      {propSystemPromptOverrides.map((override) => (
-                        <div key={override.id} className="bg-white border border-purple-200 rounded p-2 text-xs">
-                          <div className="flex items-start justify-between">
-                            <p className="text-gray-700 flex-1 pr-2">{override.content}</p>
-                            {!isReadOnly && (
-                              <button
-                                onClick={() => removeSystemPromptOverride(override.id)}
-                                className="text-red-600 hover:bg-red-50 p-1 rounded flex-shrink-0"
-                                title={language === 'ko' ? '제거' : 'Remove'}
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
+                          ))}
+                          <div className="flex justify-end space-x-2">
+                            <button onClick={handleCancelEdit} className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700">
+                              {language === 'ko' ? '취소' : 'Cancel'}
+                            </button>
+                            <button onClick={handleSaveEdit} className="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-lg hover:bg-indigo-700">
+                              {language === 'ko' ? '저장' : 'Save'}
+                            </button>
                           </div>
                         </div>
-                      ))}
+                      ) : (
+                        <ul className="space-y-3">
+                          {naturalSummary.keyPoints.map((point, idx) => (
+                            <li key={idx} className="flex items-start space-x-3 text-sm text-gray-700">
+                              <div className="mt-1.5 w-1.5 h-1.5 bg-indigo-400 rounded-full flex-shrink-0" />
+                              <span className="leading-relaxed">{point}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {isEditingData && (
-                  <div className="mt-3 space-y-3">
-                    <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
-                      <h5 className="text-xs font-bold text-purple-900 mb-3 flex items-center space-x-2">
-                        <span className="text-lg">🧠</span>
-                        <span>{language === 'ko' ? '지능형 문서 제어 센터' : 'Intelligent Document Control Center'}</span>
-                      </h5>
-
-                      <div className="space-y-2 text-xs">
-                        <p className="text-gray-700 font-medium">
-                          {language === 'ko'
-                            ? '📌 지원하는 명령 유형:'
-                            : '📌 Supported Command Types:'
-                          }
-                        </p>
-
-                        <div className="grid grid-cols-1 gap-1.5">
-                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                            <span className="text-purple-700 font-semibold">1. </span>
-                            <span className="text-gray-800">
-                              {language === 'ko'
-                                ? '"비용 중심으로 요약해줘"'
-                                : '"Summarize from cost perspective"'
-                              }
-                            </span>
+                  {/* 키워드 (Keywords) */}
+                  {typeof naturalSummary === 'object' && naturalSummary.keywords && (
+                    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative group">
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center space-x-2">
+                          <div className="bg-purple-50 p-2 rounded-xl">
+                            <ExternalLink className="w-5 h-5 text-purple-600" />
                           </div>
-
-                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                            <span className="text-purple-700 font-semibold">2. </span>
-                            <span className="text-gray-800">
-                              {language === 'ko'
-                                ? '"15페이지 이후는 제외해줘"'
-                                : '"Exclude content after page 15"'
-                              }
-                            </span>
-                          </div>
-
-                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                            <span className="text-purple-700 font-semibold">3. </span>
-                            <span className="text-gray-800">
-                              {language === 'ko'
-                                ? '"3페이지로 요약해줘"'
-                                : '"Summarize in 3 pages"'
-                              }
-                            </span>
-                          </div>
-
-                          <div className="bg-white bg-opacity-60 rounded px-2 py-1">
-                            <span className="text-purple-700 font-semibold">4. </span>
-                            <span className="text-gray-800">
-                              {language === 'ko'
-                                ? '"페이지 수를 100으로 인식해"'
-                                : '"Recognize page count as 100"'
-                              }
-                            </span>
-                          </div>
+                          <h3 className="text-sm font-bold text-gray-900 tracking-tight">
+                            {language === 'ko' ? '핵심 키워드' : 'Core Keywords'}
+                          </h3>
                         </div>
-
-                        <p className="text-purple-600 font-medium mt-2">
-                          {language === 'ko'
-                            ? '⚡ 명령이 LLM 시스템 프롬프트에 즉시 반영되어 채팅 답변 스타일이 변경됩니다!'
-                            : '⚡ Commands will be immediately reflected in LLM system prompt, changing chat response style!'
-                          }
-                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {naturalSummary.keywords.map((keyword, idx) => (
+                          <span
+                            key={idx}
+                            className="px-3 py-1.5 bg-purple-50 text-purple-700 text-xs font-bold rounded-full border border-purple-100 hover:bg-purple-100 transition-colors cursor-default"
+                          >
+                            # {keyword}
+                          </span>
+                        ))}
                       </div>
                     </div>
-
-                    <textarea
-                      value={editPrompt}
-                      onChange={(e) => setEditPrompt(e.target.value)}
-                      placeholder={language === 'ko'
-                        ? '예: "비용 절감 관점으로 분석해줘", "처음 20페이지만 고려해", "핵심만 3줄로 요약"...'
-                        : 'e.g., "Analyze from cost-saving perspective", "Only consider first 20 pages", "Summarize key points in 3 lines"...'
-                      }
-                      className="w-full px-4 py-3 text-sm border-2 border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none placeholder-gray-500"
-                      rows={4}
-                      disabled={isProcessingEdit}
-                    />
-
-                    <div className="flex justify-end space-x-2">
-                      <button
-                        onClick={() => {
-                          setIsEditingData(false)
-                          setEditPrompt('')
-                        }}
-                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
-                        disabled={isProcessingEdit}
-                      >
-                        {language === 'ko' ? '취소' : 'Cancel'}
-                      </button>
-                      <button
-                        onClick={handleNaturalLanguageEdit}
-                        disabled={!editPrompt.trim() || isProcessingEdit}
-                        className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
-                      >
-                        {isProcessingEdit ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            <span>{language === 'ko' ? '처리 중...' : 'Processing...'}</span>
-                          </>
-                        ) : (
-                          <span>{language === 'ko' ? '적용' : 'Apply'}</span>
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* 원본 JSON 데이터 (개발자용) - 아코디언 */}
-            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setIsJsonExpanded(!isJsonExpanded)}
-                className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
-              >
-                <div className="flex items-center space-x-2">
-                  <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${isJsonExpanded ? 'rotate-90' : ''}`} />
-                  <span className="text-xs font-semibold text-gray-700">
-                    {language === 'ko' ? '구조화 데이터 (개발자용)' : 'Structured Data (Developer)'}
-                  </span>
+                  )}
                 </div>
-                <span className="text-xs text-gray-500">
-                  {isJsonExpanded ? (language === 'ko' ? '접기' : 'Collapse') : (language === 'ko' ? '펼치기' : 'Expand')}
-                </span>
-              </button>
+              ) : null}
 
-              {isJsonExpanded && (
-                <div className="border-t border-gray-200 p-4 bg-gray-50">
-                  <div className="font-mono text-xs bg-white rounded-md p-3 overflow-x-auto border border-gray-200">
-                    <div className="text-gray-600">{'{'}</div>
-                    <div className="ml-3">
-                      {selectedFile.parsedData && Object.entries(selectedFile.parsedData).map(([key, value]) => (
-                        <div key={key} className="my-0.5">
-                          <span className="text-red-600">"{key}"</span>
-                          <span className="text-gray-600">: </span>
-                          {renderValue(value, `root-${key}`, 0)}
-                          <span className="text-gray-600">,</span>
-                        </div>
-                      ))}
-                      {/* 실시간 대화 이력 추가 */}
-                      {chatHistory.length > 0 && (
-                        <div className="my-0.5">
-                          <span className="text-red-600">"chatHistory"</span>
-                          <span className="text-gray-600">: </span>
-                          {renderValue(chatHistory, 'chatHistory', 0)}
-                          <span className="text-gray-600">,</span>
-                        </div>
-                      )}
-                      {/* AI 시스템 프롬프트 덮어쓰기 추가 */}
-                      {propSystemPromptOverrides.length > 0 && (
-                        <div className="my-0.5">
-                          <span className="text-red-600">"systemPromptOverrides"</span>
-                          <span className="text-gray-600">: </span>
-                          {renderValue(propSystemPromptOverrides, 'systemPromptOverrides', 0)}
-                          <span className="text-gray-600">,</span>
-                        </div>
-                      )}
+              {/* 페르소나 추천 (Persona Analysis) */}
+              {personaAnalysis && (
+                <div className="bg-gradient-to-br from-indigo-600 to-purple-700 rounded-2xl p-6 text-white shadow-xl shadow-indigo-100 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+                  <div className="flex items-center space-x-3 mb-4">
+                    <div className="bg-white/20 p-2 rounded-xl backdrop-blur-sm">
+                      <Sparkles className="w-5 h-5 text-white" />
                     </div>
-                    <div className="text-gray-600">{'}'}</div>
+                    <div>
+                      <h3 className="text-sm font-extrabold tracking-tight">
+                        {language === 'ko' ? '추천 AI 페르소나' : 'Suggested AI Personas'}
+                      </h3>
+                      <p className="text-[10px] text-indigo-100 font-bold uppercase tracking-widest mt-0.5">
+                        {personaAnalysis.documentType} Detected
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="mt-3 text-xs text-gray-500">
-                    {language === 'ko'
-                      ? '💡 위 데이터는 시스템 내부 처리용 정보입니다. 상단의 자연어 설명을 편집하면 이 데이터도 자동으로 동기화됩니다.'
-                      : '💡 This data is for internal system processing. Editing the natural language descriptions above will automatically sync this data.'
-                    }
+                  <div className="grid grid-cols-1 gap-3">
+                    {personaAnalysis.suggestedPersonas?.map((persona, idx) => (
+                      <div
+                        key={idx}
+                        onClick={() => addSystemPromptOverride(`${persona.role}: ${persona.description}`)}
+                        className="bg-white/10 hover:bg-white/20 transition-all rounded-xl p-3 border border-white/10 backdrop-blur-md cursor-pointer group active:scale-[0.98]"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs font-black tracking-tight">{persona.role}</span>
+                          <div className="bg-white/20 p-1 rounded-md opacity-0 group-hover:opacity-100 transition-all">
+                            <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-indigo-50 leading-relaxed font-medium">
+                          {persona.description}
+                        </p>
+                      </div>
+                    ))}
                   </div>
+
+                  <p className="mt-4 text-[10px] text-indigo-200/80 font-medium text-center italic">
+                    {language === 'ko'
+                      ? '* 페르소나를 선택하여 특화된 분석을 시작하세요'
+                      : '* Select a persona for specialized analysis'}
+                  </p>
                 </div>
               )}
+
+              {/* 기본 상세 정보 */}
+              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-50 bg-gray-50/30">
+                  <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center space-x-2">
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>{language === 'ko' ? '상세 명세' : 'Technical Specifications'}</span>
+                  </h3>
+                </div>
+
+                <div className="p-6 space-y-4 text-sm text-gray-700">
+                  {/* 파일명 */}
+                  <div className="flex items-start justify-between group">
+                    <div className="flex-1">
+                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Filename</p>
+                      {editingField === 'filename' ? (
+                        <div className="flex items-center space-x-2">
+                          <input
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="flex-1 px-3 py-2 text-sm border-2 border-blue-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                onUpdateName?.(selectedFile.id, editValue)
+                                setEditingField(null)
+                              } else if (e.key === 'Escape') {
+                                setEditingField(null)
+                              }
+                            }}
+                          />
+                          <button onClick={() => { onUpdateName?.(selectedFile.id, editValue); setEditingField(null); }} className="p-2 text-green-600 hover:bg-green-50 rounded-xl">
+                            <Save className="w-5 h-5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="font-bold text-gray-900 group-hover:text-blue-600 transition-colors">{selectedFile.name}</p>
+                      )}
+                    </div>
+                    {editingField !== 'filename' && !isReadOnly && (
+                      <button onClick={() => { setEditingField('filename'); setEditValue(selectedFile.name); }} className="opacity-0 group-hover:opacity-100 transition-opacity p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl">
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* 파일 유형 및 정보 그리드 */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Mime Type</p>
+                      <p className="font-bold text-gray-800 truncate">
+                        {selectedFile.type === 'web' ? 'Web Interface' : selectedFile.file?.type || 'Standard Text'}
+                      </p>
+                    </div>
+                    <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 group relative">
+                      <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">Page Count</p>
+                      {editingField === 'pageCount' ? (
+                        <div className="flex items-center space-x-1">
+                          <input
+                            type="number"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            className="w-full px-2 py-1 text-xs border border-blue-200 rounded focus:outline-none"
+                            autoFocus
+                          />
+                          <button onClick={() => { onUpdateData?.(selectedFile.id, 'pageCount', parseInt(editValue)); setEditingField(null); }} className="text-green-600">
+                            <Check className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-gray-800">{selectedFile.parsedData?.pageCount || '1'} Pages</p>
+                          {!isReadOnly && (
+                            <button onClick={() => { setEditingField('pageCount'); setEditValue((selectedFile.parsedData?.pageCount || 1).toString()); }} className="opacity-0 group-hover:opacity-100 p-1 text-blue-600">
+                              <Edit2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 데이터 메타데이터 */}
+                  <div className="pt-2">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <div className="h-px bg-gray-100 flex-1"></div>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Metadata</span>
+                      <div className="h-px bg-gray-100 flex-1"></div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-gray-500 font-bold">Characters</span>
+                        <span className="text-gray-900 font-black">{(selectedFile.parsedData?.extractedText?.length || 0).toLocaleString()} chars</span>
+                      </div>
+                      <div className="flex justify-between text-[11px]">
+                        <span className="text-gray-500 font-bold">Source ID</span>
+                        <span className="text-gray-400 font-mono">{selectedFile.id.substring(0, 12)}...</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* AI 행동 지침 제어기 (Prompt Editor - 공유받은 유저는 숨김) */}
+                  {!isReadOnly && (
+                    <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="flex items-center justify-between">
+                        <button
+                          onClick={() => setIsEditingData(!isEditingData)}
+                          className="flex items-center space-x-2 text-sm text-blue-600 hover:text-blue-700 font-medium"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                          <span>
+                            {isEditingData
+                              ? (language === 'ko' ? '편집 취소' : 'Cancel Edit')
+                              : (language === 'ko' ? '🤖 AI 행동 지침 제어' : '🤖 AI Behavior Control')
+                            }
+                          </span>
+                        </button>
+
+                        {/* Undo/Redo 버튼 */}
+                        <div className="flex items-center space-x-1">
+                          <button
+                            onClick={handleUndo}
+                            disabled={currentHistoryIndex < 0}
+                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={language === 'ko' ? '실행 취소 (Undo)' : 'Undo'}
+                          >
+                            <ChevronLeft className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={handleRedo}
+                            disabled={currentHistoryIndex >= editHistory.length - 1}
+                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded disabled:opacity-30 disabled:cursor-not-allowed"
+                            title={language === 'ko' ? '다시 실행 (Redo)' : 'Redo'}
+                          >
+                            <ChevronRight className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setShowHistory(!showHistory)}
+                            className="p-1.5 text-gray-600 hover:bg-gray-100 rounded ml-1"
+                            title={language === 'ko' ? '편집 이력 보기' : 'View Edit History'}
+                          >
+                            <List className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 편집 이력 표시 */}
+                      {showHistory && editHistory.length > 0 && (
+                        <div className="mt-3 bg-gray-50 border border-gray-200 rounded-lg p-3 max-h-40 overflow-y-auto">
+                          <h4 className="text-xs font-semibold text-gray-700 mb-2">
+                            {language === 'ko' ? '📝 편집 이력' : '📝 Edit History'}
+                          </h4>
+                          <div className="space-y-2">
+                            {editHistory.map((entry, index) => (
+                              <div
+                                key={index}
+                                className={`text-xs p-2 rounded ${index === currentHistoryIndex
+                                  ? 'bg-blue-100 border border-blue-300'
+                                  : 'bg-white border border-gray-200'
+                                  }`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-medium text-gray-700">
+                                    {entry.action === 'prompt_override' ? '🤖' : '✏️'} {entry.field}
+                                  </span>
+                                  <span className="text-gray-500 text-[10px]">
+                                    {new Date(entry.timestamp).toLocaleTimeString()}
+                                  </span>
+                                </div>
+                                {entry.oldValue && (
+                                  <div className="mt-1 text-gray-600">
+                                    <span className="line-through">{String(entry.oldValue).substring(0, 30)}</span>
+                                    {' → '}
+                                    <span className="text-green-600 font-medium">
+                                      {String(entry.newValue).substring(0, 30)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 활성화된 AI 지침 표시 (공유받은 유저는 숨김) */}
+                      {!isReadOnly && propSystemPromptOverrides.length > 0 && (
+                        <div className="mt-3 bg-purple-50 border border-purple-200 rounded-lg p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-semibold text-purple-800">
+                              {language === 'ko' ? '🤖 활성 AI 지침' : '🤖 Active AI Instructions'}
+                            </h4>
+                            <span className="text-xs text-purple-600">
+                              {propSystemPromptOverrides.length}개 적용됨
+                            </span>
+                          </div>
+                          <div className="space-y-2">
+                            {propSystemPromptOverrides.map((override) => (
+                              <div key={override.id} className="bg-white border border-purple-200 rounded p-2 text-xs">
+                                <div className="flex items-start justify-between">
+                                  <p className="text-gray-700 flex-1 pr-2">{override.content}</p>
+                                  {!isReadOnly && (
+                                    <button
+                                      onClick={() => removeSystemPromptOverride(override.id)}
+                                      className="text-red-600 hover:bg-red-50 p-1 rounded flex-shrink-0"
+                                      title={language === 'ko' ? '제거' : 'Remove'}
+                                    >
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {isEditingData && (
+                        <div className="mt-3 space-y-3">
+                          <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-lg p-4">
+                            <h5 className="text-xs font-bold text-purple-900 mb-3 flex items-center space-x-2">
+                              <span className="text-lg">🧠</span>
+                              <span>{language === 'ko' ? '지능형 문서 제어 센터' : 'Intelligent Document Control Center'}</span>
+                            </h5>
+
+                            <div className="space-y-2 text-xs">
+                              <p className="text-gray-700 font-medium">
+                                {language === 'ko'
+                                  ? '📌 지원하는 명령 유형:'
+                                  : '📌 Supported Command Types:'
+                                }
+                              </p>
+
+                              <div className="grid grid-cols-1 gap-1.5">
+                                <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                                  <span className="text-purple-700 font-semibold">1. </span>
+                                  <span className="text-gray-800">
+                                    {language === 'ko'
+                                      ? '"비용 중심으로 요약해줘"'
+                                      : '"Summarize from cost perspective"'
+                                    }
+                                  </span>
+                                </div>
+
+                                <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                                  <span className="text-purple-700 font-semibold">2. </span>
+                                  <span className="text-gray-800">
+                                    {language === 'ko'
+                                      ? '"15페이지 이후는 제외해줘"'
+                                      : '"Exclude content after page 15"'
+                                    }
+                                  </span>
+                                </div>
+
+                                <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                                  <span className="text-purple-700 font-semibold">3. </span>
+                                  <span className="text-gray-800">
+                                    {language === 'ko'
+                                      ? '"3페이지로 요약해줘"'
+                                      : '"Summarize in 3 pages"'
+                                    }
+                                  </span>
+                                </div>
+
+                                <div className="bg-white bg-opacity-60 rounded px-2 py-1">
+                                  <span className="text-purple-700 font-semibold">4. </span>
+                                  <span className="text-gray-800">
+                                    {language === 'ko'
+                                      ? '"페이지 수를 100으로 인식해"'
+                                      : '"Recognize page count as 100"'
+                                    }
+                                  </span>
+                                </div>
+                              </div>
+
+                              <p className="text-purple-600 font-medium mt-2">
+                                {language === 'ko'
+                                  ? '⚡ 명령이 LLM 시스템 프롬프트에 즉시 반영되어 채팅 답변 스타일이 변경됩니다!'
+                                  : '⚡ Commands will be immediately reflected in LLM system prompt, changing chat response style!'
+                                }
+                              </p>
+                            </div>
+                          </div>
+
+                          <textarea
+                            value={editPrompt}
+                            onChange={(e) => setEditPrompt(e.target.value)}
+                            placeholder={language === 'ko'
+                              ? '예: "비용 절감 관점으로 분석해줘", "처음 20페이지만 고려해", "핵심만 3줄로 요약"...'
+                              : 'e.g., "Analyze from cost-saving perspective", "Only consider first 20 pages", "Summarize key points in 3 lines"...'
+                            }
+                            className="w-full px-4 py-3 text-sm border-2 border-purple-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none placeholder-gray-500"
+                            rows={4}
+                            disabled={isProcessingEdit}
+                          />
+
+                          <div className="flex justify-end space-x-2">
+                            <button
+                              onClick={() => {
+                                setIsEditingData(false)
+                                setEditPrompt('')
+                              }}
+                              className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800"
+                              disabled={isProcessingEdit}
+                            >
+                              {language === 'ko' ? '취소' : 'Cancel'}
+                            </button>
+                            <button
+                              onClick={handleNaturalLanguageEdit}
+                              disabled={!editPrompt.trim() || isProcessingEdit}
+                              className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-1"
+                            >
+                              {isProcessingEdit ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  <span>{language === 'ko' ? '처리 중...' : 'Processing...'}</span>
+                                </>
+                              ) : (
+                                <span>{language === 'ko' ? '적용' : 'Apply'}</span>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 원본 JSON 데이터 (개발자용) - 아코디언 */}
+                  <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mt-4">
+                    <button
+                      onClick={() => setIsJsonExpanded(!isJsonExpanded)}
+                      className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                    >
+                      <div className="flex items-center space-x-2">
+                        <ChevronRight className={`w-4 h-4 text-gray-500 transition-transform ${isJsonExpanded ? 'rotate-90' : ''}`} />
+                        <span className="text-xs font-semibold text-gray-700">
+                          {language === 'ko' ? '구조화 데이터 (개발자용)' : 'Structured Data (Developer)'}
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {isJsonExpanded ? (language === 'ko' ? '접기' : 'Collapse') : (language === 'ko' ? '펼치기' : 'Expand')}
+                      </span>
+                    </button>
+
+                    {isJsonExpanded && (
+                      <div className="border-t border-gray-200 p-4 bg-gray-50">
+                        <div className="font-mono text-xs bg-white rounded-md p-3 overflow-x-auto border border-gray-200">
+                          <div className="text-gray-600">{'{'}</div>
+                          <div className="ml-3">
+                            {selectedFile.parsedData && Object.entries(selectedFile.parsedData).map(([key, value]) => (
+                              <div key={key} className="my-0.5">
+                                <span className="text-red-600">"{key}"</span>
+                                <span className="text-gray-600">: </span>
+                                {renderValue(value, `root-${key}`, 0)}
+                                <span className="text-gray-600">,</span>
+                              </div>
+                            ))}
+                            {/* 실시간 대화 이력 추가 */}
+                            {chatHistory.length > 0 && (
+                              <div className="my-0.5">
+                                <span className="text-red-600">"chatHistory"</span>
+                                <span className="text-gray-600">: </span>
+                                {renderValue(chatHistory, 'chatHistory', 0)}
+                                <span className="text-gray-600">,</span>
+                              </div>
+                            )}
+                            {/* AI 시스템 프롬프트 덮어쓰기 추가 */}
+                            {propSystemPromptOverrides.length > 0 && (
+                              <div className="my-0.5">
+                                <span className="text-red-600">"systemPromptOverrides"</span>
+                                <span className="text-gray-600">: </span>
+                                {renderValue(propSystemPromptOverrides, 'systemPromptOverrides', 0)}
+                                <span className="text-gray-600">,</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-gray-600">{'}'}</div>
+                        </div>
+
+                        <div className="mt-3 text-xs text-gray-500">
+                          {language === 'ko'
+                            ? '💡 위 데이터는 시스템 내부 처리용 정보입니다. 상단의 자연어 설명을 편집하면 이 데이터도 자동으로 동기화됩니다.'
+                            : '💡 This data is for internal system processing. Editing the natural language descriptions above will automatically sync this data.'
+                          }
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        )
-        }
+        )}
       </div>
 
-      {/* Footer */}
+      {/* Footer (Sticky at bottom, outside main scrollable area) */}
       {selectedFile && (
-        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50">
+        <div className="px-4 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
           {/* 동기화 알림 배너 */}
           {showSyncNotification && (
-            <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center space-x-2">
+            <div className="mb-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded text-xs text-blue-700 flex items-center space-x-2 animate-in fade-in slide-in-from-bottom-2 duration-300">
               <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>

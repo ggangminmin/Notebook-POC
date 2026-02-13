@@ -109,22 +109,34 @@ const Dashboard = ({ onNotebookSelect, showNotification, onShare, currentUserId 
       return
     }
 
-    const newNotebook = await createNotebook(
-      language === 'ko' ? '새 노트북' : 'New Notebook',
-      null,
-      currentUserId
-    )
-    setNotebooks(prev => [newNotebook, ...prev])
-    setCurrentPage(1) // 새 노트 생성 시 첫 페이지로 이동
-    console.log('[Dashboard] 새 노트북 생성:', newNotebook.id)
+    try {
+      const defaultTitle = language === 'ko' ? '새 노트북' : 'New Notebook'
 
-    // 즉시 새 노트북으로 이동
-    onNotebookSelect(newNotebook)
+      // 즉시 UI 피드백을 주기 위해 임시 객체로 상태 업데이트를 고려할 수 있으나,
+      // createNotebook이 local DB 저장을 포함하므로 비동기로 호출하고 결과 대기
+      const newNotebook = await createNotebook(defaultTitle, null, currentUserId)
+
+      if (newNotebook) {
+        setNotebooks(prev => [newNotebook, ...prev])
+        setCurrentPage(1)
+        console.log('[Dashboard] 새 노트북 생성 성공:', newNotebook.id)
+
+        // 상세 페이지로 이동
+        onNotebookSelect(newNotebook)
+      }
+    } catch (error) {
+      console.error('[Dashboard] 노트북 생성 중 오류:', error)
+      showNotification?.(
+        language === 'ko' ? '생성 오류' : 'Creation Error',
+        language === 'ko' ? '노트북 생성 중 문제가 발생했습니다.' : 'Failed to create notebook.',
+        'error'
+      )
+    }
   }
 
   // 노트북 제목 수정 핸들러
   const handleTitleUpdate = async (id, newTitle) => {
-    const updated = await updateNotebookTitle(id, newTitle)
+    const updated = await updateNotebookTitle(id, newTitle, currentUserId)
     if (updated) {
       setNotebooks(prev =>
         prev.map(nb => (nb.id === id ? updated : nb))
@@ -142,7 +154,17 @@ const Dashboard = ({ onNotebookSelect, showNotification, onShare, currentUserId 
 
   // 노트북 아이콘 변경 핸들러
   const handleIconUpdate = async (id, newIcon) => {
-    const updated = await updateNotebookIcon(id, newIcon)
+    // 본인 소유 체크
+    const notebook = notebooks.find(n => n.id === id);
+    if (notebook && notebook.ownerId && notebook.ownerId !== currentUserId) {
+      showNotification?.(
+        language === 'ko' ? '권한 없음' : 'Permission Denied',
+        language === 'ko' ? '본인의 노트북 아이콘만 변경할 수 있습니다.' : 'You can only change the icon of your own notebook.',
+        'error'
+      );
+      return;
+    }
+    const updated = await updateNotebookIcon(id, newIcon, currentUserId)
     if (updated) {
       setNotebooks(prev =>
         prev.map(nb => (nb.id === id ? updated : nb))

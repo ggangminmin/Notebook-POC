@@ -160,28 +160,36 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
   // 아이콘이 매핑에 없는 경우에도 fallback 처리
   const rawIconName = notebook.icon || DEFAULT_ICON
   const currentIconName = iconComponents[rawIconName] ? rawIconName : DEFAULT_ICON
+
+  // 역할 구분: 소유자가 본인이면 생산자(Producer), 아니면 수신자(Receiver)
+  const isProducer = !notebook.ownerId || notebook.ownerId === currentUserId
   const isShared = notebook.ownerId && notebook.ownerId !== currentUserId
   const IconComponent = getIconComponent(currentIconName)
+
+  // 생산자 이름/이메일 정보 (수신자 카드 표시용)
+  const providerInfo = notebook.ownerId ? (allCompanyMembers.find(m => m.email === notebook.ownerId)?.name || notebook.ownerId) : '생산자'
 
   return (
     <div
       onClick={onClick}
-      className={`group bg-white rounded-2xl border border-gray-100 p-5 cursor-pointer transition-all duration-300 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2 flex flex-col relative`}
+      className={`group bg-white rounded-2xl border transition-all duration-300 shadow-sm hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2 flex flex-col relative ${isShared ? 'border-indigo-100 bg-slate-50/30' : 'border-gray-100'
+        }`}
       style={{ aspectRatio: '320 / 280' }}
     >
       {/* 상단: 아이콘 + 더보기 메뉴 */}
-      <div className="flex items-start justify-between mb-3">
+      <div className="flex items-start justify-between mb-3 p-5 pb-0">
         <div className="relative">
           <button
             onClick={handleIconClick}
-            className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 group-hover:scale-110 shadow-sm border border-transparent ${getIconBgColor(currentIconName)}`}
-            title="아이콘 변경"
+            disabled={!isProducer}
+            className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 transition-all duration-300 ${isProducer ? 'group-hover:scale-110' : ''} shadow-sm border border-transparent ${getIconBgColor(currentIconName)}`}
+            title={isProducer ? "아이콘 변경" : ""}
           >
             <IconComponent className="w-6 h-6" />
           </button>
 
-          {/* 아이콘 선택 모달 */}
-          {showIconPicker && (
+          {/* 아이콘 선택 모달 (생산자만 가능) */}
+          {showIconPicker && isProducer && (
             <div
               ref={iconPickerRef}
               className="absolute left-0 top-14 bg-white rounded-xl shadow-2xl border border-gray-200 p-3 z-50"
@@ -209,7 +217,7 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
           )}
         </div>
 
-        {/* 더보기 메뉴 (점 3개) - 항상 표시 */}
+        {/* 더보기 메뉴 - 생산자 또는 관리자만 전체 메뉴, 수신자는 재공유만 가능하거나 일부 제한 */}
         {!isEditing && (
           <div className="relative" ref={menuRef}>
             <button
@@ -223,36 +231,41 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
             {/* 드롭다운 메뉴 */}
             {showMenu && (
               <div className="absolute right-0 top-8 bg-white rounded-xl shadow-xl border border-gray-100 py-1 z-10 min-w-[130px]">
-                <button
-                  onClick={handleEditFromMenu}
-                  className="w-full px-3 py-2 text-left text-xs text-gray-800 hover:bg-gray-50 flex items-center space-x-2"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                  <span>제목 수정</span>
-                </button>
-                <button
-                  onClick={handleDelete}
-                  className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>삭제</span>
-                </button>
-                <div className="h-[1px] bg-gray-50 my-1"></div>
-                <button
-                  onClick={handleShare}
-                  className="w-full px-3 py-2 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center space-x-2"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>공유</span>
-                </button>
+                {isProducer && (
+                  <>
+                    <button
+                      onClick={handleEditFromMenu}
+                      className="w-full px-3 py-2 text-left text-xs text-gray-800 hover:bg-gray-50 flex items-center space-x-2"
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      <span>설정 및 공유</span>
+                    </button>
+                    <button
+                      onClick={handleDelete}
+                      className="w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>삭제</span>
+                    </button>
+                  </>
+                )}
+                {isShared && (
+                  <button
+                    onClick={handleShare}
+                    className="w-full px-3 py-2 text-left text-xs text-blue-600 hover:bg-blue-50 flex items-center space-x-2"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>재공유</span>
+                  </button>
+                )}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* 중앙: 제목 (편집 가능) */}
-      <div className="flex-1 mb-3">
+      {/* 중앙: 제목 */}
+      <div className="flex-1 mb-3 px-5">
         {isEditing ? (
           <div className="flex items-center w-full space-x-1" onClick={(e) => e.stopPropagation()}>
             <input
@@ -279,28 +292,59 @@ const NotebookCard = ({ notebook, onClick, onTitleUpdate, onDelete, onIconUpdate
             </button>
           </div>
         ) : (
-          <h3 className="text-[15px] font-bold text-gray-900 group-hover:text-blue-600 transition-colors leading-snug line-clamp-2">
-            {notebook.title}
-          </h3>
+          <div className="space-y-1">
+            <h3 className="text-[15px] font-bold text-gray-900 group-hover:text-blue-600 transition-colors leading-snug line-clamp-2">
+              {notebook.title}
+            </h3>
+            {isShared && (
+              <p className="text-[10px] text-slate-400 font-medium tracking-tight">
+                Provided by <span className="text-slate-500 font-bold">{providerInfo}</span>
+              </p>
+            )}
+          </div>
         )}
       </div>
 
       {/* 하단: 생성일 + 소스 개수 */}
-      <div className="flex items-center justify-between pt-4 border-t border-gray-50 text-[12px] text-gray-500 mt-auto">
+      <div className="flex items-center justify-between p-5 py-4 border-t border-gray-50 text-[12px] text-gray-500 mt-auto">
         <span className="font-medium">{formatDate(notebook.createdAt)}</span>
         <div className="flex items-center space-x-1.5">
-          {isShared && (
+          {isProducer && notebook.sharingSettings?.sharedWith?.length > 0 && (
             <div className="flex items-center px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded text-[10px] font-bold mr-1">
-              <Users className="w-2.5 h-2.5 mr-1" />
-              공유됨
+              <Shield className="w-2.5 h-2.5 mr-1" />
+              관리 중
             </div>
           )}
-          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-          <span className="text-blue-600 font-bold">소스 {notebook.sources.length}개</span>
+          {isShared && (
+            <div className="flex items-center px-1.5 py-0.5 bg-indigo-50 text-indigo-600 rounded text-[10px] font-bold mr-1">
+              <Users className="w-2.5 h-2.5 mr-1" />
+              공유받음
+            </div>
+          )}
+          <div className={`w-1.5 h-1.5 rounded-full ${isShared ? 'bg-indigo-400' : 'bg-blue-500'}`}></div>
+          <span className={`${isShared ? 'text-indigo-600' : 'text-blue-600'} font-bold`}>소스 {notebook.sources.length}개</span>
         </div>
       </div>
     </div>
   )
 }
+
+// 명단 데이터 (NotebookCard 내부에 임시로 두거나 constants로 분리 필요)
+const allCompanyMembers = [
+  { name: '황용운 이사', email: 'yw.hwang@gptko.co.kr' },
+  { name: '안수찬 실장', email: 'sc.ahn@gptko.co.kr' },
+  { name: '구일완 대리', email: 'iw.ku@gptko.co.kr' },
+  { name: '권용재 사원', email: 'yj.kwon@gptko.co.kr' },
+  { name: '송제성 팀장', email: 'js.song@gptko.co.kr' },
+  { name: '석준용 대리', email: 'jy.seok@gptko.co.kr' },
+  { name: '임승연 사원', email: 'sy.lim@gptko.co.kr' },
+  { name: '박진영 팀장', email: 'jy.park@gptko.co.kr' },
+  { name: '이아영 대리', email: 'ay.lee@gptko.co.kr' },
+  { name: '김학종 사원', email: 'hj.kim@gptko.co.kr' },
+  { name: '방효윤 사원', email: 'hy.bang@gptko.co.kr' },
+  { name: '소병우 실장', email: 'bw.so@aiweb.kr' },
+  { name: '전주희 팀장', email: 'jh.jun@aiweb.kr' },
+  { name: '박선영 팀장', email: 'sy.park@aiweb.kr' }
+];
 
 export default NotebookCard

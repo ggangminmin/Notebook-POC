@@ -50,6 +50,7 @@ export const callOpenAI = async (messages, useThinking = false, useMini = false)
 
     // GPT-5.2는 temperature, top_p, presence_penalty, frequency_penalty 모두 미지원
     // 내부적으로 temperature=1 고정
+
     // 심층 분석 모드는 더 긴 응답 허용 (4000 토큰)
     const requestBody = {
       model: model,

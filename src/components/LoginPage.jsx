@@ -19,24 +19,55 @@ const LoginPage = ({ onLoginSuccess, language = 'ko', onNotification }) => {
         setIsLoading(true)
 
         try {
-            // 데모 계정 확인 (우회 로직)
+            // 모든 회사 계정 프리셋 (POC 체계 전체 지원)
             const demoAccounts = {
-                'admin@test.com': { full_name: '마스터 관리자', role: 'admin' },
-                'ms.kang@gptko.co.kr': { full_name: '회사 직원1', role: 'staff' },
-                'ms.kang2@gptko.co.kr': { full_name: '회사 직원2', role: 'staff' },
-                'cort53@naver.com': { full_name: '일반인', role: 'user' }
+                'admin@test.com': { full_name: '마스터 관리자', role: 'admin', pw: ['admin123!', '1234'] },
+                'admin.master@gptko.co.kr': { full_name: '마스터 관리자', role: 'admin', pw: ['admin123!', '1234'] },
+                // 회사 관리자
+                'admin@gptko.co.kr': { full_name: 'GPTKOREA 관리자', role: 'company_admin', pw: 'gptkorea123!', company: '지피티코리아' },
+                'admin@aiweb.kr': { full_name: 'AIWEB 관리자', role: 'company_admin', pw: 'aiweb123!', company: 'AIWEB' },
+                // 지피티코리아 소속 사용자
+                'yw.hwang@gptko.co.kr': { full_name: '황용운 이사', role: 'company_user', pw: 'ywhwang123!', company: '지피티코리아' },
+                'sc.ahn@gptko.co.kr': { full_name: '안수찬 실장', role: 'company_user', pw: 'scahn123!', company: '지피티코리아' },
+                'iw.ku@gptko.co.kr': { full_name: '구일완 대리', role: 'company_user', pw: 'iwku123!', company: '지피티코리아' },
+                'yj.kwon@gptko.co.kr': { full_name: '권용재 사원', role: 'company_user', pw: 'yjkwon123!', company: '지피티코리아' },
+                'js.song@gptko.co.kr': { full_name: '송제성 팀장', role: 'company_user', pw: 'jssong123!', company: '지피티코리아' },
+                'jy.seok@gptko.co.kr': { full_name: '석준용 대리', role: 'company_user', pw: 'jyseok123!', company: '지피티코리아' },
+                'sy.lim@gptko.co.kr': { full_name: '임승연 사원', role: 'company_user', pw: 'sylim123!', company: '지피티코리아' },
+                'jy.park@gptko.co.kr': { full_name: '박진영 팀장', role: 'company_user', pw: 'jypark123!', company: '지피티코리아' },
+                'ay.lee@gptko.co.kr': { full_name: '이아영 대리', role: 'company_user', pw: 'aylee123!', company: '지피티코리아' },
+                'hj.kim@gptko.co.kr': { full_name: '김학종 사원', role: 'company_user', pw: 'hjkim123!', company: '지피티코리아' },
+                'hy.bang@gptko.co.kr': { full_name: '방효윤 사원', role: 'company_user', pw: 'hybang123!', company: '지피티코리아' },
+                // AIWEB 소속 사용자
+                'bw.so@aiweb.kr': { full_name: '소병우 실장', role: 'company_user', pw: 'bwso123!', company: 'AIWEB' },
+                'jh.jun@aiweb.kr': { full_name: '전주희 팀장', role: 'company_user', pw: 'jhjun123!', company: 'AIWEB' },
+                'sy.park@aiweb.kr': { full_name: '박선영 팀장', role: 'company_user', pw: 'sypark123!', company: 'AIWEB' },
+                // 레거시/일반
+                'ms.kang@gptko.co.kr': { full_name: '회사 직원1', role: 'company_user', pw: '1234', company: '지피티코리아' },
+                'cort53@naver.com': { full_name: '일반 사용자', role: 'user', pw: 'user123!' }
             }
 
-            if (password === '1234' && demoAccounts[email]) {
+            const demoUser = demoAccounts[email];
+            const isPasswordCorrect = demoUser && (
+                Array.isArray(demoUser.pw)
+                    ? demoUser.pw.includes(password)
+                    : password === demoUser.pw
+            );
+
+            if (demoUser && isPasswordCorrect) {
                 const mockUser = {
-                    id: `demo-${email === 'admin@test.com' ? 'admin' : email}`,
+                    id: `demo-${email.split('@')[0]}`,
                     email: email,
-                    user_metadata: { full_name: demoAccounts[email].full_name }
+                    user_metadata: {
+                        full_name: demoUser.full_name,
+                        role: demoUser.role,
+                        company: demoUser.company || ''
+                    }
                 }
                 onLoginSuccess(mockUser)
                 onNotification?.(
-                    language === 'ko' ? '데모 로그인 성공' : 'Demo Login Success',
-                    language === 'ko' ? `${demoAccounts[email].full_name}님, 환영합니다!` : `Welcome, ${demoAccounts[email].full_name}!`,
+                    language === 'ko' ? '로그인 성공' : 'Login Success',
+                    language === 'ko' ? `${demoUser.full_name}님, 환영합니다!` : `Welcome, ${demoUser.full_name}!`,
                     'success'
                 )
                 return
@@ -227,14 +258,19 @@ const LoginPage = ({ onLoginSuccess, language = 'ko', onNotification }) => {
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                             {[
-                                { label: '마스터 (Admin)', email: 'admin@test.com' },
-                                { label: '직원 1', email: 'ms.kang@gptko.co.kr' },
-                                { label: '직원 2', email: 'ms.kang2@gptko.co.kr' },
-                                { label: '일반 사용자', email: 'cort53@naver.com' }
+                                { label: '마스터 (Admin)', email: 'admin@test.com', pw: 'admin123!' },
+                                { label: 'GPTKOREA 관리자', email: 'admin@gptko.co.kr', pw: 'gptkorea123!' },
+                                { label: 'AIWEB 관리자', email: 'admin@aiweb.kr', pw: 'aiweb123!' },
+                                { label: '송제성 팀장 (지피티)', email: 'js.song@gptko.co.kr', pw: 'jssong123!' },
+                                { label: '석준용 대리 (지피티)', email: 'jy.seok@gptko.co.kr', pw: 'jyseok123!' },
+                                { label: '일반 사용자', email: 'cort53@naver.com', pw: 'user123!' }
                             ].map((acc) => (
                                 <button
                                     key={acc.email}
-                                    onClick={() => setDemoAccount(acc.email)}
+                                    onClick={() => {
+                                        setEmail(acc.email)
+                                        setPassword(acc.pw)
+                                    }}
                                     className="px-4 py-4 bg-white/5 border border-white/5 rounded-2xl hover:bg-white/10 hover:border-white/20 transition-all text-left group"
                                 >
                                     <div className="text-[11px] font-black text-gray-500 uppercase tracking-wider mb-1 group-hover:text-blue-400 transition-colors">{acc.label}</div>

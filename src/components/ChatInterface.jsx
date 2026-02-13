@@ -998,6 +998,16 @@ const ChatInterface = ({ selectedSources = [], selectedModel = 'thinking', onMod
                     {language === 'ko' ? 'AI 지침 설정' : 'AI Guidelines'}
                   </button>
                 )}
+                {/* Notebook Settings Button - Hide for receivers */}
+                {!isReadOnly && (
+                  <button
+                    onClick={onOpenNotebookSettings}
+                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-all active:scale-95"
+                    title={language === 'ko' ? '노트북 설정 (프롬프트 지침)' : 'Notebook Settings (Prompts)'}
+                  >
+                    <Settings className="w-[18px] h-[18px]" />
+                  </button>
+                )}
               </div>
 
               {/* 전송 버튼 */}
